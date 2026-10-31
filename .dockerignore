@@ -1,0 +1,78 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+# package-lock.json is needed for npm ci
+yarn.lock
+pnpm-lock.yaml
+
+# Build output
+dist
+build
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Testing
+coverage
+.nyc_output
+*.test.ts
+*.spec.ts
+**/__tests__/
+
+# Documentation
+README.md
+CHANGELOG.md
+LICENSE
+docs
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+.circleci
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
+
+# Logs
+logs
+*.log
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Temporary files
+tmp
+temp
+.cache
+
+# Development files
+nodemon.json
+.prettierrc
+.eslintrc
+.eslintignore
+.editorconfig
+
+# Prisma (keep only necessary files in build)
+src/infrastructure/prisma/generated
