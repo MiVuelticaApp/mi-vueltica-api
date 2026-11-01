@@ -1,4 +1,4 @@
-import ENV from "@/presentation/core/config/env";
+import ENV from "@/presentation/http/core/config/env";
 import OAuthService from "@/application/auth/services/implementations/IOAuthService";
 import TestLoginService from "@/application/auth/services/implementations/TestLoginService";
 import { ITestLoginService } from "@/application/auth/services/interfaces/ITestLoginService";
@@ -20,25 +20,27 @@ import { PrismaUserDeletionUnitOfWork } from "@/infrastructure/users/unitsOfWork
 import PrismaUsersRepository from "@/infrastructure/users/repositories/PrismaUsersRepository";
 import PrismaUserInterestRepository from "@/infrastructure/users/repositories/PrismaUserInterestRepository";
 import { UserInterestService } from "@/application/users/services/implementations/UserInterestService";
-import MyInterestsController from "@/presentation/users/controllers/MyInterests.controller";
+import MyInterestsController from "@/presentation/http/users/controllers/MyInterests.controller";
 import PrismaCategoryRepository from "@/infrastructure/categories/repositories/PrismaCategoryRepository";
 import { CategoryService } from "@/application/categories/services/implementations/CategoryService";
-import CategoryController from "@/presentation/categories/controllers/Category.controller";
+import CategoryController from "@/presentation/http/categories/controllers/Category.controller";
 import PrismaSourceRepository from "@/infrastructure/sources/repositories/PrismaSourceRepository";
 import { SourceService } from "@/application/sources/services/implementations/SourceService";
-import SourceController from "@/presentation/sources/controllers/Source.controller";
+import SourceController from "@/presentation/http/sources/controllers/Source.controller";
 import PrismaPlaceRepository from "@/infrastructure/places/repositories/PrismaPlaceRepository";
 import { PlaceService } from "@/application/places/services/implementations/PlaceService";
-import PlaceController from "@/presentation/places/controllers/Place.controller";
+import PlaceController from "@/presentation/http/places/controllers/Place.controller";
 import PrismaFavoriteRepository from "@/infrastructure/favorites/repositories/PrismaFavoriteRepository";
 import { FavoriteService } from "@/application/favorites/services/implementations/FavoriteService";
-import FavoriteController from "@/presentation/favorites/controllers/Favorite.controller";
+import FavoriteController from "@/presentation/http/favorites/controllers/Favorite.controller";
 import ResendEmailProvider from "@/infrastructure/email/providers/ResendEmailProvider";
-import MyProfileController from "@/presentation/users/controllers/MyProfile.controller";
+import MyProfileController from "@/presentation/http/users/controllers/MyProfile.controller";
 import { IEmailService } from "@/domain/core/services/IEmailService";
-import AdminUsersController from "@/presentation/users/controllers/AdminUsers.controller";
-import SystemController from "@/presentation/system/controllers/SystemController";
-import AuthController from "@/presentation/auth/controllers/Auth.controller";
+import AdminUsersController from "@/presentation/http/users/controllers/AdminUsers.controller";
+import SystemController from "@/presentation/http/system/controllers/SystemController";
+import AuthController from "@/presentation/http/auth/controllers/Auth.controller";
+import McpController from "@/presentation/mcp/controllers/Mcp.controller";
+import { createMcpServerFactory } from "@/presentation/mcp/server/createMcpServer";
 
 // ==================== INFRASTRUCTURE ====================
 
@@ -129,3 +131,6 @@ export const authController = new AuthController(
 
 export const systemController = new SystemController(ENV.MIN_FRONTEND_VERSION);
 
+// ==================== MCP ====================
+
+export const mcpController = new McpController(createMcpServerFactory({ categoryService }));

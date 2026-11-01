@@ -4,10 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon --exec node -r ts-node/register -r tsconfig-paths/register src/presentation/server.ts",
+    "dev": "nodemon --exec node -r ts-node/register -r tsconfig-paths/register src/presentation/http/server.ts",
     "build": "tsc && tsc-alias",
-    "start": "node -r tsconfig-paths/register dist/presentation/server.js",
-    "start:prod": "node dist/presentation/server.js",
+    "start": "node -r tsconfig-paths/register dist/presentation/http/server.js",
+    "start:prod": "node dist/presentation/http/server.js",
     "db:seed": "prisma db seed",
     "db:seed:prod": "node dist/infrastructure/prisma/seed/seed.js"
   },
@@ -31,6 +31,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@prisma/adapter-mariadb": "^7.2.0",
     "@prisma/client": "^7.2.0",
     "@scalar/express-api-reference": "^0.10.34",
