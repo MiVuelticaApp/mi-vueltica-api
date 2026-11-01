@@ -1,6 +1,8 @@
 import { User } from "@/domain/users/entities/User";
 import { UserResponse } from "../responses/UserResponse";
 import { MyProfileResponse } from "../responses/MyProfileResponse";
+import { Category } from "@/domain/categories/entities/Category";
+import CategoryDtoMapper from "@/presentation/categories/mappers/Category.mapper";
 
 export default class UserDtoMapper {
   static toResponse(user: User): UserResponse{
@@ -14,9 +16,10 @@ export default class UserDtoMapper {
     };
   }
 
-  static toMyProfileResponse(user: User): MyProfileResponse {
+  static toMyProfileResponse(user: User, interests: Category[]): MyProfileResponse {
     return {
       ...this.toResponse(user),
+      interests: interests.map(CategoryDtoMapper.toResponse),
     };
   }
 
