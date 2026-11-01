@@ -5,6 +5,8 @@ import { ITestLoginService } from "@/application/auth/services/interfaces/ITestL
 import { TestAccountSeeder } from "@/application/auth/services/implementations/TestAccountSeeder";
 import { ITestAccountSeeder } from "@/application/auth/services/interfaces/ITestAccountSeeder";
 import { UserService } from "@/application/users/services/implementations/UserService";
+import { AdminUserService } from "@/application/users/services/implementations/AdminUserService";
+import { IAdminUserService } from "@/application/users/services/interfaces/IAdminUserService";
 import { AccountDeletionService } from "@/application/users/services/implementations/AccountDeletionService";
 import { IAccountDeletionService } from "@/application/users/services/interfaces/IAccountDeletionService";
 import AccountDeletionEmailSender from "@/application/users/services/AccountDeletionEmailSender";
@@ -25,6 +27,7 @@ import CategoryController from "@/presentation/categories/controllers/Category.c
 import ResendEmailProvider from "@/infrastructure/email/providers/ResendEmailProvider";
 import MyProfileController from "@/presentation/users/controllers/MyProfile.controller";
 import { IEmailService } from "@/domain/core/services/IEmailService";
+import AdminUsersController from "@/presentation/users/controllers/AdminUsers.controller";
 import SystemController from "@/presentation/system/controllers/SystemController";
 import AuthController from "@/presentation/auth/controllers/Auth.controller";
 
@@ -73,6 +76,7 @@ export const testLoginService: ITestLoginService = new TestLoginService(userServ
 }, testAccountSeeder);
 
 export const accountDeletionService: IAccountDeletionService = new AccountDeletionService(userDeletionUOW);
+export const adminUserService: IAdminUserService = new AdminUserService(userRepository, accountDeletionService);
 export const accountDeletionEmailSender = new AccountDeletionEmailSender(emailService);
 export const accountDeletionExternalCleanup: IAccountDeletionExternalCleanup = new AccountDeletionExternalCleanup(
   appleOAuthProvider,
@@ -93,6 +97,10 @@ export const myProfileController = new MyProfileController(
 export const myInterestsController = new MyInterestsController(userInterestService);
 
 export const categoryController = new CategoryController(categoryService);
+export const adminUsersController = new AdminUsersController(
+  adminUserService,
+  accountDeletionExternalCleanup,
+);
 
 export const authController = new AuthController(
   oAuthService,
