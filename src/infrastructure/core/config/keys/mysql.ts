@@ -2,12 +2,19 @@ import dontenv from 'dotenv'
 
 dontenv.config()
 
+if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set')
+}
+
+// Single source of truth shared with the Prisma CLI (prisma.config.ts)
+const databaseUrl = new URL(process.env.DATABASE_URL)
+
 const MYSQL_KEYS = {
-    host: process.env.DB_HOST || "localhost",
-    user: process.env.DB_USER || "root",
-    password: process.env.DB_PASSWORD || "",
-    database: process.env.DB_NAME || "gptBot",
-    port: parseInt(process.env.DB_PORT || "3306"),
+    host: databaseUrl.hostname,
+    user: decodeURIComponent(databaseUrl.username),
+    password: decodeURIComponent(databaseUrl.password),
+    database: decodeURIComponent(databaseUrl.pathname.slice(1)),
+    port: parseInt(databaseUrl.port || "3306"),
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,

@@ -257,3 +257,10 @@ trimmed, 1–100 chars, unique (409 `CategoryAlreadyExistsError`; a P2002 race a
 Delete returns 409 `CategoryInUseError` while any `Place` or `Event` references the category;
 `UserInterest` rows cascade at DB level so they never block it. `ICategoryRepository.findByIds`
 and `CategoryResponse` / `CategoryDtoMapper` are meant to be reused by other modules (user interests).
+## Admin user management
+
+`/api/v1/users` (`GET /`, `GET /:id`, `PATCH /:id/role`, `DELETE /:id`) is `jwtAuth` + `requireRole("ADMIN")`
+(`AdminUsersController`, `AdminUserService`). Soft-deleted users (`deletedAt`) are excluded from list/get
+(`UserNotFoundError` 404). `DELETE` reuses `AccountDeletionService` + `AccountDeletionExternalCleanup` (no Apple
+code), so it has the same semantics as self-deletion. An admin cannot change their own role or delete themselves
+(`SelfModificationError`, 403). Responses use `UserResponse`, which never exposes `ssoSubject`.
