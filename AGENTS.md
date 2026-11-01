@@ -306,6 +306,30 @@ token or missing/soft-deleted user continues anonymously, never 401; a valid one
 - **Delete** is a plain `place.delete`: photos, favorites and reviews cascade at DB level and events keep existing with
   `placeId = null` (SET NULL). Category/source deletes still return 409 while any place references them.
 
+## Events
+
+`/api/v1/events`: `GET /` (paginated, sort `startsAt`/`createdAt`/`title`, default `startsAt` **asc**, tie-breaker `id`) and `GET /:id`
+are public with **optional auth** (`optionalJwtAuth`). `POST /`, `PUT /:id` (full replace) and `PATCH /:id/status` (`{ status }`)
+require `jwtAuth` + `requireRole("MODERATOR", "ADMIN")`; `DELETE /:id` requires `requireRole("ADMIN")`. Ids are UUIDs. Reuses the
+`ContentStatus` / `TargetAudience` value objects from `domain/places`.
+
+- **Visibility**: same as places. The controller passes `statuses?: ContentStatus[]` (`["PUBLISHED"]` for anonymous/regular users, `status`
+  query ignored; all statuses or the optional `status` filter for MODERATOR/ADMIN). `GET /:id` of a non-PUBLISHED event is 404
+  `EventNotFoundError` unless privileged.
+- **List filters** (all optional): `from`, `to` (ISO 8601 **with offset**, `from <= to` else 400), `categoryId`, `placeId`, `cantonId`
+  (through `place`; events without a place never match), `targetAudience`, `status` (privileged only), `q` (substring on title/description, max 100).
+  **`from` defaults to now for everyone** (applied after validation), so the list shows upcoming/ongoing events unless an earlier `from` is sent.
+  Range semantics are overlap: `startsAt <= to` AND (`endsAt >= from` OR (`endsAt IS NULL` AND `startsAt >= from`)).
+- **Body**: `placeId?` (uuid|null), `categoryId`, `sourceId?` (uuid|null), `title` (1-191), `description?` (<=5000), `startsAt`, `endsAt?`
+  (ISO 8601 with offset; responses always use `toISOString()` UTC), `targetAudience?` (default `EVERYONE`). Status is not in POST/PUT: new events are
+  `PENDING`, PUT keeps the current status. There is no `verifiedAt` on events.
+- **Rules**: `endsAt >= startsAt` is enforced in Zod (400) and by the `EventSchedule` value object (`DataException`, so the service/MCP path is protected too).
+  Unknown `placeId` (any status) / `categoryId` / `sourceId` give 422 `InvalidPlaceError` / `InvalidCategoryError` / `InvalidSourceError`
+  (the last two are reused from `application/places/errors`).
+- **Detail** (`EventDetail` read model): `place: PlaceSummary | null` (`id, name, cantonId, latitude, longitude, address, status`). For non-privileged
+  callers the place is `null` when it is not PUBLISHED (`placeId` is still returned); done in `EventService.get` through the same `statuses` option.
+- **Delete** is a plain `event.delete`; notifications cascade at DB level.
+
 ## Favorites
 
 - `GET /api/v1/me/favorites` (under `profileRouter`, so `jwtAuth`): paginated `{ place: PlaceResponse, createdAt }`.

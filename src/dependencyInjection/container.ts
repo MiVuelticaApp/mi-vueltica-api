@@ -30,6 +30,9 @@ import SourceController from "@/presentation/http/sources/controllers/Source.con
 import PrismaPlaceRepository from "@/infrastructure/places/repositories/PrismaPlaceRepository";
 import { PlaceService } from "@/application/places/services/implementations/PlaceService";
 import PlaceController from "@/presentation/http/places/controllers/Place.controller";
+import PrismaEventRepository from "@/infrastructure/events/repositories/PrismaEventRepository";
+import { EventService } from "@/application/events/services/implementations/EventService";
+import EventController from "@/presentation/http/events/controllers/Event.controller";
 import PrismaFavoriteRepository from "@/infrastructure/favorites/repositories/PrismaFavoriteRepository";
 import { FavoriteService } from "@/application/favorites/services/implementations/FavoriteService";
 import FavoriteController from "@/presentation/http/favorites/controllers/Favorite.controller";
@@ -50,6 +53,7 @@ export const categoryRepository = new PrismaCategoryRepository();
 export const userInterestRepository = new PrismaUserInterestRepository();
 export const sourceRepository = new PrismaSourceRepository();
 export const placeRepository = new PrismaPlaceRepository();
+export const eventRepository = new PrismaEventRepository();
 export const favoriteRepository = new PrismaFavoriteRepository();
 
 // unit of work
@@ -78,6 +82,7 @@ export const userService = new UserService(userRepository);
 export const categoryService = new CategoryService(categoryRepository);
 export const sourceService = new SourceService(sourceRepository);
 export const placeService = new PlaceService(placeRepository, categoryRepository, sourceRepository);
+export const eventService = new EventService(eventRepository, placeRepository, categoryRepository, sourceRepository);
 export const favoriteService = new FavoriteService(favoriteRepository, placeRepository);
 export const userInterestService = new UserInterestService(userRepository, userInterestRepository, categoryRepository);
 export const oAuthService = new OAuthService(userService, googleOAuthProvider, appleOAuthProvider, idGenerator);
@@ -116,6 +121,7 @@ export const myInterestsController = new MyInterestsController(userInterestServi
 export const categoryController = new CategoryController(categoryService);
 export const sourceController = new SourceController(sourceService);
 export const placeController = new PlaceController(placeService, favoriteService);
+export const eventController = new EventController(eventService);
 export const favoriteController = new FavoriteController(favoriteService);
 export const adminUsersController = new AdminUsersController(
   adminUserService,
