@@ -7,6 +7,7 @@ import errorHandler from "./core/middlewares/errorHandler";
 import { apiReference } from "@scalar/express-api-reference";
 import openApiDocument from "./core/docs/openapi";
 import ENV from "./core/config/env";
+import mcpRouter from "@/presentation/mcp/routes/mcp.routes";
 
 const app = express();
 
@@ -37,6 +38,9 @@ if (ENV.NODE_ENV !== "production") {
   });
   app.use("/docs", apiReference({ url: "/openapi.json" }));
 }
+
+// MCP endpoint (Streamable HTTP, stateless)
+app.use("/mcp", mcpRouter);
 
 // API routes
 app.use("/api/v1", router);

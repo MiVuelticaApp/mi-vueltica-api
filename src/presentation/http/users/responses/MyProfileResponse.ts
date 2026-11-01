@@ -1,4 +1,4 @@
-import { CategoryResponse } from "@/presentation/categories/responses/CategoryResponse";
+import { CategoryResponse } from "@/presentation/http/categories/responses/CategoryResponse";
 import { UserResponse } from "./UserResponse";
 
 export interface MyProfileResponse extends UserResponse {

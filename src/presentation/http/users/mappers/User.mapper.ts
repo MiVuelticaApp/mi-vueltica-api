@@ -2,7 +2,7 @@ import { User } from "@/domain/users/entities/User";
 import { UserResponse } from "../responses/UserResponse";
 import { MyProfileResponse } from "../responses/MyProfileResponse";
 import { Category } from "@/domain/categories/entities/Category";
-import CategoryDtoMapper from "@/presentation/categories/mappers/Category.mapper";
+import CategoryDtoMapper from "@/presentation/http/categories/mappers/Category.mapper";
 
 export default class UserDtoMapper {
   static toResponse(user: User): UserResponse{

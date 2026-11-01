@@ -1,4 +1,4 @@
-import { UserResponse } from "@/presentation/users/responses/UserResponse";
+import { UserResponse } from "@/presentation/http/users/responses/UserResponse";
 
 export interface AuthResponse {
   user: UserResponse;

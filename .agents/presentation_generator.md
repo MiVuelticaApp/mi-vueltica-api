@@ -15,7 +15,7 @@ Your task is to generate the **presentation layer boilerplate code** for a given
 
 For a given `{model}`, generate this structure:
 
-/presentation/{model}/
+/presentation/http/{model}/
 - /controllers/{model}.controller.ts
 - /routes/{model}.routes.ts
 - /mappers/{model}.mapper.ts
@@ -32,9 +32,9 @@ Generate the Express router:
 ```ts
 import { Router } from "express";
 import { {modelLowercase}Controller } from "@/dependencyInjection/container";
-import asyncHandler from "@/presentation/core/handlers/asyncHandler";
-import jwtAuth from "@/presentation/auth/middlewares/jwtAuth";
-import validateSchema from "@/presentation/core/middlewares/validateSchema";
+import asyncHandler from "@/presentation/http/core/handlers/asyncHandler";
+import jwtAuth from "@/presentation/http/auth/middlewares/jwtAuth";
+import validateSchema from "@/presentation/http/core/middlewares/validateSchema";
 import { Create{model}Schema } from "../validators/{modelLowercase}.validator";
 
 const {modelLowercase}Router = Router();

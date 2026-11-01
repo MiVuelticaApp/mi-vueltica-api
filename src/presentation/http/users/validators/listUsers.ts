@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { USER_ROLES } from "@/domain/users/entities/User";
-import { createPaginationQuerySchema } from "@/presentation/core/validators/pagination";
+import { createPaginationQuerySchema } from "@/presentation/http/core/validators/pagination";
 
 export const USER_SORT_FIELDS = ["createdAt", "email", "name"] as const;
 

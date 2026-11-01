@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { placeController } from "@/dependencyInjection/container";
-import asyncHandler from "@/presentation/core/handlers/asyncHandler";
-import validateSchema from "@/presentation/core/middlewares/validateSchema";
-import { uuidParamSchema } from "@/presentation/core/validators/params";
-import jwtAuth from "@/presentation/auth/middlewares/jwtAuth";
-import optionalJwtAuth from "@/presentation/auth/middlewares/optionalJwtAuth";
-import requireRole from "@/presentation/auth/middlewares/requireRole";
+import asyncHandler from "@/presentation/http/core/handlers/asyncHandler";
+import validateSchema from "@/presentation/http/core/middlewares/validateSchema";
+import { uuidParamSchema } from "@/presentation/http/core/validators/params";
+import jwtAuth from "@/presentation/http/auth/middlewares/jwtAuth";
+import optionalJwtAuth from "@/presentation/http/auth/middlewares/optionalJwtAuth";
+import requireRole from "@/presentation/http/auth/middlewares/requireRole";
 import { ListPlacesQuerySchema } from "../validators/listPlaces";
 import { CreatePlaceSchema } from "../validators/createPlace";
 import { UpdatePlaceSchema } from "../validators/updatePlace";

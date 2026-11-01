@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
 import { z } from "zod";
 import { ICategoryService } from "@/application/categories/services/interfaces/ICategoryService";
-import { getValidated } from "@/presentation/core/middlewares/validateSchema";
-import { toPaginationParams } from "@/presentation/core/validators/pagination";
-import { toPaginatedResponse } from "@/presentation/core/mappers/Pagination.mapper";
+import { getValidated } from "@/presentation/http/core/middlewares/validateSchema";
+import { toPaginationParams } from "@/presentation/http/core/validators/pagination";
+import { toPaginatedResponse } from "@/presentation/http/core/mappers/Pagination.mapper";
 import { ListCategoriesQuerySchema } from "../validators/listCategories";
 import { CreateCategoryRequest } from "../requests/CreateCategoryRequest";
 import { UpdateCategoryRequest } from "../requests/UpdateCategoryRequest";

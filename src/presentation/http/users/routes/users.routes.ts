@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { adminUsersController } from "@/dependencyInjection/container";
-import asyncHandler from "@/presentation/core/handlers/asyncHandler";
-import validateSchema from "@/presentation/core/middlewares/validateSchema";
-import jwtAuth from "@/presentation/auth/middlewares/jwtAuth";
-import requireRole from "@/presentation/auth/middlewares/requireRole";
-import { uuidParamSchema } from "@/presentation/core/validators/params";
+import asyncHandler from "@/presentation/http/core/handlers/asyncHandler";
+import validateSchema from "@/presentation/http/core/middlewares/validateSchema";
+import jwtAuth from "@/presentation/http/auth/middlewares/jwtAuth";
+import requireRole from "@/presentation/http/auth/middlewares/requireRole";
+import { uuidParamSchema } from "@/presentation/http/core/validators/params";
 import { ListUsersQuerySchema } from "../validators/listUsers";
 import { ChangeUserRoleSchema } from "../validators/changeUserRole";
 

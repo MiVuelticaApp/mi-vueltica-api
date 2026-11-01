@@ -4,7 +4,7 @@ import { AuthResponse } from "../responses/AuthResponse";
 import IJwtService from "@/domain/auth/services/IJwtService";
 import { IUserService } from "@/application/users/services/interfaces/IUserService";
 import { ITestLoginService } from "@/application/auth/services/interfaces/ITestLoginService";
-import UserDtoMapper from "@/presentation/users/mappers/User.mapper";
+import UserDtoMapper from "@/presentation/http/users/mappers/User.mapper";
 import { TestLoginRequest } from "../requests/TestLoginRequest";
 import ApplicationError from "@/application/core/errors/ApplicationError";
 

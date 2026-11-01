@@ -1,5 +1,5 @@
 import z from "zod";
-import { createPaginationQuerySchema } from "@/presentation/core/validators/pagination";
+import { createPaginationQuerySchema } from "@/presentation/http/core/validators/pagination";
 
 export const CATEGORY_SORT_FIELDS = ["id", "name"] as const;
 
