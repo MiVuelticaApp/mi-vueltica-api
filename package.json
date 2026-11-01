@@ -31,6 +31,7 @@
   "dependencies": {
     "@prisma/adapter-mariadb": "^7.2.0",
     "@prisma/client": "^7.2.0",
+    "@scalar/express-api-reference": "^0.10.34",
     "@types/jsonwebtoken": "^9.0.10",
     "apple-signin-auth": "^2.0.0",
     "bcryptjs": "^3.0.3",

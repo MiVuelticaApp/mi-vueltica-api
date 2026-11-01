@@ -4,6 +4,9 @@ import morgan from "morgan";
 import origins from "./core/config/origins";
 import router from "./core/routes/router";
 import errorHandler from "./core/middlewares/errorHandler";
+import { apiReference } from "@scalar/express-api-reference";
+import openApiDocument from "./core/docs/openapi";
+import ENV from "./core/config/env";
 
 const app = express();
 
@@ -26,6 +29,14 @@ app.use(
 // Body parsing
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
+
+// API docs (Scalar). Disabled in production so the endpoint surface isn't public.
+if (ENV.NODE_ENV !== "production") {
+  app.get("/openapi.json", (_req, res) => {
+    res.json(openApiDocument);
+  });
+  app.use("/docs", apiReference({ url: "/openapi.json" }));
+}
 
 // API routes
 app.use("/api/v1", router);

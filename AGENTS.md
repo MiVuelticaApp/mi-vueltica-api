@@ -180,3 +180,13 @@ consumed by `deleteSubscriber`.
 - `prisma.config.ts` uses `dotenv/config` import for env loading
 - All API routes mounted under `/api/v1`
 - `requireCompanyId` middleware parses company context from requests
+## API docs (Scalar)
+
+Outside production (`NODE_ENV !== "production"`), the server exposes:
+
+- `GET /docs` — Scalar API reference UI (`@scalar/express-api-reference`)
+- `GET /openapi.json` — the OpenAPI 3.1 document
+
+The spec lives in `src/presentation/core/docs/openapi.ts`. Request bodies are generated from the
+route's Zod validator via `z.toJSONSchema`; response schemas are hand-written to mirror the
+`*/responses` interfaces. **When adding or changing a route, update this file too.**

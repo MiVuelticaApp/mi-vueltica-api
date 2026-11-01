@@ -4,3 +4,4 @@
 /node_modules
 /src/infrastructure/prisma/generated
 /coverage
+/graphify-out
