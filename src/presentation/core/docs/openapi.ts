@@ -5,6 +5,7 @@ import { AppleLoginSchema } from "@/presentation/auth/validators/appleLogin";
 import { TestLoginSchema } from "@/presentation/auth/validators/testLogin";
 import { UpdateUserSchema } from "@/presentation/users/validators/updateUser";
 import { DeleteAccountSchema } from "@/presentation/users/validators/deleteAccount";
+import { AGE_RANGES, USER_ROLES } from "@/domain/users/entities/User";
 
 // OpenAPI document served to Scalar (see app.ts). Request bodies are generated from the
 // same Zod schemas used by validateSchema, so docs can't drift from validation. Responses
@@ -40,6 +41,7 @@ const paths: Record<string, Record<string, unknown>> = {
         200: jsonResponse("Authenticated", "AuthResponse"),
         400: errorResponse("Invalid request body"),
         401: errorResponse("Authentication failed"),
+        409: errorResponse("Email already registered with another provider"),
       },
     },
   },
@@ -52,6 +54,7 @@ const paths: Record<string, Record<string, unknown>> = {
         200: jsonResponse("Authenticated", "AuthResponse"),
         400: errorResponse("Invalid request body"),
         401: errorResponse("Authentication failed"),
+        409: errorResponse("Email already registered with another provider"),
       },
     },
   },
@@ -163,6 +166,8 @@ const userProperties = {
   email: { type: "string", format: "email" },
   name: { type: "string" },
   surnames: { type: "string" },
+  ageRange: { type: ["string", "null"], enum: [...AGE_RANGES, null] },
+  role: { type: "string", enum: [...USER_ROLES] },
 };
 
 const openApiDocument = {

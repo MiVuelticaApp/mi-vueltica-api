@@ -1,4 +1,4 @@
-import { User } from "@/domain/users/entities/User";
+import { SsoProvider, User } from "@/domain/users/entities/User";
 import { IUserRepository } from "@/domain/users/repositories/IUserRepository";
 import { prisma } from "@/infrastructure/prisma/client";
 import { Prisma } from "@/infrastructure/prisma/generated/prisma/client";
@@ -20,9 +20,7 @@ export default class PrismaUsersRepository implements IUserRepository {
    */
   async all(): Promise<User[]> {
     try {
-      const users = await this.client.user.findMany({
-        include: this.getIncludes(),
-      });
+      const users = await this.client.user.findMany();
       return users.map((user) => PrismaUserMapper.toDomain(user));
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -42,11 +40,30 @@ export default class PrismaUsersRepository implements IUserRepository {
         where: {
           [field || "id"]: value,
         },
-        include: this.getIncludes(),
       });
       return user ? PrismaUserMapper.toDomain(user) : null;
     } catch (error) {
       console.error("Error finding user:", error);
+      throw new DatabaseError("Could not find user");
+    }
+  }
+
+  /**
+   * Find a user by their Google / Apple identity.
+   * @param provider The SSO provider.
+   * @param subject The stable user id returned by the provider (`sub`).
+   * @returns A promise that resolves to a User entity or null if not found.
+   */
+  async findBySso(provider: SsoProvider, subject: string): Promise<User | null> {
+    try {
+      const user = await this.client.user.findUnique({
+        where: {
+          ssoProvider_ssoSubject: { ssoProvider: provider, ssoSubject: subject },
+        },
+      });
+      return user ? PrismaUserMapper.toDomain(user) : null;
+    } catch (error) {
+      console.error("Error finding user by SSO identity:", error);
       throw new DatabaseError("Could not find user");
     }
   }
@@ -58,7 +75,7 @@ export default class PrismaUsersRepository implements IUserRepository {
    */
   async create(user: User): Promise<void> {
     try {
-      await this.client.user.create(PrismaUserMapper.toPersistence(user));
+      await this.client.user.create({ data: PrismaUserMapper.toCreateData(user) });
     } catch (error) {
       console.error("Error creating user:", error);
       throw new DatabaseInsertError("Could not create user");
@@ -74,7 +91,7 @@ export default class PrismaUsersRepository implements IUserRepository {
     try {
       await this.client.user.update({
         where: { id: user.id },
-        data: PrismaUserMapper.toPersistence(user),
+        data: PrismaUserMapper.toUpdateData(user),
       });
     } catch (error) {
       console.error("Error updating user:", error);
@@ -97,15 +114,4 @@ export default class PrismaUsersRepository implements IUserRepository {
       throw new DatabaseInsertError("Could not delete user");
     }
   }
-
-  getIncludes() {
-    return {
-      companies: {
-        include: {
-          company: true
-        }
-      },
-    }
-  }
-
 }

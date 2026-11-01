@@ -53,6 +53,10 @@ export default class TestLoginService implements ITestLoginService {
         email: normalizedEmail,
         name: "Cuenta",
         surnames: "de Prueba",
+        // Not a real SSO account: the schema requires a provider, and the enum has no TEST
+        // value. The fixed subject keeps it from ever matching a real Google `sub`.
+        ssoProvider: "GOOGLE",
+        ssoSubject: "test-login",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });

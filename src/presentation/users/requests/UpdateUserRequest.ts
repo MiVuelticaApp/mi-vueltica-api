@@ -1,8 +1,7 @@
+import { AgeRange } from "@/domain/users/entities/User";
+
 export interface UpdateUserRequest {
-  id: string; // Coming from URL or body
-  name?: string;
-  birthdate?: string;
-  surnames?: string;
-  imageUrl?: string;
-  gender?: "male" | "female" | "other";
+  name: string;
+  surnames: string;
+  ageRange?: AgeRange | null;
 }

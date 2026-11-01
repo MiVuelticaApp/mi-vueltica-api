@@ -12,7 +12,7 @@ export interface AccountDeletionExternalCleanupInput {
 export interface IAccountDeletionExternalCleanup {
   /**
    * Runs every best-effort side effect of account deletion that must NOT live inside
-   * the deletion transaction: Apple token revocation, RevenueCat subscriber cleanup,
+   * the deletion transaction: Apple token revocation and the
    * confirmation email. Each side effect is isolated in its own try/catch so a
    * provider outage never throws back to the caller and never reverts the deletion.
    */

@@ -6,6 +6,7 @@ import { IUserService } from "@/application/users/services/interfaces/IUserServi
 import { ITestLoginService } from "@/application/auth/services/interfaces/ITestLoginService";
 import UserDtoMapper from "@/presentation/users/mappers/User.mapper";
 import { TestLoginRequest } from "../requests/TestLoginRequest";
+import ApplicationError from "@/application/core/errors/ApplicationError";
 
 export default class AuthController {
   constructor(
@@ -43,6 +44,8 @@ export default class AuthController {
 
       res.json(response);
     } catch (error) {
+      // Let errorHandler return meaningful statuses (e.g. 409 email taken by the other provider).
+      if (error instanceof ApplicationError && error.statusCode !== 401) throw error;
       console.error("Google login error:", error);
       res.status(401).json({ message: "Autenticación fallida" });
     }
@@ -69,6 +72,7 @@ export default class AuthController {
 
       res.json(response);
     } catch (error) {
+      if (error instanceof ApplicationError && error.statusCode !== 401) throw error;
       console.error("Apple login error:", error);
       res.status(401).json({ message: "Autenticación fallida" });
     }

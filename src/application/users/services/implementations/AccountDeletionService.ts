@@ -17,13 +17,10 @@ export class AccountDeletionService implements IAccountDeletionService {
       const email = user.email.value;
       const name  = `${user.name} ${user.surnames}`.trim();
 
-      const deletedCompanyIds:  string[] = [];
-      const unlinkedCompanyIds: string[] = [];
-
-
+      // Hard delete: every relation to User cascades (or is set null) at the DB level.
       await userRepo.delete(userId);
 
-      return { email, name, deletedCompanyIds, unlinkedCompanyIds };
+      return { email, name };
     });
   }
 }

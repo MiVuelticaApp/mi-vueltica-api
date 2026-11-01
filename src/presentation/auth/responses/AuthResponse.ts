@@ -1,10 +1,7 @@
+import { UserResponse } from "@/presentation/users/responses/UserResponse";
+
 export interface AuthResponse {
-  user: {
-    id: string;
-    email: string;
-    name: string;
-    surnames: string;
-  };
+  user: UserResponse;
   token: string;
   expiresIn: string;
 }

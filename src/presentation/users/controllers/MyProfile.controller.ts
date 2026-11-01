@@ -16,17 +16,8 @@ export default class MyProfileController {
   async update(req: Request, res: Response): Promise<void> {
     // @ts-expect-error 
     const { id } = req.user;
-    const { body } = req;
-    const data: UpdateUserRequest = {
-      id,
-      ...body
-    }
-    await this.userService.update(UserDtoMapper.fromUpdateRequestToEntity(data));
-    const updatedUser = await this.userService.find(id);
-    if (!updatedUser) {
-      res.status(404).json({ message: "User not found" });
-      return;
-    }
+    const { name, surnames, ageRange }: UpdateUserRequest = req.body;
+    const updatedUser = await this.userService.updateProfile(id, { name, surnames, ageRange });
     res.json(UserDtoMapper.toResponse(updatedUser));
   }
 
@@ -58,11 +49,9 @@ export default class MyProfileController {
 
     const result = await this.accountDeletionService.deleteAccount(id);
 
-    // Audit trail for a destructive action: userId + counts only.
-    // Never log the email, the appleAuthorizationCode, or any tokens.
-    console.log(
-      `[account-deletion] userId=${id} deletedCompanies=${result.deletedCompanyIds.length} unlinkedCompanies=${result.unlinkedCompanyIds.length}`,
-    );
+    // Audit trail for a destructive action: userId only.
+    // Never log the email, the appleAuthCode, or any tokens.
+    console.log(`[account-deletion] userId=${id}`);
 
     // Best-effort external cleanup (Apple revoke, RevenueCat subscriber deletion,
     // confirmation email). Each side effect is isolated inside `run`; the wrapper

@@ -1,8 +1,8 @@
 import ApplicationError from "@/application/core/errors/ApplicationError";
 
 export class UserAlreadyExistsError extends ApplicationError {
-  constructor() {
-    super("User already exists");
+  constructor(message?: string) {
+    super(message || "User already exists");
     this.name = "UserAlreadyExistsError";
     this.stack = new Error().stack;
     this.statusCode = 409;
