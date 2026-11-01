@@ -269,6 +269,39 @@ and `CategoryResponse` / `CategoryDtoMapper` are meant to be reused by other mod
 for future crawler jobs. Delete returns 409 `SourceInUseError` while any `Place` or `Event` references the
 source; unknown ids give 404 `SourceNotFoundError`.
 
+## Places
+
+`/api/v1/places`: `GET /` (paginated, sort `name`/`createdAt`/`updatedAt`, default `name`) and `GET /:id` are public
+with **optional auth** (`optionalJwtAuth`, `src/presentation/auth/middlewares/optionalJwtAuth.ts`: no/invalid/expired
+token or missing/soft-deleted user continues anonymously, never 401; a valid one loads the user from the DB and sets
+`req.user.role`). `POST /`, `PUT /:id` (full replace) and `PATCH /:id/status` (`{ status }`) require `jwtAuth` +
+`requireRole("MODERATOR", "ADMIN")`; `DELETE /:id` requires `requireRole("ADMIN")`. Ids are UUIDs.
+
+- **Visibility**: the controller treats MODERATOR/ADMIN as privileged and passes the service a plain
+  `statuses?: ContentStatus[]`. Anonymous/regular users: list forced to `PUBLISHED` (`status` query ignored) and
+  `GET /:id` of a non-PUBLISHED place is 404 `PlaceNotFoundError`. Privileged: optional `status` filter (all statuses
+  when omitted) and `GET /:id` returns any status.
+- **List filters** (all optional): `cantonId`, `provinceId` (via canton), `categoryId`, `targetAudience`, `status`
+  (privileged only), `q` (substring on name/description/address, max 100). Geo: bbox `minLat,minLng,maxLat,maxLng`
+  (all four, min <= max) **or** radius `lat,lng,radiusKm` (all three, 0 < radiusKm <= 500); mixing them is 400. Radius
+  runs a parameterized `$queryRaw` in `PrismaPlaceRepository` (bbox prefilter + Haversine, 6371 km) that returns ids,
+  then `id IN (...)` is added to the Prisma `where` so pagination/count stay correct. No antimeridian wrap-around.
+- **Detail** (`PlaceDetail` read model from `IPlaceRepository.findDetail`): photos ordered by `position`,
+  `averageRating` (2 decimals, `null` if none) and `reviewCount`, both over PUBLISHED reviews only.
+- **Body**: `cantonId`, `categoryId`, `sourceId?` (uuid|null), `name` (1-191), `description?` (<=5000), `latitude`
+  (-90..90), `longitude` (-180..180), `address?` (<=191), `openingHours?`, `targetAudience?` (default `EVERYONE`).
+  Lat/lng are validated in Zod and in the `Coordinates` value object; Prisma `Decimal` <-> `number` in the mapper.
+  Status is not in POST/PUT: new places are `PENDING`, PUT keeps the current status.
+- **openingHours**: object keyed `monday`..`sunday` (all optional, unknown keys rejected), each an array (max 6) of
+  `{ open: "HH:MM", close: "HH:MM" }` (24h, `open < close`, no overlaps within a day, touching is allowed); `[]` = closed
+  that day. Zod schema in `validators/openingHours.ts`, re-validated by the `OpeningHours` value object; stored as JSON.
+- **422 rules**: unknown `cantonId`/`categoryId`/`sourceId` give `InvalidCantonError` / `InvalidCategoryError` /
+  `InvalidSourceError` on create and update. `cantonExists` lives in `IPlaceRepository` until a geography module exists.
+- **verifiedAt**: `Place.changeStatus(status, now)` sets `verifiedAt = now` whenever the place transitions to
+  `PUBLISHED` (an already-PUBLISHED place keeps its `verifiedAt`); other statuses leave it untouched.
+- **Delete** is a plain `place.delete`: photos, favorites and reviews cascade at DB level and events keep existing with
+  `placeId = null` (SET NULL). Category/source deletes still return 409 while any place references them.
+
 ## User interests
 
 `GET /api/v1/me/interests` and `PUT /api/v1/me/interests` (under `profileRouter`, so `jwtAuth`) return
