@@ -17,6 +17,7 @@ import { CreatePlaceSchema } from "@/presentation/http/places/validators/createP
 import { UpdatePlaceSchema } from "@/presentation/http/places/validators/updatePlace";
 import { ChangePlaceStatusSchema } from "@/presentation/http/places/validators/changePlaceStatus";
 import { OpeningHoursSchema } from "@/presentation/http/places/validators/openingHours";
+import { FAVORITE_SORT_FIELDS } from "@/presentation/http/favorites/validators/listFavorites";
 import { PLACE_SORT_FIELDS, MAX_RADIUS_KM } from "@/presentation/http/places/validators/listPlaces";
 import { CONTENT_STATUSES } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { TARGET_AUDIENCES } from "@/domain/places/valueObjects/targetAudience.valueObject";
@@ -202,6 +203,33 @@ const paths: Record<string, Record<string, unknown>> = {
         401: responseRef("Unauthorized"),
         404: responseRef("NotFound"),
         422: responseRef("UnprocessableEntity"),
+      },
+    },
+  },
+  "/me/favorites": {
+    get: {
+      tags: ["Favorites"],
+      summary: "List my favorite places",
+      description:
+        "Only favorites whose place is currently PUBLISHED are listed and counted: an unpublished place disappears from the list (the favorite is kept) and reappears when it is published again. Default order is `createdAt` descending (most recently favorited first).",
+      security: bearer,
+      parameters: [
+        { $ref: "#/components/parameters/Page" },
+        { $ref: "#/components/parameters/PageSize" },
+        {
+          name: "sort",
+          in: "query",
+          description: "Field to sort by: `field` ascending, `-field` descending. Default: `-createdAt`.",
+          schema: { type: "string", enum: FAVORITE_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
+        },
+      ],
+      responses: {
+        200: {
+          description: "Page of favorite places",
+          content: { "application/json": { schema: paginated("FavoritePlace") } },
+        },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
       },
     },
   },
@@ -516,7 +544,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Places"],
       summary: "Get a place",
       description:
-        "Public (optional bearer token). Includes photos ordered by position and the rating summary over PUBLISHED reviews. A non-PUBLISHED place is 404 unless the caller is MODERATOR / ADMIN.",
+        "Public (optional bearer token). Includes photos ordered by position and the rating summary over PUBLISHED reviews. A non-PUBLISHED place is 404 unless the caller is MODERATOR / ADMIN. Authenticated callers also get `isFavorite`.",
       security: optionalBearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       responses: {
@@ -555,6 +583,35 @@ const paths: Record<string, Record<string, unknown>> = {
         401: responseRef("Unauthorized"),
         403: responseRef("Forbidden"),
         404: responseRef("NotFound"),
+      },
+    },
+  },
+  "/places/{placeId}/favorite": {
+    put: {
+      tags: ["Favorites"],
+      summary: "Favorite a place",
+      description:
+        "Idempotent: favoriting an already favorited place is a no-op (204) that keeps the original `createdAt`. 404 unless the place exists and is PUBLISHED.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/PlaceId" }],
+      responses: {
+        204: { description: "Place is now a favorite" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        404: responseRef("NotFound"),
+      },
+    },
+    delete: {
+      tags: ["Favorites"],
+      summary: "Unfavorite a place",
+      description:
+        "Idempotent: 204 whether or not the favorite existed, and regardless of the place's status or existence (never 404).",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/PlaceId" }],
+      responses: {
+        204: { description: "Place is not a favorite" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
       },
     },
   },
@@ -709,6 +766,7 @@ const openApiDocument = {
     { name: "Categories" },
     { name: "Sources" },
     { name: "Places" },
+    { name: "Favorites" },
     { name: "Users" },
     { name: "System" },
   ],
@@ -735,6 +793,12 @@ const openApiDocument = {
       },
       UuidId: {
         name: "id",
+        in: "path",
+        required: true,
+        schema: { type: "string", format: "uuid" },
+      },
+      PlaceId: {
+        name: "placeId",
         in: "path",
         required: true,
         schema: { type: "string", format: "uuid" },
@@ -837,6 +901,14 @@ const openApiDocument = {
           "address", "openingHours", "targetAudience", "status", "verifiedAt", "createdAt", "updatedAt",
         ],
       },
+      FavoritePlace: {
+        type: "object",
+        properties: {
+          place: { $ref: "#/components/schemas/Place" },
+          createdAt: { type: "string", format: "date-time", description: "When the user favorited the place" },
+        },
+        required: ["place", "createdAt"],
+      },
       PlaceDetail: {
         allOf: [
           { $ref: "#/components/schemas/Place" },
@@ -851,6 +923,10 @@ const openApiDocument = {
                 description: "Mean of PUBLISHED reviews rounded to 2 decimals; null when there are none",
               },
               reviewCount: { type: "integer", minimum: 0, description: "Number of PUBLISHED reviews" },
+              isFavorite: {
+                type: "boolean",
+                description: "Only present for authenticated callers: whether the caller favorited this place",
+              },
             },
             required: ["photos", "averageRating", "reviewCount"],
           },
