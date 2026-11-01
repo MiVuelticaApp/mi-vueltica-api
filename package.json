@@ -7,7 +7,9 @@
     "dev": "nodemon --exec node -r ts-node/register -r tsconfig-paths/register src/presentation/server.ts",
     "build": "tsc && tsc-alias",
     "start": "node -r tsconfig-paths/register dist/presentation/server.js",
-    "start:prod": "node dist/presentation/server.js"
+    "start:prod": "node dist/presentation/server.js",
+    "db:seed": "prisma db seed",
+    "db:seed:prod": "node dist/infrastructure/prisma/seed/seed.js"
   },
   "keywords": [],
   "author": "",

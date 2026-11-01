@@ -30,12 +30,31 @@ MariaDB (not MySQL, not MongoDB). Uses `@prisma/adapter-mariadb`. Connection con
 
 Required env vars (see `.env.example`): `DATABASE_URL`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`, `JWT_SECRET`, `RESEND_API_KEY`, `MAIL_FROM`, `APP_INVITE_URL`.
 
+## Seed data
+
+Reference data (Costa Rica provinces, cantons, initial categories) is seeded, not migrated.
+
+- Dev: `npx prisma db seed` or `npm run db:seed` (command configured in `migrations.seed` of `prisma.config.ts`).
+- Prod: `npm run db:seed:prod` runs the compiled `dist/infrastructure/prisma/seed/seed.js`; the Docker
+  CMD runs it automatically after `prisma migrate deploy` and before the server starts (every deploy).
+- Data files (versioned source of truth): `src/infrastructure/prisma/seed/data/geography.ts`
+  (`PROVINCES`, `CANTONS`) and `src/infrastructure/prisma/seed/data/categories.ts` (`CATEGORIES`).
+  Script: `src/infrastructure/prisma/seed/seed.ts`.
+- INEC id convention: province id = INEC province code (1-7); canton id = `provinceCode * 100 + cantonCode`
+  (101 = San José, 216 = Río Cuarto). 7 provinces / 84 cantons; the seed validates this before writing.
+- Idempotent: everything is upserted in one transaction (provinces by id, cantons by id, categories by
+  `name`). Renames propagate (`update: { name }`); **nothing is ever deleted**, so existing rows and
+  their foreign keys are safe. Categories are only created, never modified.
+- When INEC changes the division, edit the data files and redeploy.
+
 ## Commands
 
 - `npm run dev` — nodemon + ts-node (entry: `src/presentation/server.ts`)
 - `npm run build` — `tsc && tsc-alias` (resolves `@/*` path aliases)
 - `npm run start` — runs built JS with tsconfig-paths (production debugging)
 - `npm run start:prod` — runs built JS directly (Docker CMD)
+- `npm run db:seed` (`npx prisma db seed`) — seed geography + categories (dev, ts-node)
+- `npm run db:seed:prod` — same seed from built JS (`dist/`), no devDeps needed
 
 No test, lint, or typecheck scripts are configured.
 
