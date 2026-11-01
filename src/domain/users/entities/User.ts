@@ -49,6 +49,11 @@ export class User {
     if (changes.ageRange !== undefined) this.props.ageRange = changes.ageRange;
     this.props.updatedAt = new Date();
   }
+
+  changeRole(role: UserRole) {
+    this.props.role = role;
+    this.props.updatedAt = new Date();
+  }
 }
 
 
