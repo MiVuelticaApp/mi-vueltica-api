@@ -266,3 +266,10 @@ clears all) and **replaces the whole set**: `PrismaUserInterestRepository.replac
 `deleteMany` + `createMany` in one transaction. Every id must exist (checked via
 `ICategoryRepository.findByIds`) or the API answers 422 `InvalidCategoryIdsError`. `GET /me` also
 includes `interests`.
+## Admin user management
+
+`/api/v1/users` (`GET /`, `GET /:id`, `PATCH /:id/role`, `DELETE /:id`) is `jwtAuth` + `requireRole("ADMIN")`
+(`AdminUsersController`, `AdminUserService`). Soft-deleted users (`deletedAt`) are excluded from list/get
+(`UserNotFoundError` 404). `DELETE` reuses `AccountDeletionService` + `AccountDeletionExternalCleanup` (no Apple
+code), so it has the same semantics as self-deletion. An admin cannot change their own role or delete themselves
+(`SelfModificationError`, 403). Responses use `UserResponse`, which never exposes `ssoSubject`.
