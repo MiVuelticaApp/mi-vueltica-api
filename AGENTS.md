@@ -257,6 +257,15 @@ trimmed, 1–100 chars, unique (409 `CategoryAlreadyExistsError`; a P2002 race a
 Delete returns 409 `CategoryInUseError` while any `Place` or `Event` references the category;
 `UserInterest` rows cascade at DB level so they never block it. `ICategoryRepository.findByIds`
 and `CategoryResponse` / `CategoryDtoMapper` are meant to be reused by other modules (user interests).
+
+## User interests
+
+`GET /api/v1/me/interests` and `PUT /api/v1/me/interests` (under `profileRouter`, so `jwtAuth`) return
+`CategoryResponse[]` ordered by name. PUT body is `{ categoryIds: number[] }` (unique, max 20, empty
+clears all) and **replaces the whole set**: `PrismaUserInterestRepository.replaceForUser` runs
+`deleteMany` + `createMany` in one transaction. Every id must exist (checked via
+`ICategoryRepository.findByIds`) or the API answers 422 `InvalidCategoryIdsError`. `GET /me` also
+includes `interests`.
 ## Admin user management
 
 `/api/v1/users` (`GET /`, `GET /:id`, `PATCH /:id/role`, `DELETE /:id`) is `jwtAuth` + `requireRole("ADMIN")`
