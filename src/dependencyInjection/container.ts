@@ -18,6 +18,9 @@ import JwtTokenService from "@/infrastructure/auth/services/JwtTokenService";
 import UuidIDGenerator from "@/infrastructure/core/services/UuidIDGenerator";
 import { PrismaUserDeletionUnitOfWork } from "@/infrastructure/users/unitsOfWork/PrismaUserDeletionUnitOfWork";
 import PrismaUsersRepository from "@/infrastructure/users/repositories/PrismaUsersRepository";
+import PrismaCategoryRepository from "@/infrastructure/categories/repositories/PrismaCategoryRepository";
+import { CategoryService } from "@/application/categories/services/implementations/CategoryService";
+import CategoryController from "@/presentation/categories/controllers/Category.controller";
 import ResendEmailProvider from "@/infrastructure/email/providers/ResendEmailProvider";
 import MyProfileController from "@/presentation/users/controllers/MyProfile.controller";
 import { IEmailService } from "@/domain/core/services/IEmailService";
@@ -29,6 +32,7 @@ import AuthController from "@/presentation/auth/controllers/Auth.controller";
 
 // repositories
 export const userRepository = new PrismaUsersRepository();
+export const categoryRepository = new PrismaCategoryRepository();
 
 // unit of work
 export const userDeletionUOW = new PrismaUserDeletionUnitOfWork();
@@ -53,6 +57,7 @@ export const jwtService = new JwtTokenService();
 
 // services
 export const userService = new UserService(userRepository);
+export const categoryService = new CategoryService(categoryRepository);
 export const oAuthService = new OAuthService(userService, googleOAuthProvider, appleOAuthProvider, idGenerator);
 
 
@@ -83,6 +88,7 @@ export const myProfileController = new MyProfileController(
   accountDeletionExternalCleanup,
 );
 
+export const categoryController = new CategoryController(categoryService);
 export const adminUsersController = new AdminUsersController(
   adminUserService,
   accountDeletionExternalCleanup,
