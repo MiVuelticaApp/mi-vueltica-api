@@ -14,5 +14,14 @@ declare global {
       // Only populated after `requireRole` has loaded the user from the database.
       role?: UserRole;
     }
+
+    interface Request {
+      // Parsed output of `validateSchema`, per source. Read it with `getValidated`.
+      validated?: {
+        body?: unknown;
+        query?: unknown;
+        params?: unknown;
+      };
+    }
   }
 }
