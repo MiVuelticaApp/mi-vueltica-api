@@ -1,3 +1,0 @@
--- AlterTable
-ALTER TABLE `Client` ADD COLUMN `lat` DECIMAL(10, 8) NULL,
-    ADD COLUMN `lng` DECIMAL(11, 8) NULL;

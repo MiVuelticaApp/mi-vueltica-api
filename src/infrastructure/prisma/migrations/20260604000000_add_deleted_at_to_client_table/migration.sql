@@ -1,2 +1,0 @@
--- AlterTable
-ALTER TABLE `Client` ADD COLUMN `deletedAt` DATETIME(3) NULL DEFAULT NULL;
