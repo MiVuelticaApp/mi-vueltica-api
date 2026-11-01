@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { getAuthUser } from "@/presentation/auth/utils/getAuthUser";
 import { UpdateUserRequest } from "../requests/UpdateUserRequest";
 import UserDtoMapper from "../mappers/User.mapper";
 import { IUserService } from "@/application/users/services/interfaces/IUserService";
@@ -14,16 +15,14 @@ export default class MyProfileController {
   ) {}
 
   async update(req: Request, res: Response): Promise<void> {
-    // @ts-expect-error 
-    const { id } = req.user;
+    const { id } = getAuthUser(req);
     const { name, surnames, ageRange }: UpdateUserRequest = req.body;
     const updatedUser = await this.userService.updateProfile(id, { name, surnames, ageRange });
     res.json(UserDtoMapper.toResponse(updatedUser));
   }
 
   async me(req: Request, res: Response): Promise<void> {
-    // @ts-expect-error
-    const { id } = req.user;
+    const { id } = getAuthUser(req);
     const user = await this.userService.find(id);
     if (!user) {
       res.status(404).json({ message: "User not found" });
@@ -44,8 +43,7 @@ export default class MyProfileController {
 
   async deleteAccount(req: Request, res: Response): Promise<void> {
     const { appleAuthCode } = req.body ?? {};
-    // @ts-expect-error
-    const { id } = req.user;
+    const { id } = getAuthUser(req);
 
     const result = await this.accountDeletionService.deleteAccount(id);
 

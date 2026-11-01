@@ -6,6 +6,7 @@ import { TestLoginSchema } from "@/presentation/auth/validators/testLogin";
 import { UpdateUserSchema } from "@/presentation/users/validators/updateUser";
 import { DeleteAccountSchema } from "@/presentation/users/validators/deleteAccount";
 import { AGE_RANGES, USER_ROLES } from "@/domain/users/entities/User";
+import { DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/domain/core/pagination/Pagination";
 
 // OpenAPI document served to Scalar (see app.ts). Request bodies are generated from the
 // same Zod schemas used by validateSchema, so docs can't drift from validation. Responses
@@ -31,6 +32,28 @@ const errorResponse = (description: string) => jsonResponse(description, "Error"
 
 const bearer = [{ bearerAuth: [] }];
 
+const responseRef = (name: string) => ({ $ref: `#/components/responses/${name}` });
+
+// Reusable pieces for paginated list endpoints (see Pagination & errors in AGENTS.md).
+// Endpoints should override the `Sort` description/enum with their own sortable fields.
+export const paginationParams = [
+  { $ref: "#/components/parameters/Page" },
+  { $ref: "#/components/parameters/PageSize" },
+  { $ref: "#/components/parameters/Sort" },
+];
+
+/** `{ data: Item[], page, pageSize, total }` for a list endpoint returning `itemRef`. */
+export const paginated = (itemRef: string) => ({
+  allOf: [
+    {
+      type: "object",
+      properties: { data: { type: "array", items: { $ref: `#/components/schemas/${itemRef}` } } },
+      required: ["data"],
+    },
+    { $ref: "#/components/schemas/PaginationMeta" },
+  ],
+});
+
 const paths: Record<string, Record<string, unknown>> = {
   "/auth/google": {
     post: {
@@ -39,9 +62,9 @@ const paths: Record<string, Record<string, unknown>> = {
       requestBody: jsonBody(GoogleLoginSchema),
       responses: {
         200: jsonResponse("Authenticated", "AuthResponse"),
-        400: errorResponse("Invalid request body"),
+        400: responseRef("BadRequest"),
         401: errorResponse("Authentication failed"),
-        409: errorResponse("Email already registered with another provider"),
+        409: responseRef("Conflict"),
       },
     },
   },
@@ -52,9 +75,9 @@ const paths: Record<string, Record<string, unknown>> = {
       requestBody: jsonBody(AppleLoginSchema),
       responses: {
         200: jsonResponse("Authenticated", "AuthResponse"),
-        400: errorResponse("Invalid request body"),
+        400: responseRef("BadRequest"),
         401: errorResponse("Authentication failed"),
-        409: errorResponse("Email already registered with another provider"),
+        409: responseRef("Conflict"),
       },
     },
   },
@@ -66,7 +89,7 @@ const paths: Record<string, Record<string, unknown>> = {
       security: bearer,
       responses: {
         200: jsonResponse("New token", "TokenResponse"),
-        401: errorResponse("Missing or invalid token"),
+        401: responseRef("Unauthorized"),
       },
     },
   },
@@ -78,7 +101,7 @@ const paths: Record<string, Record<string, unknown>> = {
       security: bearer,
       responses: {
         200: jsonResponse("Logged out", "Message"),
-        401: errorResponse("Missing or invalid token"),
+        401: responseRef("Unauthorized"),
       },
     },
   },
@@ -89,8 +112,8 @@ const paths: Record<string, Record<string, unknown>> = {
       security: bearer,
       responses: {
         200: jsonResponse("Current user", "UserResponse"),
-        401: errorResponse("Missing or invalid token"),
-        404: errorResponse("User not found"),
+        401: responseRef("Unauthorized"),
+        404: responseRef("NotFound"),
       },
     },
   },
@@ -101,8 +124,8 @@ const paths: Record<string, Record<string, unknown>> = {
       security: bearer,
       responses: {
         200: jsonResponse("Profile", "MyProfileResponse"),
-        401: errorResponse("Missing or invalid token"),
-        404: errorResponse("User not found"),
+        401: responseRef("Unauthorized"),
+        404: responseRef("NotFound"),
       },
     },
     put: {
@@ -112,9 +135,9 @@ const paths: Record<string, Record<string, unknown>> = {
       requestBody: jsonBody(UpdateUserSchema),
       responses: {
         200: jsonResponse("Updated profile", "UserResponse"),
-        400: errorResponse("Invalid request body"),
-        401: errorResponse("Missing or invalid token"),
-        404: errorResponse("User not found"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        404: responseRef("NotFound"),
       },
     },
     post: {
@@ -125,8 +148,8 @@ const paths: Record<string, Record<string, unknown>> = {
       requestBody: { ...jsonBody(DeleteAccountSchema), required: false },
       responses: {
         204: { description: "Account deleted" },
-        400: errorResponse("Invalid request body"),
-        401: errorResponse("Missing or invalid token"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
         429: errorResponse("Too many requests"),
       },
     },
@@ -153,7 +176,7 @@ if (ENV.TEST_LOGIN_ENABLED) {
       requestBody: jsonBody(TestLoginSchema),
       responses: {
         200: jsonResponse("Authenticated", "AuthResponse"),
-        400: errorResponse("Invalid request body"),
+        400: responseRef("BadRequest"),
         401: errorResponse("Invalid credentials"),
         429: errorResponse("Too many requests"),
       },
@@ -184,6 +207,45 @@ const openApiDocument = {
   ],
   paths,
   components: {
+    parameters: {
+      Page: {
+        name: "page",
+        in: "query",
+        description: "1-based page number",
+        schema: { type: "integer", minimum: 1, default: DEFAULT_PAGE },
+      },
+      PageSize: {
+        name: "pageSize",
+        in: "query",
+        description: "Items per page",
+        schema: { type: "integer", minimum: 1, maximum: MAX_PAGE_SIZE, default: DEFAULT_PAGE_SIZE },
+      },
+      Sort: {
+        name: "sort",
+        in: "query",
+        description: "Field to sort by: `field` for ascending, `-field` for descending. Allowed fields depend on the endpoint.",
+        schema: { type: "string", examples: ["createdAt", "-createdAt"] },
+      },
+      UuidId: {
+        name: "id",
+        in: "path",
+        required: true,
+        schema: { type: "string", format: "uuid" },
+      },
+      IntId: {
+        name: "id",
+        in: "path",
+        required: true,
+        schema: { type: "integer", minimum: 1 },
+      },
+    },
+    responses: {
+      BadRequest: jsonResponse("Invalid request body, query or path parameters", "Error"),
+      Unauthorized: jsonResponse("Missing or invalid token", "Error"),
+      Forbidden: jsonResponse("The authenticated user lacks the required role", "Error"),
+      NotFound: jsonResponse("Resource not found", "Error"),
+      Conflict: jsonResponse("Conflict with the current state (e.g. already exists or in use)", "Error"),
+    },
     securitySchemes: {
       bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
     },
@@ -192,6 +254,15 @@ const openApiDocument = {
         type: "object",
         properties: { message: { type: "string" } },
         required: ["message"],
+      },
+      PaginationMeta: {
+        type: "object",
+        properties: {
+          page: { type: "integer", minimum: 1 },
+          pageSize: { type: "integer", minimum: 1, maximum: MAX_PAGE_SIZE },
+          total: { type: "integer", minimum: 0 },
+        },
+        required: ["page", "pageSize", "total"],
       },
       Message: {
         type: "object",
