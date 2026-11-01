@@ -13,6 +13,13 @@ import { CreateSourceSchema } from "@/presentation/sources/validators/createSour
 import { UpdateSourceSchema } from "@/presentation/sources/validators/updateSource";
 import { SOURCE_SORT_FIELDS } from "@/presentation/sources/validators/listSources";
 import { SOURCE_TYPES } from "@/domain/sources/valueObjects/sourceType.valueObject";
+import { CreatePlaceSchema } from "@/presentation/places/validators/createPlace";
+import { UpdatePlaceSchema } from "@/presentation/places/validators/updatePlace";
+import { ChangePlaceStatusSchema } from "@/presentation/places/validators/changePlaceStatus";
+import { OpeningHoursSchema } from "@/presentation/places/validators/openingHours";
+import { PLACE_SORT_FIELDS, MAX_RADIUS_KM } from "@/presentation/places/validators/listPlaces";
+import { CONTENT_STATUSES } from "@/domain/places/valueObjects/contentStatus.valueObject";
+import { TARGET_AUDIENCES } from "@/domain/places/valueObjects/targetAudience.valueObject";
 import { ChangeUserRoleSchema } from "@/presentation/users/validators/changeUserRole";
 import { USER_SORT_FIELDS } from "@/presentation/users/validators/listUsers";
 import { AGE_RANGES, USER_ROLES } from "@/domain/users/entities/User";
@@ -41,6 +48,8 @@ const jsonResponse = (description: string, ref: string) => ({
 const errorResponse = (description: string) => jsonResponse(description, "Error");
 
 const bearer = [{ bearerAuth: [] }];
+// Public endpoint that behaves differently when a valid token is sent (`{}` = anonymous allowed).
+const optionalBearer = [{}, { bearerAuth: [] }];
 
 const responseRef = (name: string) => ({ $ref: `#/components/responses/${name}` });
 
@@ -383,6 +392,190 @@ const paths: Record<string, Record<string, unknown>> = {
       },
     },
   },
+  "/places": {
+    get: {
+      tags: ["Places"],
+      summary: "List places",
+      description:
+        "Public (optional bearer token). Anonymous and regular users only see PUBLISHED places; MODERATOR / ADMIN see every status and may filter with `status`. Paginated; default order is by name. Geo filters: bounding box (`minLat`, `minLng`, `maxLat`, `maxLng`) or radius (`lat`, `lng`, `radiusKm`), never both.",
+      security: optionalBearer,
+      parameters: [
+        { $ref: "#/components/parameters/Page" },
+        { $ref: "#/components/parameters/PageSize" },
+        {
+          name: "sort",
+          in: "query",
+          description: "Field to sort by: `field` ascending, `-field` descending. Default: `name`.",
+          schema: { type: "string", enum: PLACE_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
+        },
+        {
+          name: "cantonId",
+          in: "query",
+          description: "Filter by canton id",
+          schema: { type: "integer", minimum: 1 },
+        },
+        {
+          name: "provinceId",
+          in: "query",
+          description: "Filter by province id (through the canton)",
+          schema: { type: "integer", minimum: 1 },
+        },
+        {
+          name: "categoryId",
+          in: "query",
+          description: "Filter by category id",
+          schema: { type: "integer", minimum: 1 },
+        },
+        {
+          name: "targetAudience",
+          in: "query",
+          description: "Filter by target audience",
+          schema: { $ref: "#/components/schemas/TargetAudience" },
+        },
+        {
+          name: "status",
+          in: "query",
+          description: "Filter by status. Only honored for MODERATOR / ADMIN (send the bearer token); ignored for everyone else, who always get PUBLISHED only.",
+          schema: { $ref: "#/components/schemas/ContentStatus" },
+        },
+        {
+          name: "q",
+          in: "query",
+          description: "Substring match on name, description or address",
+          schema: { type: "string", maxLength: 100 },
+        },
+        {
+          name: "minLat",
+          in: "query",
+          description: "Bounding box south edge. `minLat`, `minLng`, `maxLat` and `maxLng` must be sent together (min <= max). Mutually exclusive with the radius filter.",
+          schema: { type: "number", minimum: -90, maximum: 90 },
+        },
+        {
+          name: "minLng",
+          in: "query",
+          description: "Bounding box west edge (see `minLat`)",
+          schema: { type: "number", minimum: -180, maximum: 180 },
+        },
+        {
+          name: "maxLat",
+          in: "query",
+          description: "Bounding box north edge (see `minLat`)",
+          schema: { type: "number", minimum: -90, maximum: 90 },
+        },
+        {
+          name: "maxLng",
+          in: "query",
+          description: "Bounding box east edge (see `minLat`)",
+          schema: { type: "number", minimum: -180, maximum: 180 },
+        },
+        {
+          name: "lat",
+          in: "query",
+          description: "Radius search center latitude. `lat`, `lng` and `radiusKm` must be sent together. Mutually exclusive with the bounding box filter.",
+          schema: { type: "number", minimum: -90, maximum: 90 },
+        },
+        {
+          name: "lng",
+          in: "query",
+          description: "Radius search center longitude (see `lat`)",
+          schema: { type: "number", minimum: -180, maximum: 180 },
+        },
+        {
+          name: "radiusKm",
+          in: "query",
+          description: "Radius in kilometers (see `lat`), Haversine distance",
+          schema: { type: "number", exclusiveMinimum: 0, maximum: MAX_RADIUS_KM },
+        },
+      ],
+      responses: {
+        200: {
+          description: "Page of places",
+          content: { "application/json": { schema: paginated("Place") } },
+        },
+        400: responseRef("BadRequest"),
+      },
+    },
+    post: {
+      tags: ["Places"],
+      summary: "Create a place (MODERATOR, ADMIN)",
+      description:
+        "New places start as PENDING. 422 when the canton, category or source does not exist.",
+      security: bearer,
+      requestBody: jsonBody(CreatePlaceSchema),
+      responses: {
+        201: jsonResponse("Created place", "Place"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        422: responseRef("UnprocessableEntity"),
+      },
+    },
+  },
+  "/places/{id}": {
+    get: {
+      tags: ["Places"],
+      summary: "Get a place",
+      description:
+        "Public (optional bearer token). Includes photos ordered by position and the rating summary over PUBLISHED reviews. A non-PUBLISHED place is 404 unless the caller is MODERATOR / ADMIN.",
+      security: optionalBearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        200: jsonResponse("Place", "PlaceDetail"),
+        400: responseRef("BadRequest"),
+        404: responseRef("NotFound"),
+      },
+    },
+    put: {
+      tags: ["Places"],
+      summary: "Replace a place (MODERATOR, ADMIN)",
+      description:
+        "Full replace of the editable fields; the status and verifiedAt are kept (use `PATCH /places/{id}/status`). 422 when the canton, category or source does not exist.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      requestBody: jsonBody(UpdatePlaceSchema),
+      responses: {
+        200: jsonResponse("Updated place", "Place"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+        422: responseRef("UnprocessableEntity"),
+      },
+    },
+    delete: {
+      tags: ["Places"],
+      summary: "Delete a place (ADMIN)",
+      description:
+        "Photos, favorites and reviews are deleted with the place; events that referenced it are kept with no place.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        204: { description: "Place deleted" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+      },
+    },
+  },
+  "/places/{id}/status": {
+    patch: {
+      tags: ["Places"],
+      summary: "Change a place's status (MODERATOR, ADMIN)",
+      description:
+        "Moving to PUBLISHED sets `verifiedAt` to now (kept if the place is already PUBLISHED). Other statuses leave `verifiedAt` untouched.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      requestBody: jsonBody(ChangePlaceStatusSchema),
+      responses: {
+        200: jsonResponse("Updated place", "Place"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+      },
+    },
+  },
   "/users": {
     get: {
       tags: ["Users"],
@@ -515,6 +708,7 @@ const openApiDocument = {
     { name: "Profile" },
     { name: "Categories" },
     { name: "Sources" },
+    { name: "Places" },
     { name: "Users" },
     { name: "System" },
   ],
@@ -604,6 +798,63 @@ const openApiDocument = {
           lastCrawledAt: { type: ["string", "null"], format: "date-time" },
         },
         required: ["id", "name", "url", "type", "lastCrawledAt"],
+      },
+      ContentStatus: { type: "string", enum: [...CONTENT_STATUSES] },
+      TargetAudience: { type: "string", enum: [...TARGET_AUDIENCES] },
+      OpeningHours: toSchema(OpeningHoursSchema),
+      PlacePhoto: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          url: { type: "string", maxLength: 2048 },
+          position: { type: "integer" },
+        },
+        required: ["id", "url", "position"],
+      },
+      Place: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          cantonId: { type: "integer" },
+          categoryId: { type: "integer" },
+          sourceId: { type: ["string", "null"], format: "uuid" },
+          name: { type: "string", minLength: 1, maxLength: 191 },
+          description: { type: ["string", "null"], maxLength: 5000 },
+          latitude: { type: "number", minimum: -90, maximum: 90 },
+          longitude: { type: "number", minimum: -180, maximum: 180 },
+          address: { type: ["string", "null"], maxLength: 191 },
+          openingHours: {
+            oneOf: [{ $ref: "#/components/schemas/OpeningHours" }, { type: "null" }],
+          },
+          targetAudience: { $ref: "#/components/schemas/TargetAudience" },
+          status: { $ref: "#/components/schemas/ContentStatus" },
+          verifiedAt: { type: ["string", "null"], format: "date-time" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+        required: [
+          "id", "cantonId", "categoryId", "sourceId", "name", "description", "latitude", "longitude",
+          "address", "openingHours", "targetAudience", "status", "verifiedAt", "createdAt", "updatedAt",
+        ],
+      },
+      PlaceDetail: {
+        allOf: [
+          { $ref: "#/components/schemas/Place" },
+          {
+            type: "object",
+            properties: {
+              photos: { type: "array", items: { $ref: "#/components/schemas/PlacePhoto" } },
+              averageRating: {
+                type: ["number", "null"],
+                minimum: 1,
+                maximum: 5,
+                description: "Mean of PUBLISHED reviews rounded to 2 decimals; null when there are none",
+              },
+              reviewCount: { type: "integer", minimum: 0, description: "Number of PUBLISHED reviews" },
+            },
+            required: ["photos", "averageRating", "reviewCount"],
+          },
+        ],
       },
       MyProfileResponse: {
         allOf: [
