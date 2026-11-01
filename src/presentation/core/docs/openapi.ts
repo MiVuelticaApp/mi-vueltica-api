@@ -66,7 +66,7 @@ const paths: Record<string, Record<string, unknown>> = {
       security: bearer,
       responses: {
         200: jsonResponse("New token", "TokenResponse"),
-        401: errorResponse("Missing or invalid token"),
+        401: { $ref: "#/components/responses/Unauthorized" },
       },
     },
   },
@@ -78,7 +78,7 @@ const paths: Record<string, Record<string, unknown>> = {
       security: bearer,
       responses: {
         200: jsonResponse("Logged out", "Message"),
-        401: errorResponse("Missing or invalid token"),
+        401: { $ref: "#/components/responses/Unauthorized" },
       },
     },
   },
@@ -89,7 +89,7 @@ const paths: Record<string, Record<string, unknown>> = {
       security: bearer,
       responses: {
         200: jsonResponse("Current user", "UserResponse"),
-        401: errorResponse("Missing or invalid token"),
+        401: { $ref: "#/components/responses/Unauthorized" },
         404: errorResponse("User not found"),
       },
     },
@@ -101,7 +101,7 @@ const paths: Record<string, Record<string, unknown>> = {
       security: bearer,
       responses: {
         200: jsonResponse("Profile", "MyProfileResponse"),
-        401: errorResponse("Missing or invalid token"),
+        401: { $ref: "#/components/responses/Unauthorized" },
         404: errorResponse("User not found"),
       },
     },
@@ -113,7 +113,7 @@ const paths: Record<string, Record<string, unknown>> = {
       responses: {
         200: jsonResponse("Updated profile", "UserResponse"),
         400: errorResponse("Invalid request body"),
-        401: errorResponse("Missing or invalid token"),
+        401: { $ref: "#/components/responses/Unauthorized" },
         404: errorResponse("User not found"),
       },
     },
@@ -126,7 +126,7 @@ const paths: Record<string, Record<string, unknown>> = {
       responses: {
         204: { description: "Account deleted" },
         400: errorResponse("Invalid request body"),
-        401: errorResponse("Missing or invalid token"),
+        401: { $ref: "#/components/responses/Unauthorized" },
         429: errorResponse("Too many requests"),
       },
     },
@@ -184,6 +184,10 @@ const openApiDocument = {
   ],
   paths,
   components: {
+    responses: {
+      Unauthorized: jsonResponse("Missing or invalid token", "Error"),
+      Forbidden: jsonResponse("The authenticated user lacks the required role", "Error"),
+    },
     securitySchemes: {
       bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
     },
