@@ -248,3 +248,12 @@ router.get("/", jwtAuth, requireRole("ADMIN"), asyncHandler(controller.list.bind
 - OpenAPI has reusable `components.parameters` (`Page`, `PageSize`, `Sort`, `UuidId`, `IntId`),
   `components.responses` (`BadRequest`, `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`) and
   the `paginationParams` / `paginated(ref)` helpers exported from `openapi.ts`.
+
+## Categories
+
+`/api/v1/categories`: `GET /` (paginated, sort `id`/`name`, optional `search`) and `GET /:id` are
+public; `POST`, `PUT /:id`, `DELETE /:id` require `jwtAuth` + `requireRole("ADMIN")`. Names are
+trimmed, 1–100 chars, unique (409 `CategoryAlreadyExistsError`; a P2002 race also maps to 409).
+Delete returns 409 `CategoryInUseError` while any `Place` or `Event` references the category;
+`UserInterest` rows cascade at DB level so they never block it. `ICategoryRepository.findByIds`
+and `CategoryResponse` / `CategoryDtoMapper` are meant to be reused by other modules (user interests).

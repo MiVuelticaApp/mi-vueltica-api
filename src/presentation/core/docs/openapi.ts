@@ -5,6 +5,9 @@ import { AppleLoginSchema } from "@/presentation/auth/validators/appleLogin";
 import { TestLoginSchema } from "@/presentation/auth/validators/testLogin";
 import { UpdateUserSchema } from "@/presentation/users/validators/updateUser";
 import { DeleteAccountSchema } from "@/presentation/users/validators/deleteAccount";
+import { CreateCategorySchema } from "@/presentation/categories/validators/createCategory";
+import { UpdateCategorySchema } from "@/presentation/categories/validators/updateCategory";
+import { CATEGORY_SORT_FIELDS } from "@/presentation/categories/validators/listCategories";
 import { AGE_RANGES, USER_ROLES } from "@/domain/users/entities/User";
 import { DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/domain/core/pagination/Pagination";
 
@@ -154,6 +157,95 @@ const paths: Record<string, Record<string, unknown>> = {
       },
     },
   },
+  "/categories": {
+    get: {
+      tags: ["Categories"],
+      summary: "List categories",
+      description: "Public. Paginated; default order is by name.",
+      parameters: [
+        { $ref: "#/components/parameters/Page" },
+        { $ref: "#/components/parameters/PageSize" },
+        {
+          name: "sort",
+          in: "query",
+          description: "Field to sort by: `field` ascending, `-field` descending.",
+          schema: { type: "string", enum: CATEGORY_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
+        },
+        {
+          name: "search",
+          in: "query",
+          description: "Case-insensitive substring match on the category name",
+          schema: { type: "string", maxLength: 100 },
+        },
+      ],
+      responses: {
+        200: {
+          description: "Page of categories",
+          content: { "application/json": { schema: paginated("Category") } },
+        },
+        400: responseRef("BadRequest"),
+      },
+    },
+    post: {
+      tags: ["Categories"],
+      summary: "Create a category",
+      description: "ADMIN only.",
+      security: bearer,
+      requestBody: jsonBody(CreateCategorySchema),
+      responses: {
+        201: jsonResponse("Created category", "Category"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        409: responseRef("Conflict"),
+      },
+    },
+  },
+  "/categories/{id}": {
+    get: {
+      tags: ["Categories"],
+      summary: "Get a category",
+      description: "Public.",
+      parameters: [{ $ref: "#/components/parameters/IntId" }],
+      responses: {
+        200: jsonResponse("Category", "Category"),
+        400: responseRef("BadRequest"),
+        404: responseRef("NotFound"),
+      },
+    },
+    put: {
+      tags: ["Categories"],
+      summary: "Rename a category",
+      description: "ADMIN only. 409 if another category already has that name.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/IntId" }],
+      requestBody: jsonBody(UpdateCategorySchema),
+      responses: {
+        200: jsonResponse("Updated category", "Category"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+        409: responseRef("Conflict"),
+      },
+    },
+    delete: {
+      tags: ["Categories"],
+      summary: "Delete a category",
+      description:
+        "ADMIN only. 409 while any place or event references the category. Users' interests in it are removed automatically.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/IntId" }],
+      responses: {
+        204: { description: "Category deleted" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+        409: responseRef("Conflict"),
+      },
+    },
+  },
   "/system/min-frontend-version": {
     get: {
       tags: ["System"],
@@ -203,6 +295,7 @@ const openApiDocument = {
   tags: [
     { name: "Auth" },
     { name: "Profile" },
+    { name: "Categories" },
     { name: "System" },
   ],
   paths,
@@ -273,6 +366,11 @@ const openApiDocument = {
         type: "object",
         properties: userProperties,
         required: Object.keys(userProperties),
+      },
+      Category: {
+        type: "object",
+        properties: { id: { type: "integer" }, name: { type: "string", minLength: 1, maxLength: 100 } },
+        required: ["id", "name"],
       },
       MyProfileResponse: { $ref: "#/components/schemas/UserResponse" },
       AuthResponse: {
