@@ -190,3 +190,42 @@ Outside production (`NODE_ENV !== "production"`), the server exposes:
 The spec lives in `src/presentation/core/docs/openapi.ts`. Request bodies are generated from the
 route's Zod validator via `z.toJSONSchema`; response schemas are hand-written to mirror the
 `*/responses` interfaces. **When adding or changing a route, update this file too.**
+
+## Authorization (roles)
+
+`requireRole(...roles)` (`src/presentation/auth/middlewares/requireRole.ts`) goes **after** `jwtAuth`:
+
+```ts
+router.get("/", jwtAuth, requireRole("ADMIN"), asyncHandler(controller.list.bind(controller)));
+```
+
+- The role is never taken from the JWT or the client. The user is loaded from the DB
+  (`userService.find`) on every request, so role changes and soft-deletes apply immediately.
+- No `req.user` or user missing / `deletedAt` set → **401**; role not in the list → **403**
+  (`UnauthorizedError` / `ForbiddenError`, formatted by `errorHandler`). On success
+  `req.user.role` is populated. `requireRole()` with no roles throws at route definition time.
+- In controllers read the authenticated user with `getAuthUser(req)`
+  (`src/presentation/auth/utils/getAuthUser.ts`); never `@ts-expect-error` on `req.user`.
+  `req.user` is typed through the `Express.User` augmentation in `src/types/express.d.ts`.
+
+## Pagination & errors
+
+- `validateSchema(schema, source = "body")` accepts `"body" | "query" | "params"`. The parsed
+  output (defaults, coercions) is stored in `req.validated[source]` (Express 5's `req.query` is
+  read-only); read it with `getValidated<T>(req, "query")`. Invalid input → 400 `{ message }`.
+- `createPaginationQuerySchema(["name", "createdAt"] as const)`
+  (`src/presentation/core/validators/pagination.ts`) validates `page` (default 1), `pageSize`
+  (default 20, max 100) and `sort` (`field` asc / `-field` desc, whitelisted). Add filters with
+  `.extend()`. `toPaginationParams(query)` gives the domain `PaginationParams`.
+  `uuidParamSchema` / `intIdParamSchema` (and `uuidParam(name)` / `intParam(name)`) validate path params.
+- Repositories take `PaginationParams` and return `PaginatedResult<Entity>`
+  (`src/domain/core/pagination/Pagination.ts`). In Prisma repositories use `paginate(...)` or
+  `toPrismaPage(...)` from `src/infrastructure/core/repositories/prismaPagination.ts`.
+- Controllers respond with `toPaginatedResponse(result, mapItem)` →
+  `{ data, page, pageSize, total }`.
+- `errorHandler` maps Prisma errors via `mapPrismaError`: `P2002` → 409, `P2003` → 409,
+  `P2025` → 404. Repositories wrap Prisma errors in `DatabaseError` / `DatabaseInsertError`:
+  **always pass the original error as the second argument (`cause`)** so the mapping still works.
+- OpenAPI has reusable `components.parameters` (`Page`, `PageSize`, `Sort`, `UuidId`, `IntId`),
+  `components.responses` (`BadRequest`, `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`) and
+  the `paginationParams` / `paginated(ref)` helpers exported from `openapi.ts`.

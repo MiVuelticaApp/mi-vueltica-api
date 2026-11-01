@@ -24,7 +24,7 @@ export default class PrismaUsersRepository implements IUserRepository {
       return users.map((user) => PrismaUserMapper.toDomain(user));
     } catch (error) {
       console.error("Error fetching users:", error);
-      throw new DatabaseError("Could not fetch users");
+      throw new DatabaseError("Could not fetch users", error);
     }
   }
 
@@ -44,7 +44,7 @@ export default class PrismaUsersRepository implements IUserRepository {
       return user ? PrismaUserMapper.toDomain(user) : null;
     } catch (error) {
       console.error("Error finding user:", error);
-      throw new DatabaseError("Could not find user");
+      throw new DatabaseError("Could not find user", error);
     }
   }
 
@@ -64,7 +64,7 @@ export default class PrismaUsersRepository implements IUserRepository {
       return user ? PrismaUserMapper.toDomain(user) : null;
     } catch (error) {
       console.error("Error finding user by SSO identity:", error);
-      throw new DatabaseError("Could not find user");
+      throw new DatabaseError("Could not find user", error);
     }
   }
 
@@ -78,7 +78,7 @@ export default class PrismaUsersRepository implements IUserRepository {
       await this.client.user.create({ data: PrismaUserMapper.toCreateData(user) });
     } catch (error) {
       console.error("Error creating user:", error);
-      throw new DatabaseInsertError("Could not create user");
+      throw new DatabaseInsertError("Could not create user", error);
     }
   }
 
@@ -95,7 +95,7 @@ export default class PrismaUsersRepository implements IUserRepository {
       });
     } catch (error) {
       console.error("Error updating user:", error);
-      throw new DatabaseInsertError("Could not update user");
+      throw new DatabaseInsertError("Could not update user", error);
     }
   }
 
@@ -111,7 +111,7 @@ export default class PrismaUsersRepository implements IUserRepository {
       });
     } catch (error) {
       console.error("Error deleting user:", error);
-      throw new DatabaseInsertError("Could not delete user");
+      throw new DatabaseInsertError("Could not delete user", error);
     }
   }
 }

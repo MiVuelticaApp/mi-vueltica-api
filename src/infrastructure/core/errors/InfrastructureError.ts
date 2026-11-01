@@ -4,8 +4,8 @@ export default class InfrastructureError extends Error {
   public isOperational: boolean = true;
   public layer: string = "infrastructure";
 
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, cause?: unknown) {
+    super(message, { cause });
     this.name = "InfrastructureError";
     this.stack = new Error().stack;
     this.status = `${this.statusCode}`.startsWith('4') ? 'fail' : 'error';
