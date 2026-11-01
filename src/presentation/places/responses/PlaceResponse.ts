@@ -33,4 +33,6 @@ export interface PlaceDetailResponse extends PlaceResponse {
   averageRating: number | null;
   /** Number of PUBLISHED reviews. */
   reviewCount: number;
+  /** Whether the authenticated caller favorited this place. Omitted for anonymous callers. */
+  isFavorite?: boolean;
 }

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { z } from "zod";
+import { IFavoriteService } from "@/application/favorites/services/interfaces/IFavoriteService";
 import { IPlaceService } from "@/application/places/services/interfaces/IPlaceService";
 import { PlaceListFilters } from "@/domain/places/repositories/IPlaceRepository";
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
@@ -24,7 +25,10 @@ function canSeeUnpublished(req: Request): boolean {
 }
 
 export default class PlaceController {
-  constructor(private readonly placeService: IPlaceService) {}
+  constructor(
+    private readonly placeService: IPlaceService,
+    private readonly favoriteService: IFavoriteService,
+  ) {}
 
   async list(req: Request, res: Response): Promise<void> {
     const query = getValidated<ListQuery>(req, "query");
@@ -55,7 +59,10 @@ export default class PlaceController {
     const detail = await this.placeService.get(id, {
       statuses: canSeeUnpublished(req) ? undefined : PUBLIC_STATUSES,
     });
-    res.json(PlaceDtoMapper.toDetailResponse(detail));
+    const response = PlaceDtoMapper.toDetailResponse(detail);
+    // `isFavorite` is only present for authenticated callers.
+    if (req.user) response.isFavorite = await this.favoriteService.isFavorite(req.user.id, id);
+    res.json(response);
   }
 
   async create(req: Request, res: Response): Promise<void> {

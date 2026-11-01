@@ -299,8 +299,24 @@ token or missing/soft-deleted user continues anonymously, never 401; a valid one
   `InvalidSourceError` on create and update. `cantonExists` lives in `IPlaceRepository` until a geography module exists.
 - **verifiedAt**: `Place.changeStatus(status, now)` sets `verifiedAt = now` whenever the place transitions to
   `PUBLISHED` (an already-PUBLISHED place keeps its `verifiedAt`); other statuses leave it untouched.
+- **isFavorite**: `GET /:id` adds `isFavorite: boolean` when the caller is authenticated (see Favorites) and omits it for anonymous callers; the list endpoint is unchanged.
 - **Delete** is a plain `place.delete`: photos, favorites and reviews cascade at DB level and events keep existing with
   `placeId = null` (SET NULL). Category/source deletes still return 409 while any place references them.
+
+## Favorites
+
+- `GET /api/v1/me/favorites` (under `profileRouter`, so `jwtAuth`): paginated `{ place: PlaceResponse, createdAt }`.
+  Only favorites whose place is currently `PUBLISHED` are listed and counted; unpublishing hides a favorite
+  (the row stays) and re-publishing brings it back. Sort whitelist is `createdAt` only, default **desc** (most
+  recently favorited first), tie-breaker `placeId`.
+- `PUT /api/v1/places/:placeId/favorite` and `DELETE /api/v1/places/:placeId/favorite` (`jwtAuth`, 204, no body) live in
+  `placeFavoriteRouter` (`Router({ mergeParams: true })`, mounted in `router.ts` BEFORE `/places` so it is not shadowed).
+- **PUT is idempotent**: the place must exist and be `PUBLISHED`, else 404 `PlaceNotFoundError`. The repository
+  `upsert`s on `userId_placeId` with `update: {}`, so repeated/concurrent PUTs never 409 and keep the original `createdAt`.
+- **DELETE is idempotent**: `deleteMany`, 204 whether or not the favorite existed and regardless of the place's
+  status or existence (never 404, hence no `FavoriteNotFoundError`).
+- **isFavorite**: `PlaceController.get` calls `IFavoriteService.isFavorite(userId, placeId)` when `req.user` is set and
+  adds `isFavorite` to the detail response; anonymous callers do not get the field.
 
 ## User interests
 
