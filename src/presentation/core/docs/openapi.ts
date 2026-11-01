@@ -9,6 +9,10 @@ import { DeleteAccountSchema } from "@/presentation/users/validators/deleteAccou
 import { CreateCategorySchema } from "@/presentation/categories/validators/createCategory";
 import { UpdateCategorySchema } from "@/presentation/categories/validators/updateCategory";
 import { CATEGORY_SORT_FIELDS } from "@/presentation/categories/validators/listCategories";
+import { CreateSourceSchema } from "@/presentation/sources/validators/createSource";
+import { UpdateSourceSchema } from "@/presentation/sources/validators/updateSource";
+import { SOURCE_SORT_FIELDS } from "@/presentation/sources/validators/listSources";
+import { SOURCE_TYPES } from "@/domain/sources/valueObjects/sourceType.valueObject";
 import { ChangeUserRoleSchema } from "@/presentation/users/validators/changeUserRole";
 import { USER_SORT_FIELDS } from "@/presentation/users/validators/listUsers";
 import { AGE_RANGES, USER_ROLES } from "@/domain/users/entities/User";
@@ -281,6 +285,104 @@ const paths: Record<string, Record<string, unknown>> = {
       },
     },
   },
+  "/sources": {
+    get: {
+      tags: ["Sources"],
+      summary: "List sources (MODERATOR, ADMIN)",
+      description: "Paginated; default order is by name.",
+      security: bearer,
+      parameters: [
+        { $ref: "#/components/parameters/Page" },
+        { $ref: "#/components/parameters/PageSize" },
+        {
+          name: "sort",
+          in: "query",
+          description: "Field to sort by: `field` ascending, `-field` descending.",
+          schema: { type: "string", enum: SOURCE_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
+        },
+        {
+          name: "type",
+          in: "query",
+          description: "Filter by source type",
+          schema: { $ref: "#/components/schemas/SourceType" },
+        },
+        {
+          name: "search",
+          in: "query",
+          description: "Case-insensitive substring match on the source name",
+          schema: { type: "string", maxLength: 100 },
+        },
+      ],
+      responses: {
+        200: {
+          description: "Page of sources",
+          content: { "application/json": { schema: paginated("Source") } },
+        },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+      },
+    },
+    post: {
+      tags: ["Sources"],
+      summary: "Create a source",
+      description: "ADMIN only. `lastCrawledAt` cannot be set on creation.",
+      security: bearer,
+      requestBody: jsonBody(CreateSourceSchema),
+      responses: {
+        201: jsonResponse("Created source", "Source"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+      },
+    },
+  },
+  "/sources/{id}": {
+    get: {
+      tags: ["Sources"],
+      summary: "Get a source (MODERATOR, ADMIN)",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        200: jsonResponse("Source", "Source"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+      },
+    },
+    put: {
+      tags: ["Sources"],
+      summary: "Replace a source",
+      description:
+        "ADMIN only. Full replace of name, url and type. `lastCrawledAt` is kept when omitted and set (or cleared with null) when provided.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      requestBody: jsonBody(UpdateSourceSchema),
+      responses: {
+        200: jsonResponse("Updated source", "Source"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+      },
+    },
+    delete: {
+      tags: ["Sources"],
+      summary: "Delete a source",
+      description: "ADMIN only. 409 while any place or event references the source.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        204: { description: "Source deleted" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+        409: responseRef("Conflict"),
+      },
+    },
+  },
   "/users": {
     get: {
       tags: ["Users"],
@@ -412,6 +514,7 @@ const openApiDocument = {
     { name: "Auth" },
     { name: "Profile" },
     { name: "Categories" },
+    { name: "Sources" },
     { name: "Users" },
     { name: "System" },
   ],
@@ -489,6 +592,18 @@ const openApiDocument = {
         type: "object",
         properties: { id: { type: "integer" }, name: { type: "string", minLength: 1, maxLength: 100 } },
         required: ["id", "name"],
+      },
+      SourceType: { type: "string", enum: [...SOURCE_TYPES] },
+      Source: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          name: { type: "string", minLength: 1, maxLength: 191 },
+          url: { type: ["string", "null"], format: "uri", maxLength: 2048 },
+          type: { $ref: "#/components/schemas/SourceType" },
+          lastCrawledAt: { type: ["string", "null"], format: "date-time" },
+        },
+        required: ["id", "name", "url", "type", "lastCrawledAt"],
       },
       MyProfileResponse: {
         allOf: [

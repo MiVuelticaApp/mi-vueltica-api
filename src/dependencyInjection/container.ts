@@ -24,6 +24,9 @@ import MyInterestsController from "@/presentation/users/controllers/MyInterests.
 import PrismaCategoryRepository from "@/infrastructure/categories/repositories/PrismaCategoryRepository";
 import { CategoryService } from "@/application/categories/services/implementations/CategoryService";
 import CategoryController from "@/presentation/categories/controllers/Category.controller";
+import PrismaSourceRepository from "@/infrastructure/sources/repositories/PrismaSourceRepository";
+import { SourceService } from "@/application/sources/services/implementations/SourceService";
+import SourceController from "@/presentation/sources/controllers/Source.controller";
 import ResendEmailProvider from "@/infrastructure/email/providers/ResendEmailProvider";
 import MyProfileController from "@/presentation/users/controllers/MyProfile.controller";
 import { IEmailService } from "@/domain/core/services/IEmailService";
@@ -37,6 +40,7 @@ import AuthController from "@/presentation/auth/controllers/Auth.controller";
 export const userRepository = new PrismaUsersRepository();
 export const categoryRepository = new PrismaCategoryRepository();
 export const userInterestRepository = new PrismaUserInterestRepository();
+export const sourceRepository = new PrismaSourceRepository();
 
 // unit of work
 export const userDeletionUOW = new PrismaUserDeletionUnitOfWork();
@@ -62,6 +66,7 @@ export const jwtService = new JwtTokenService();
 // services
 export const userService = new UserService(userRepository);
 export const categoryService = new CategoryService(categoryRepository);
+export const sourceService = new SourceService(sourceRepository);
 export const userInterestService = new UserInterestService(userRepository, userInterestRepository, categoryRepository);
 export const oAuthService = new OAuthService(userService, googleOAuthProvider, appleOAuthProvider, idGenerator);
 
@@ -97,6 +102,7 @@ export const myProfileController = new MyProfileController(
 export const myInterestsController = new MyInterestsController(userInterestService);
 
 export const categoryController = new CategoryController(categoryService);
+export const sourceController = new SourceController(sourceService);
 export const adminUsersController = new AdminUsersController(
   adminUserService,
   accountDeletionExternalCleanup,

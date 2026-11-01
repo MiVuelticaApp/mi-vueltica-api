@@ -258,6 +258,17 @@ Delete returns 409 `CategoryInUseError` while any `Place` or `Event` references 
 `UserInterest` rows cascade at DB level so they never block it. `ICategoryRepository.findByIds`
 and `CategoryResponse` / `CategoryDtoMapper` are meant to be reused by other modules (user interests).
 
+## Sources
+
+`/api/v1/sources`: `GET /` (paginated, sort `name`/`type`/`lastCrawledAt`, optional `type` enum filter and
+`search` substring on name) and `GET /:id` require `jwtAuth` + `requireRole("MODERATOR", "ADMIN")`; `POST`,
+`PUT /:id` (full replace) and `DELETE /:id` require `jwtAuth` + `requireRole("ADMIN")`. Ids are UUIDs
+(Prisma default). Name is trimmed, 1-191 chars; `url` is optional, must be http(s) and at most 2048 chars;
+`type` is `CRAWLER | COMMUNITY | TEAM`. `lastCrawledAt` is not accepted on create and is only changed via
+`PUT` by admins (omitted keeps the current value, `null` clears it) or by `SourceService.markCrawled(id, at)`
+for future crawler jobs. Delete returns 409 `SourceInUseError` while any `Place` or `Event` references the
+source; unknown ids give 404 `SourceNotFoundError`.
+
 ## User interests
 
 `GET /api/v1/me/interests` and `PUT /api/v1/me/interests` (under `profileRouter`, so `jwtAuth`) return
