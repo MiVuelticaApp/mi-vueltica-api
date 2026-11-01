@@ -5,6 +5,7 @@ import categoriesRouter from "@/presentation/http/categories/routes/categories.r
 import sourcesRouter from "@/presentation/http/sources/routes/sources.routes";
 import placesRouter from "@/presentation/http/places/routes/places.routes";
 import placeFavoriteRouter from "@/presentation/http/favorites/routes/placeFavorite.routes";
+import eventsRouter from "@/presentation/http/events/routes/events.routes";
 import usersRouter from "@/presentation/http/users/routes/users.routes";
 import systemRouter from "@/presentation/http/system/routes/system.route";
 import { Router } from "express";
@@ -18,6 +19,7 @@ router.use("/sources", sourcesRouter);
 // Before /places so the favorite sub-resource is never shadowed.
 router.use("/places/:placeId/favorite", placeFavoriteRouter);
 router.use("/places", placesRouter);
+router.use("/events", eventsRouter);
 router.use("/users", usersRouter);
 router.use("/system", systemRouter);
 

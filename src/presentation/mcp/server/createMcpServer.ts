@@ -1,9 +1,15 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ICategoryService } from "@/application/categories/services/interfaces/ICategoryService";
+import { IPlaceService } from "@/application/places/services/interfaces/IPlaceService";
+import { IEventService } from "@/application/events/services/interfaces/IEventService";
 import { registerCategoryTools } from "../tools/categories.tools";
+import { registerPlaceTools } from "../tools/places.tools";
+import { registerEventTools } from "../tools/events.tools";
 
 export interface McpServerDependencies {
   categoryService: ICategoryService;
+  placeService: IPlaceService;
+  eventService: IEventService;
 }
 
 export type McpServerFactory = () => McpServer;
@@ -23,6 +29,8 @@ export function createMcpServerFactory(deps: McpServerDependencies): McpServerFa
     );
 
     registerCategoryTools(server, deps.categoryService);
+    registerPlaceTools(server, deps.placeService);
+    registerEventTools(server, deps.eventService);
 
     return server;
   };

@@ -25,3 +25,8 @@ export function toolError(error: unknown): CallToolResult {
   console.error("[mcp] Unhandled tool error:", error);
   return { isError: true, content: [{ type: "text", text: "Error interno del servidor" }] };
 }
+
+/** Failed tool result with a message written by the tool itself (e.g. a cross-field input rule). */
+export function toolErrorMessage(message: string): CallToolResult {
+  return { isError: true, content: [{ type: "text", text: message }] };
+}

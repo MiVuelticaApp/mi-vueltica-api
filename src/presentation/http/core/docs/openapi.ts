@@ -17,6 +17,10 @@ import { CreatePlaceSchema } from "@/presentation/http/places/validators/createP
 import { UpdatePlaceSchema } from "@/presentation/http/places/validators/updatePlace";
 import { ChangePlaceStatusSchema } from "@/presentation/http/places/validators/changePlaceStatus";
 import { OpeningHoursSchema } from "@/presentation/http/places/validators/openingHours";
+import { CreateEventSchema } from "@/presentation/http/events/validators/createEvent";
+import { UpdateEventSchema } from "@/presentation/http/events/validators/updateEvent";
+import { ChangeEventStatusSchema } from "@/presentation/http/events/validators/changeEventStatus";
+import { EVENT_SORT_FIELDS } from "@/presentation/http/events/validators/listEvents";
 import { FAVORITE_SORT_FIELDS } from "@/presentation/http/favorites/validators/listFavorites";
 import { PLACE_SORT_FIELDS, MAX_RADIUS_KM } from "@/presentation/http/places/validators/listPlaces";
 import { CONTENT_STATUSES } from "@/domain/places/valueObjects/contentStatus.valueObject";
@@ -633,6 +637,157 @@ const paths: Record<string, Record<string, unknown>> = {
       },
     },
   },
+  "/events": {
+    get: {
+      tags: ["Events"],
+      summary: "List events",
+      description:
+        "Public (optional bearer token). Anonymous and regular users only see PUBLISHED events; MODERATOR / ADMIN see every status and may filter with `status`. Paginated; default order is `startsAt` ascending. **`from` defaults to now** (for everyone), so by default only upcoming and ongoing events are listed; send an earlier `from` to see past events. Range semantics are overlap: an event matches when it starts at/before `to` and is still running at/after `from` (`endsAt >= from`, or no `endsAt` and `startsAt >= from`).",
+      security: optionalBearer,
+      parameters: [
+        { $ref: "#/components/parameters/Page" },
+        { $ref: "#/components/parameters/PageSize" },
+        {
+          name: "sort",
+          in: "query",
+          description: "Field to sort by: `field` ascending, `-field` descending. Default: `startsAt`.",
+          schema: { type: "string", enum: EVENT_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
+        },
+        {
+          name: "from",
+          in: "query",
+          description: "ISO 8601 datetime with offset. Lower bound of the overlap range. Defaults to the current time.",
+          schema: { type: "string", format: "date-time" },
+        },
+        {
+          name: "to",
+          in: "query",
+          description: "ISO 8601 datetime with offset. Upper bound: only events starting at/before it. Must not be earlier than an explicit `from`.",
+          schema: { type: "string", format: "date-time" },
+        },
+        {
+          name: "categoryId",
+          in: "query",
+          description: "Filter by category id",
+          schema: { type: "integer", minimum: 1 },
+        },
+        {
+          name: "placeId",
+          in: "query",
+          description: "Filter by place id",
+          schema: { type: "string", format: "uuid" },
+        },
+        {
+          name: "cantonId",
+          in: "query",
+          description: "Filter by canton id (through the event's place; events without a place never match)",
+          schema: { type: "integer", minimum: 1 },
+        },
+        {
+          name: "targetAudience",
+          in: "query",
+          description: "Filter by target audience",
+          schema: { $ref: "#/components/schemas/TargetAudience" },
+        },
+        {
+          name: "status",
+          in: "query",
+          description: "Filter by status. Only honored for MODERATOR / ADMIN (send the bearer token); ignored for everyone else, who always get PUBLISHED only.",
+          schema: { $ref: "#/components/schemas/ContentStatus" },
+        },
+        {
+          name: "q",
+          in: "query",
+          description: "Substring match on title or description",
+          schema: { type: "string", maxLength: 100 },
+        },
+      ],
+      responses: {
+        200: {
+          description: "Page of events",
+          content: { "application/json": { schema: paginated("Event") } },
+        },
+        400: responseRef("BadRequest"),
+      },
+    },
+    post: {
+      tags: ["Events"],
+      summary: "Create an event (MODERATOR, ADMIN)",
+      description:
+        "New events start as PENDING. Datetimes must be ISO 8601 with offset and `endsAt` must not be earlier than `startsAt`. 422 when the place, category or source does not exist.",
+      security: bearer,
+      requestBody: jsonBody(CreateEventSchema),
+      responses: {
+        201: jsonResponse("Created event", "Event"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        422: responseRef("UnprocessableEntity"),
+      },
+    },
+  },
+  "/events/{id}": {
+    get: {
+      tags: ["Events"],
+      summary: "Get an event",
+      description:
+        "Public (optional bearer token). Includes a summary of the event's place. A non-PUBLISHED event is 404 unless the caller is MODERATOR / ADMIN; for other callers `place` is null when the linked place is not PUBLISHED.",
+      security: optionalBearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        200: jsonResponse("Event", "EventDetail"),
+        400: responseRef("BadRequest"),
+        404: responseRef("NotFound"),
+      },
+    },
+    put: {
+      tags: ["Events"],
+      summary: "Replace an event (MODERATOR, ADMIN)",
+      description:
+        "Full replace of the editable fields; the status is kept (use `PATCH /events/{id}/status`). 422 when the place, category or source does not exist.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      requestBody: jsonBody(UpdateEventSchema),
+      responses: {
+        200: jsonResponse("Updated event", "Event"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+        422: responseRef("UnprocessableEntity"),
+      },
+    },
+    delete: {
+      tags: ["Events"],
+      summary: "Delete an event (ADMIN)",
+      description: "Notifications about the event are deleted with it.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        204: { description: "Event deleted" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+      },
+    },
+  },
+  "/events/{id}/status": {
+    patch: {
+      tags: ["Events"],
+      summary: "Change an event's status (MODERATOR, ADMIN)",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      requestBody: jsonBody(ChangeEventStatusSchema),
+      responses: {
+        200: jsonResponse("Updated event", "Event"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+      },
+    },
+  },
   "/users": {
     get: {
       tags: ["Users"],
@@ -766,6 +921,7 @@ const openApiDocument = {
     { name: "Categories" },
     { name: "Sources" },
     { name: "Places" },
+    { name: "Events" },
     { name: "Favorites" },
     { name: "Users" },
     { name: "System" },
@@ -929,6 +1085,55 @@ const openApiDocument = {
               },
             },
             required: ["photos", "averageRating", "reviewCount"],
+          },
+        ],
+      },
+      PlaceSummary: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          name: { type: "string" },
+          cantonId: { type: "integer" },
+          latitude: { type: "number", minimum: -90, maximum: 90 },
+          longitude: { type: "number", minimum: -180, maximum: 180 },
+          address: { type: ["string", "null"], maxLength: 191 },
+          status: { $ref: "#/components/schemas/ContentStatus" },
+        },
+        required: ["id", "name", "cantonId", "latitude", "longitude", "address", "status"],
+      },
+      Event: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          placeId: { type: ["string", "null"], format: "uuid" },
+          categoryId: { type: "integer" },
+          sourceId: { type: ["string", "null"], format: "uuid" },
+          title: { type: "string", minLength: 1, maxLength: 191 },
+          description: { type: ["string", "null"], maxLength: 5000 },
+          startsAt: { type: "string", format: "date-time", description: "ISO 8601, UTC" },
+          endsAt: { type: ["string", "null"], format: "date-time", description: "ISO 8601, UTC; never earlier than startsAt" },
+          targetAudience: { $ref: "#/components/schemas/TargetAudience" },
+          status: { $ref: "#/components/schemas/ContentStatus" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+        required: [
+          "id", "placeId", "categoryId", "sourceId", "title", "description", "startsAt", "endsAt",
+          "targetAudience", "status", "createdAt", "updatedAt",
+        ],
+      },
+      EventDetail: {
+        allOf: [
+          { $ref: "#/components/schemas/Event" },
+          {
+            type: "object",
+            properties: {
+              place: {
+                oneOf: [{ $ref: "#/components/schemas/PlaceSummary" }, { type: "null" }],
+                description: "Null when the event has no place or the caller may not see it (not PUBLISHED)",
+              },
+            },
+            required: ["place"],
           },
         ],
       },
