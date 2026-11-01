@@ -16,6 +16,9 @@ import JwtTokenService from "@/infrastructure/auth/services/JwtTokenService";
 import UuidIDGenerator from "@/infrastructure/core/services/UuidIDGenerator";
 import { PrismaUserDeletionUnitOfWork } from "@/infrastructure/users/unitsOfWork/PrismaUserDeletionUnitOfWork";
 import PrismaUsersRepository from "@/infrastructure/users/repositories/PrismaUsersRepository";
+import PrismaUserInterestRepository from "@/infrastructure/users/repositories/PrismaUserInterestRepository";
+import { UserInterestService } from "@/application/users/services/implementations/UserInterestService";
+import MyInterestsController from "@/presentation/users/controllers/MyInterests.controller";
 import PrismaCategoryRepository from "@/infrastructure/categories/repositories/PrismaCategoryRepository";
 import { CategoryService } from "@/application/categories/services/implementations/CategoryService";
 import CategoryController from "@/presentation/categories/controllers/Category.controller";
@@ -30,6 +33,7 @@ import AuthController from "@/presentation/auth/controllers/Auth.controller";
 // repositories
 export const userRepository = new PrismaUsersRepository();
 export const categoryRepository = new PrismaCategoryRepository();
+export const userInterestRepository = new PrismaUserInterestRepository();
 
 // unit of work
 export const userDeletionUOW = new PrismaUserDeletionUnitOfWork();
@@ -55,6 +59,7 @@ export const jwtService = new JwtTokenService();
 // services
 export const userService = new UserService(userRepository);
 export const categoryService = new CategoryService(categoryRepository);
+export const userInterestService = new UserInterestService(userRepository, userInterestRepository, categoryRepository);
 export const oAuthService = new OAuthService(userService, googleOAuthProvider, appleOAuthProvider, idGenerator);
 
 
@@ -82,7 +87,10 @@ export const myProfileController = new MyProfileController(
   userService,
   accountDeletionService,
   accountDeletionExternalCleanup,
+  userInterestService,
 );
+
+export const myInterestsController = new MyInterestsController(userInterestService);
 
 export const categoryController = new CategoryController(categoryService);
 

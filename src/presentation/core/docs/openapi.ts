@@ -4,6 +4,7 @@ import { GoogleLoginSchema } from "@/presentation/auth/validators/googleLogin";
 import { AppleLoginSchema } from "@/presentation/auth/validators/appleLogin";
 import { TestLoginSchema } from "@/presentation/auth/validators/testLogin";
 import { UpdateUserSchema } from "@/presentation/users/validators/updateUser";
+import { UpdateInterestsSchema } from "@/presentation/users/validators/updateInterests";
 import { DeleteAccountSchema } from "@/presentation/users/validators/deleteAccount";
 import { CreateCategorySchema } from "@/presentation/categories/validators/createCategory";
 import { UpdateCategorySchema } from "@/presentation/categories/validators/updateCategory";
@@ -154,6 +155,38 @@ const paths: Record<string, Record<string, unknown>> = {
         400: responseRef("BadRequest"),
         401: responseRef("Unauthorized"),
         429: errorResponse("Too many requests"),
+      },
+    },
+  },
+  "/me/interests": {
+    get: {
+      tags: ["Profile"],
+      summary: "List my interests",
+      description: "Categories the authenticated user is interested in, ordered by name.",
+      security: bearer,
+      responses: {
+        200: {
+          description: "Interests",
+          content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Category" } } } },
+        },
+        401: responseRef("Unauthorized"),
+      },
+    },
+    put: {
+      tags: ["Profile"],
+      summary: "Replace my interests",
+      description: "Replaces the whole set atomically. An empty list clears all interests. Max 20, no duplicates.",
+      security: bearer,
+      requestBody: jsonBody(UpdateInterestsSchema),
+      responses: {
+        200: {
+          description: "The new interests",
+          content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Category" } } } },
+        },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        404: responseRef("NotFound"),
+        422: responseRef("UnprocessableEntity"),
       },
     },
   },
@@ -337,6 +370,7 @@ const openApiDocument = {
       Unauthorized: jsonResponse("Missing or invalid token", "Error"),
       Forbidden: jsonResponse("The authenticated user lacks the required role", "Error"),
       NotFound: jsonResponse("Resource not found", "Error"),
+      UnprocessableEntity: jsonResponse("Well-formed request referencing resources that do not exist (e.g. unknown category ids)", "Error"),
       Conflict: jsonResponse("Conflict with the current state (e.g. already exists or in use)", "Error"),
     },
     securitySchemes: {
@@ -372,7 +406,16 @@ const openApiDocument = {
         properties: { id: { type: "integer" }, name: { type: "string", minLength: 1, maxLength: 100 } },
         required: ["id", "name"],
       },
-      MyProfileResponse: { $ref: "#/components/schemas/UserResponse" },
+      MyProfileResponse: {
+        allOf: [
+          { $ref: "#/components/schemas/UserResponse" },
+          {
+            type: "object",
+            properties: { interests: { type: "array", items: { $ref: "#/components/schemas/Category" } } },
+            required: ["interests"],
+          },
+        ],
+      },
       AuthResponse: {
         type: "object",
         properties: {

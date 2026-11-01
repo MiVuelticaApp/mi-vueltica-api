@@ -3,6 +3,7 @@ import { getAuthUser } from "@/presentation/auth/utils/getAuthUser";
 import { UpdateUserRequest } from "../requests/UpdateUserRequest";
 import UserDtoMapper from "../mappers/User.mapper";
 import { IUserService } from "@/application/users/services/interfaces/IUserService";
+import { IUserInterestService } from "@/application/users/services/interfaces/IUserInterestService";
 import { IAccountDeletionService } from "@/application/users/services/interfaces/IAccountDeletionService";
 import { IAccountDeletionExternalCleanup } from "@/application/users/services/interfaces/IAccountDeletionExternalCleanup";
 
@@ -12,6 +13,7 @@ export default class MyProfileController {
     private readonly userService: IUserService,
     private readonly accountDeletionService: IAccountDeletionService,
     private readonly accountDeletionExternalCleanup: IAccountDeletionExternalCleanup,
+    private readonly userInterestService: IUserInterestService,
   ) {}
 
   async update(req: Request, res: Response): Promise<void> {
@@ -28,7 +30,7 @@ export default class MyProfileController {
       res.status(404).json({ message: "User not found" });
       return;
     }
-    res.json(UserDtoMapper.toMyProfileResponse(user));
+    res.json(UserDtoMapper.toMyProfileResponse(user, await this.userInterestService.list(id)));
   }
 
   async logout(req: Request, res: Response) {
