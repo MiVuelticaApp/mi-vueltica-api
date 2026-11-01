@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
-import { getAuthUser } from "@/presentation/auth/utils/getAuthUser";
-import { getValidated } from "@/presentation/core/middlewares/validateSchema";
-import { toPaginationParams } from "@/presentation/core/validators/pagination";
-import { toPaginatedResponse } from "@/presentation/core/mappers/Pagination.mapper";
+import { getAuthUser } from "@/presentation/http/auth/utils/getAuthUser";
+import { getValidated } from "@/presentation/http/core/middlewares/validateSchema";
+import { toPaginationParams } from "@/presentation/http/core/validators/pagination";
+import { toPaginatedResponse } from "@/presentation/http/core/mappers/Pagination.mapper";
 import UserDtoMapper from "../mappers/User.mapper";
 import { ListUsersRequest } from "../requests/ListUsersRequest";
 import { ChangeUserRoleRequest } from "../requests/ChangeUserRoleRequest";

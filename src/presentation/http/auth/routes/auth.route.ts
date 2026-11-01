@@ -1,13 +1,13 @@
 import { Router } from "express";
-import asyncHandler from "@/presentation/core/handlers/asyncHandler";
-import validateSchema from "@/presentation/core/middlewares/validateSchema";
+import asyncHandler from "@/presentation/http/core/handlers/asyncHandler";
+import validateSchema from "@/presentation/http/core/middlewares/validateSchema";
 import { GoogleLoginSchema } from "../validators/googleLogin";
 import { AppleLoginSchema } from "../validators/appleLogin";
 import { TestLoginSchema } from "../validators/testLogin";
 import { authController } from "@/dependencyInjection/container";
 import jwtAuth from "../middlewares/jwtAuth";
-import rateLimit from "@/presentation/core/middlewares/rateLimit";
-import ENV from "@/presentation/core/config/env";
+import rateLimit from "@/presentation/http/core/middlewares/rateLimit";
+import ENV from "@/presentation/http/core/config/env";
 
 const authRouter = Router();
 

@@ -1,12 +1,12 @@
-import validateSchema from "@/presentation/core/middlewares/validateSchema";
+import validateSchema from "@/presentation/http/core/middlewares/validateSchema";
 import { Router } from "express";
 import { UpdateUserSchema } from "../validators/updateUser";
 import { DeleteAccountSchema } from "../validators/deleteAccount";
 import { UpdateInterestsSchema } from "../validators/updateInterests";
 import { myProfileController, myInterestsController } from "@/dependencyInjection/container";
-import asyncHandler from "@/presentation/core/handlers/asyncHandler";
-import jwtAuth from "@/presentation/auth/middlewares/jwtAuth";
-import rateLimit from "@/presentation/core/middlewares/rateLimit";
+import asyncHandler from "@/presentation/http/core/handlers/asyncHandler";
+import jwtAuth from "@/presentation/http/auth/middlewares/jwtAuth";
+import rateLimit from "@/presentation/http/core/middlewares/rateLimit";
 
 const profileRouter = Router();
 

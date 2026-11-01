@@ -1,9 +1,9 @@
 import { Request, Response } from "express";
 import { z } from "zod";
 import { ISourceService } from "@/application/sources/services/interfaces/ISourceService";
-import { getValidated } from "@/presentation/core/middlewares/validateSchema";
-import { toPaginationParams } from "@/presentation/core/validators/pagination";
-import { toPaginatedResponse } from "@/presentation/core/mappers/Pagination.mapper";
+import { getValidated } from "@/presentation/http/core/middlewares/validateSchema";
+import { toPaginationParams } from "@/presentation/http/core/validators/pagination";
+import { toPaginatedResponse } from "@/presentation/http/core/mappers/Pagination.mapper";
 import { ListSourcesQuerySchema } from "../validators/listSources";
 import { CreateSourceRequest } from "../requests/CreateSourceRequest";
 import { UpdateSourceRequest } from "../requests/UpdateSourceRequest";

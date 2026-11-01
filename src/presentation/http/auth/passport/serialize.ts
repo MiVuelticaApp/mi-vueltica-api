@@ -1,4 +1,4 @@
-import { userService } from "../../../dependencyInjection/container";
+import { userService } from "@/dependencyInjection/container";
 import passport from "passport";
 
 export function configureSerialization() {

@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { getAuthUser } from "@/presentation/auth/utils/getAuthUser";
+import { getAuthUser } from "@/presentation/http/auth/utils/getAuthUser";
 import { UpdateUserRequest } from "../requests/UpdateUserRequest";
 import UserDtoMapper from "../mappers/User.mapper";
 import { IUserService } from "@/application/users/services/interfaces/IUserService";

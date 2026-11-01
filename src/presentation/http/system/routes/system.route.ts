@@ -1,5 +1,5 @@
 import { Router } from "express";
-import asyncHandler from "@/presentation/core/handlers/asyncHandler";
+import asyncHandler from "@/presentation/http/core/handlers/asyncHandler";
 import { systemController } from "@/dependencyInjection/container";
 
 const systemRouter = Router();

@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { sourceController } from "@/dependencyInjection/container";
-import asyncHandler from "@/presentation/core/handlers/asyncHandler";
-import validateSchema from "@/presentation/core/middlewares/validateSchema";
-import { uuidParamSchema } from "@/presentation/core/validators/params";
-import jwtAuth from "@/presentation/auth/middlewares/jwtAuth";
-import requireRole from "@/presentation/auth/middlewares/requireRole";
+import asyncHandler from "@/presentation/http/core/handlers/asyncHandler";
+import validateSchema from "@/presentation/http/core/middlewares/validateSchema";
+import { uuidParamSchema } from "@/presentation/http/core/validators/params";
+import jwtAuth from "@/presentation/http/auth/middlewares/jwtAuth";
+import requireRole from "@/presentation/http/auth/middlewares/requireRole";
 import { ListSourcesQuerySchema } from "../validators/listSources";
 import { CreateSourceSchema } from "../validators/createSource";
 import { UpdateSourceSchema } from "../validators/updateSource";

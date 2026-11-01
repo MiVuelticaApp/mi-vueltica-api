@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
-import { getAuthUser } from "@/presentation/auth/utils/getAuthUser";
+import { getAuthUser } from "@/presentation/http/auth/utils/getAuthUser";
 import { IUserInterestService } from "@/application/users/services/interfaces/IUserInterestService";
-import CategoryDtoMapper from "@/presentation/categories/mappers/Category.mapper";
+import CategoryDtoMapper from "@/presentation/http/categories/mappers/Category.mapper";
 import UpdateInterestsRequest from "../requests/UpdateInterestsRequest";
 
 export default class MyInterestsController {

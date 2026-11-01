@@ -7,7 +7,10 @@ DDL / Clean Architecture with 4 layers. Dependency direction: **domain → appli
 - `src/domain/{model}/` — entities, value objects, repository interfaces
 - `src/application/{model}/` — service interfaces + implementations, errors
 - `src/infrastructure/{model}/` — Prisma repositories, mappers; `src/infrastructure/prisma/` for DB client
-- `src/presentation/{model}/` — controllers, routes, validators (Zod), request/response DTOs, mappers
+- `src/presentation/` — two delivery adapters over the same application services:
+  - `src/presentation/http/{model}/` — REST: controllers, routes, validators (Zod), request/response DTOs, mappers;
+    `http/app.ts` + `http/server.ts` are the Express app and entry point
+  - `src/presentation/mcp/` — MCP server for LLM clients (see "MCP" below)
 - `src/dependencyInjection/container.ts` — manual DI wiring (no framework)
 
 New models must follow the conventions in `.github/instructions/ddd-*-layer.instructions.md`.
@@ -49,7 +52,7 @@ Reference data (Costa Rica provinces, cantons, initial categories) is seeded, no
 
 ## Commands
 
-- `npm run dev` — nodemon + ts-node (entry: `src/presentation/server.ts`)
+- `npm run dev` — nodemon + ts-node (entry: `src/presentation/http/server.ts`)
 - `npm run build` — `tsc && tsc-alias` (resolves `@/*` path aliases)
 - `npm run start` — runs built JS with tsconfig-paths (production debugging)
 - `npm run start:prod` — runs built JS directly (Docker CMD)
@@ -64,7 +67,7 @@ No test, lint, or typecheck scripts are configured.
 
 ## Auth
 
-API auth uses JWT (`src/presentation/auth/middlewares/jwtAuth.ts`). Extracts `Bearer` token from `Authorization` header, sets `req.user`. Routes apply `jwtAuth` middleware as needed. Google OAuth for login flow.
+API auth uses JWT (`src/presentation/http/auth/middlewares/jwtAuth.ts`). Extracts `Bearer` token from `Authorization` header, sets `req.user`. Routes apply `jwtAuth` middleware as needed. Google OAuth for login flow.
 
 ## Test login (App Store / Play review)
 
@@ -82,7 +85,7 @@ unset or false, `POST /api/v1/auth/test-login` 404s rather than existing-but-rej
 fails fast at boot if the flag is on but the email/password are missing or the password is
 shorter than 16 characters, and prints a loud warning banner on every boot while the flag is on.
 The route is additionally rate-limited (10 attempts / 15 min per IP,
-`src/presentation/core/middlewares/rateLimit.ts`), and every successful login is logged
+`src/presentation/http/core/middlewares/rateLimit.ts`), and every successful login is logged
 (IP only, never the password).
 
 On first login, the account is seeded once with a demo company, clients, products and orders
@@ -206,13 +209,13 @@ Outside production (`NODE_ENV !== "production"`), the server exposes:
 - `GET /docs` — Scalar API reference UI (`@scalar/express-api-reference`)
 - `GET /openapi.json` — the OpenAPI 3.1 document
 
-The spec lives in `src/presentation/core/docs/openapi.ts`. Request bodies are generated from the
+The spec lives in `src/presentation/http/core/docs/openapi.ts`. Request bodies are generated from the
 route's Zod validator via `z.toJSONSchema`; response schemas are hand-written to mirror the
 `*/responses` interfaces. **When adding or changing a route, update this file too.**
 
 ## Authorization (roles)
 
-`requireRole(...roles)` (`src/presentation/auth/middlewares/requireRole.ts`) goes **after** `jwtAuth`:
+`requireRole(...roles)` (`src/presentation/http/auth/middlewares/requireRole.ts`) goes **after** `jwtAuth`:
 
 ```ts
 router.get("/", jwtAuth, requireRole("ADMIN"), asyncHandler(controller.list.bind(controller)));
@@ -224,7 +227,7 @@ router.get("/", jwtAuth, requireRole("ADMIN"), asyncHandler(controller.list.bind
   (`UnauthorizedError` / `ForbiddenError`, formatted by `errorHandler`). On success
   `req.user.role` is populated. `requireRole()` with no roles throws at route definition time.
 - In controllers read the authenticated user with `getAuthUser(req)`
-  (`src/presentation/auth/utils/getAuthUser.ts`); never `@ts-expect-error` on `req.user`.
+  (`src/presentation/http/auth/utils/getAuthUser.ts`); never `@ts-expect-error` on `req.user`.
   `req.user` is typed through the `Express.User` augmentation in `src/types/express.d.ts`.
 
 ## Pagination & errors
@@ -233,7 +236,7 @@ router.get("/", jwtAuth, requireRole("ADMIN"), asyncHandler(controller.list.bind
   output (defaults, coercions) is stored in `req.validated[source]` (Express 5's `req.query` is
   read-only); read it with `getValidated<T>(req, "query")`. Invalid input → 400 `{ message }`.
 - `createPaginationQuerySchema(["name", "createdAt"] as const)`
-  (`src/presentation/core/validators/pagination.ts`) validates `page` (default 1), `pageSize`
+  (`src/presentation/http/core/validators/pagination.ts`) validates `page` (default 1), `pageSize`
   (default 20, max 100) and `sort` (`field` asc / `-field` desc, whitelisted). Add filters with
   `.extend()`. `toPaginationParams(query)` gives the domain `PaginationParams`.
   `uuidParamSchema` / `intIdParamSchema` (and `uuidParam(name)` / `intParam(name)`) validate path params.
@@ -272,7 +275,7 @@ source; unknown ids give 404 `SourceNotFoundError`.
 ## Places
 
 `/api/v1/places`: `GET /` (paginated, sort `name`/`createdAt`/`updatedAt`, default `name`) and `GET /:id` are public
-with **optional auth** (`optionalJwtAuth`, `src/presentation/auth/middlewares/optionalJwtAuth.ts`: no/invalid/expired
+with **optional auth** (`optionalJwtAuth`, `src/presentation/http/auth/middlewares/optionalJwtAuth.ts`: no/invalid/expired
 token or missing/soft-deleted user continues anonymously, never 401; a valid one loads the user from the DB and sets
 `req.user.role`). `POST /`, `PUT /:id` (full replace) and `PATCH /:id/status` (`{ status }`) require `jwtAuth` +
 `requireRole("MODERATOR", "ADMIN")`; `DELETE /:id` requires `requireRole("ADMIN")`. Ids are UUIDs.
@@ -317,3 +320,23 @@ includes `interests`.
 (`UserNotFoundError` 404). `DELETE` reuses `AccountDeletionService` + `AccountDeletionExternalCleanup` (no Apple
 code), so it has the same semantics as self-deletion. An admin cannot change their own role or delete themselves
 (`SelfModificationError`, 403). Responses use `UserResponse`, which never exposes `ssoSubject`.
+
+## MCP
+
+`POST /mcp` (outside `/api/v1`, same Express app/port) exposes an MCP server
+(`@modelcontextprotocol/sdk`) over **Streamable HTTP in stateless mode**: `McpController` builds a fresh
+`McpServer` + `StreamableHTTPServerTransport` (`sessionIdGenerator: undefined`) per request and closes both
+when the response ends, so there is no in-memory session state. `GET /mcp` and `DELETE /mcp` answer 405.
+
+- **Auth**: `jwtAuth` + `requireRole("MODERATOR", "ADMIN")` — the client sends `Authorization: Bearer <jwt>`.
+- **Layout**: `mcp/server/createMcpServer.ts` (`createMcpServerFactory(deps)`) is the single place where tools
+  are registered; one `mcp/tools/{model}.tools.ts` per model exporting `register{Model}Tools(server, ...services)`.
+  Services are injected from `container.ts` through `McpServerDependencies` (tools never import the container,
+  to avoid a circular import). Tools reuse the HTTP DTO mappers (`@/presentation/http/{model}/mappers`).
+- **Results**: return `toolOk(payload)` (sets `structuredContent` + a JSON text block; declare an `outputSchema`)
+  and wrap handlers in `try/catch` → `toolError(error)` (`mcp/utils/toolResult.ts`): `DomainError` /
+  `ApplicationError` messages go to the model with `isError: true`; anything else is logged and returned as a
+  generic message. Input validation errors are produced by the SDK from the zod `inputSchema`.
+- **Tools**: `list_categories` (`search?`, `page` = 1, `pageSize` = 100 max 100; sorted by name, read-only).
+- **Try it**: `npx @modelcontextprotocol/inspector` → Streamable HTTP, `http://localhost:<PORT>/mcp`, with the
+  `Authorization` header; or `claude mcp add --transport http mi-vueltica http://localhost:<PORT>/mcp --header "Authorization: Bearer <jwt>"`.

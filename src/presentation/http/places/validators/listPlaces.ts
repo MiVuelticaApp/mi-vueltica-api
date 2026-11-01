@@ -1,5 +1,5 @@
 import z from "zod";
-import { createPaginationQuerySchema } from "@/presentation/core/validators/pagination";
+import { createPaginationQuerySchema } from "@/presentation/http/core/validators/pagination";
 import { TARGET_AUDIENCES } from "@/domain/places/valueObjects/targetAudience.valueObject";
 import { contentStatusField } from "./changePlaceStatus";
 

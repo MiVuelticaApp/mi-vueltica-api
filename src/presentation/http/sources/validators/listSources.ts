@@ -1,5 +1,5 @@
 import z from "zod";
-import { createPaginationQuerySchema } from "@/presentation/core/validators/pagination";
+import { createPaginationQuerySchema } from "@/presentation/http/core/validators/pagination";
 import { SOURCE_TYPES } from "@/domain/sources/valueObjects/sourceType.valueObject";
 
 export const SOURCE_SORT_FIELDS = ["name", "type", "lastCrawledAt"] as const;
