@@ -51,4 +51,4 @@ COPY --from=build /app /app
 
 # Start the server by default, this can be overwritten at runtime
 EXPOSE 3000
-CMD [ "sh", "-c", "npx prisma migrate deploy && npm run start:prod" ]
+CMD [ "sh", "-c", "npx prisma migrate deploy && npm run db:seed:prod && npm run start:prod" ]
