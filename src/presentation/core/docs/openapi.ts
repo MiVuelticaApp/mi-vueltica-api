@@ -8,6 +8,8 @@ import { DeleteAccountSchema } from "@/presentation/users/validators/deleteAccou
 import { CreateCategorySchema } from "@/presentation/categories/validators/createCategory";
 import { UpdateCategorySchema } from "@/presentation/categories/validators/updateCategory";
 import { CATEGORY_SORT_FIELDS } from "@/presentation/categories/validators/listCategories";
+import { ChangeUserRoleSchema } from "@/presentation/users/validators/changeUserRole";
+import { USER_SORT_FIELDS } from "@/presentation/users/validators/listUsers";
 import { AGE_RANGES, USER_ROLES } from "@/domain/users/entities/User";
 import { DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/domain/core/pagination/Pagination";
 
@@ -246,6 +248,87 @@ const paths: Record<string, Record<string, unknown>> = {
       },
     },
   },
+  "/users": {
+    get: {
+      tags: ["Users"],
+      summary: "List users (ADMIN)",
+      description: "Active (not soft-deleted) users only.",
+      security: bearer,
+      parameters: [
+        { $ref: "#/components/parameters/Page" },
+        { $ref: "#/components/parameters/PageSize" },
+        {
+          name: "sort",
+          in: "query",
+          description: `Field to sort by (\`field\` ascending, \`-field\` descending): ${USER_SORT_FIELDS.join(", ")}`,
+          schema: { type: "string", examples: ["createdAt", "-createdAt"] },
+        },
+        { name: "role", in: "query", description: "Filter by role", schema: { type: "string", enum: [...USER_ROLES] } },
+        {
+          name: "search",
+          in: "query",
+          description: "Case-insensitive contains match on email, name or surnames",
+          schema: { type: "string", maxLength: 100 },
+        },
+      ],
+      responses: {
+        200: {
+          description: "Paginated users",
+          content: { "application/json": { schema: paginated("UserResponse") } },
+        },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+      },
+    },
+  },
+  "/users/{id}": {
+    get: {
+      tags: ["Users"],
+      summary: "Get a user (ADMIN)",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        200: jsonResponse("User", "UserResponse"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+      },
+    },
+    delete: {
+      tags: ["Users"],
+      summary: "Delete a user (ADMIN)",
+      description:
+        "Same semantics as self-deletion (`POST /me`): removes the account and its data, then runs best-effort external cleanup. An admin cannot delete their own account here (403).",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        204: { description: "User deleted" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+      },
+    },
+  },
+  "/users/{id}/role": {
+    patch: {
+      tags: ["Users"],
+      summary: "Change a user's role (ADMIN)",
+      description: "An admin cannot change their own role (403).",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      requestBody: jsonBody(ChangeUserRoleSchema),
+      responses: {
+        200: jsonResponse("Updated user", "UserResponse"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+      },
+    },
+  },
   "/system/min-frontend-version": {
     get: {
       tags: ["System"],
@@ -296,6 +379,7 @@ const openApiDocument = {
     { name: "Auth" },
     { name: "Profile" },
     { name: "Categories" },
+    { name: "Users" },
     { name: "System" },
   ],
   paths,

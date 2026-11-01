@@ -1,7 +1,9 @@
 import { SsoProvider, User } from "@/domain/users/entities/User";
-import { IUserRepository } from "@/domain/users/repositories/IUserRepository";
+import { IUserRepository, UserListFilters } from "@/domain/users/repositories/IUserRepository";
 import { prisma } from "@/infrastructure/prisma/client";
 import { Prisma } from "@/infrastructure/prisma/generated/prisma/client";
+import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
+import { paginate } from "@/infrastructure/core/repositories/prismaPagination";
 import { PrismaUserMapper } from "../mappers/PrismaUserMapper";
 import DatabaseError from "@/infrastructure/core/errors/DatabaseError";
 import DatabaseInsertError from "@/infrastructure/core/errors/DatabaseInsertError";
@@ -25,6 +27,38 @@ export default class PrismaUsersRepository implements IUserRepository {
     } catch (error) {
       console.error("Error fetching users:", error);
       throw new DatabaseError("Could not fetch users", error);
+    }
+  }
+
+  /**
+   * Paginated list of active (not soft-deleted) users.
+   * @param params Pagination and sort params.
+   * @param filters Optional role filter and free-text search (email, name, surnames).
+   */
+  async list(params: PaginationParams, filters: UserListFilters): Promise<PaginatedResult<User>> {
+    try {
+      const where: Prisma.UserWhereInput = { deletedAt: null };
+      if (filters.role) where.role = filters.role;
+      if (filters.search) {
+        where.OR = [
+          { email: { contains: filters.search } },
+          { name: { contains: filters.search } },
+          { surnames: { contains: filters.search } },
+        ];
+      }
+
+      return await paginate(
+        this.client,
+        params,
+        {
+          findMany: (tx, page) => tx.user.findMany({ where, ...page }),
+          count: (tx) => tx.user.count({ where }),
+        },
+        (row) => PrismaUserMapper.toDomain(row),
+      );
+    } catch (error) {
+      console.error("Error listing users:", error);
+      throw new DatabaseError("Could not list users", error);
     }
   }
 
