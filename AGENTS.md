@@ -248,3 +248,11 @@ router.get("/", jwtAuth, requireRole("ADMIN"), asyncHandler(controller.list.bind
 - OpenAPI has reusable `components.parameters` (`Page`, `PageSize`, `Sort`, `UuidId`, `IntId`),
   `components.responses` (`BadRequest`, `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`) and
   the `paginationParams` / `paginated(ref)` helpers exported from `openapi.ts`.
+
+## Admin user management
+
+`/api/v1/users` (`GET /`, `GET /:id`, `PATCH /:id/role`, `DELETE /:id`) is `jwtAuth` + `requireRole("ADMIN")`
+(`AdminUsersController`, `AdminUserService`). Soft-deleted users (`deletedAt`) are excluded from list/get
+(`UserNotFoundError` 404). `DELETE` reuses `AccountDeletionService` + `AccountDeletionExternalCleanup` (no Apple
+code), so it has the same semantics as self-deletion. An admin cannot change their own role or delete themselves
+(`SelfModificationError`, 403). Responses use `UserResponse`, which never exposes `ssoSubject`.
