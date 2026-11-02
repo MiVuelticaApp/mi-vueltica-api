@@ -31,7 +31,19 @@ npx prisma generate
 
 MariaDB (not MySQL, not MongoDB). Uses `@prisma/adapter-mariadb`. Connection config in `src/infrastructure/core/config/keys/mysql.ts`.
 
-Required env vars (see `.env.example`): `DATABASE_URL`, `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`, `JWT_SECRET`, `RESEND_API_KEY`, `MAIL_FROM`, `APP_INVITE_URL`.
+The connection parameters (host, user, password, database, port) are parsed from `DATABASE_URL`, which is
+also what the Prisma CLI reads (`prisma.config.ts`).
+
+Env vars (see `.env.example`):
+
+- **Required at boot** (the server throws without them): `DATABASE_URL` (`mysql.ts`), `RESEND_API_KEY`,
+  `MAIL_FROM`, `MIN_FRONTEND_VERSION` (semver, validated; `required()` in
+  `src/presentation/http/core/config/env.ts`).
+- **Needed in practice**: `JWT_SECRET` (`JwtTokenService` falls back to a hard-coded secret when it is unset,
+  so always set it outside local dev), `JWT_EXPIRES_IN` (default `7d`), and `GOOGLE_CLIENT_ID`,
+  `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_ANDROID_CLIENT_ID` for Google login.
+- **Optional**: `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (see "Account
+  deletion") and `TEST_LOGIN_ENABLED`, `TEST_LOGIN_EMAIL`, `TEST_LOGIN_PASSWORD` (see "Test login").
 
 ## Seed data
 
@@ -69,11 +81,12 @@ No test, lint, or typecheck scripts are configured.
 
 ## Auth
 
-API auth uses JWT (`src/presentation/http/auth/middlewares/jwtAuth.ts`). Extracts `Bearer` token from `Authorization` header, sets `req.user`. Routes apply `jwtAuth` middleware as needed. Google OAuth for login flow.
+API auth uses JWT (`src/presentation/http/auth/middlewares/jwtAuth.ts`). Extracts `Bearer` token from `Authorization` header, sets `req.user`. Routes apply `jwtAuth` middleware as needed. Login is Google (`POST /auth/google`) or Apple Sign In
+(`POST /auth/apple`); both return a JWT.
 
 ## Test login (App Store / Play review)
 
-`POST /api/v1/auth/test-login` exists because Apple and Google require a working demo account
+`POST /api/v1/auth/qa` exists because Apple and Google require a working demo account
 for app review, and this app has no email/password login otherwise (only Google/Apple OAuth,
 which reviewers cannot exercise as themselves). Credentials live entirely in env vars
 (`TEST_LOGIN_ENABLED`, `TEST_LOGIN_EMAIL`, `TEST_LOGIN_PASSWORD`) — there is no password column
@@ -83,119 +96,69 @@ email/password against the configured ones with `crypto.timingSafeEqual` and nev
 whether the email exists.
 
 The route is only mounted when `TEST_LOGIN_ENABLED === "true"` (`auth.route.ts`); with the flag
-unset or false, `POST /api/v1/auth/test-login` 404s rather than existing-but-rejecting. `env.ts`
+unset or false, `POST /api/v1/auth/qa` 404s rather than existing-but-rejecting (it is also left out of
+the OpenAPI document). `env.ts`
 fails fast at boot if the flag is on but the email/password are missing or the password is
 shorter than 16 characters, and prints a loud warning banner on every boot while the flag is on.
 The route is additionally rate-limited (10 attempts / 15 min per IP,
 `src/presentation/http/core/middlewares/rateLimit.ts`), and every successful login is logged
 (IP only, never the password).
 
-On first login, the account is seeded once with a demo company, clients, products and orders
-(`TestAccountSeeder`) so reviewers see a populated app; from then on it is a completely ordinary
-FREE-plan user — same `jwtAuth`, `requireCompanyId`, `requireCompanyRole` and `enforceLimit`
-checks as any other account, no special role or bypass.
+On first login a `USER`-role account is created ("Cuenta de Prueba") and `TestAccountSeeder` runs once.
+The seeder is currently a placeholder that writes nothing (it was meant to add demo data so
+reviewers land on a populated app); its errors are swallowed so they never block the token. From
+then on it is a completely ordinary user — same `jwtAuth` and `requireRole` checks as any other
+account, no special role or bypass.
 
 **Operating rule: turn it on for submission, turn it off as soon as the app is approved.** This
-is not a product feature — see the submission checklist on issue #37 for the exact steps.
-
-## Billing
-
-Plans are per `Company`, not per user. RevenueCat's `app_user_id` MUST be the `companyId` — the
-mobile client passes the organization id as the app user id when starting a purchase. Webhook
-events (`POST /api/v1/billing/webhooks/revenuecat`) are unauthenticated by JWT — there is no
-`jwtAuth`/`requireCompanyId` on that route — and are instead verified server-to-server against
-the `REVENUECAT_WEBHOOK_AUTH` shared secret in the `Authorization` header
-(`src/infrastructure/billing/providers/RevenueCatProvider.ts`). The provider is abstracted behind
-`IPaymentProvider` (`src/domain/billing/providers/`) so a future Tilopay adapter can be added
-without touching application code. Plan limits (per resource, per tier) live in code in
-`src/application/billing/PlanCatalog.ts`.
-
-Every company gets a FREE subscription at creation time, in the same transaction as the company
-itself (`PrismaCompanyCreationUnitOfWork`); companies predating this were backfilled by the
-`20260725130000_backfill_free_subscriptions` data migration. Limits are enforced in the
-presentation layer by the `enforceLimit(resource)` middleware, which returns **HTTP 402** with a
-machine-readable `PLAN_LIMIT_EXCEEDED` payload — the API never blocks silently, the client owns
-the upgrade UX. Monthly/daily windows are evaluated in `America/Costa_Rica`
-(`src/application/billing/utils/billingWindows.ts`).
-
-Optional env vars: `REVENUECAT_WEBHOOK_AUTH` (must match the `Authorization` header configured in
-the RevenueCat dashboard; when unset the webhook fails closed and rejects everything),
-`REVENUECAT_API_KEY`.
+is not a product feature.
 
 ## Account deletion
 
-`DELETE /api/v1/me` is JWT-authenticated, rate-limited (5 / 15 min per IP), and accepts an
-optional body `{ appleAuthorizationCode?: string }` (sent only by the iOS client, see #43).
-The response is **204** with no body; no `try/catch` in the controller — service-level
-`UserNotFoundError` etc. propagate via `asyncHandler` to the central `errorHandler`.
+`POST /api/v1/me` (in `profileRouter`, so `jwtAuth`) deletes the caller's account. It is rate-limited
+(5 / 15 min per IP) and accepts an optional strict body `{ appleAuthCode?: string }`, sent only by the
+iOS client; unknown keys → 400. The response is **204** with no body. Service errors such as
+`UserNotFoundError` (404) propagate via `asyncHandler` to the central `errorHandler`.
 
-### Transactional core (issues #40, #41)
+### Transactional core
 
-The DB deletion runs in ONE transaction via `UserDeletionUnitOfWork`
+`AccountDeletionService` runs in ONE transaction via `IUserDeletionUnitOfWork`
 (`src/infrastructure/users/unitsOfWork/PrismaUserDeletionUnitOfWork.ts`):
 
 1. Load the user; throw `UserNotFoundError` (404) if missing.
-2. For each `UserCompany` membership, reuse `CompanyMember.isLastOwner(member, members)`:
-   - **Sole OWNER** → `CompanyRepository.deleteWithAllData(companyId)`, which cascades in
-     leaf→root topological order with raw `deleteMany` (bypassing the `Client`/`Product`
-     soft-delete filters, otherwise their `deletedAt: null` rows would survive and the final
-     `company.delete()` would hit `ON DELETE RESTRICT`).
-   - Otherwise → `CompanyMemberRepository.remove(userId, companyId)` (the company stays).
-3. Delete the `CompanyInvitation`s the user **sent** (`invitedById`, FK RESTRICT, would block
-   the user delete) and the ones **addressed to their email** (hygiene so a re-registration
-   with the same email does not inherit stale invitations).
-4. `userRepository.delete(userId)` last.
+2. Capture `email` and `name` **before** deleting (the confirmation email needs a recipient).
+3. Hard delete the `User` row. Everything that belongs to the user is removed by the database:
+   `UserInterest`, `Submission` (as author), `Favorite`, `Review`, `Device` and `Notification` cascade;
+   `Submission.reviewedById` is set to null for submissions the user moderated.
 
-`deletedCompanyIds` and `unlinkedCompanyIds` are returned in `AccountDeletionResult`, along
-with `email`/`name` captured **before** the user row is deleted (the confirmation email needs
-a recipient).
+It returns `AccountDeletionResult` `{ email, name }`.
 
-### Best-effort side effects (issue #43) — after the commit
+### Best-effort side effects — after the commit
 
-`AccountDeletionExternalCleanup` runs three provider side effects AFTER the transaction
-commits. Each is isolated in its own `try/catch` so a provider outage never throws back to the
-client, never returns 5xx, and never reverts the deletion:
+`AccountDeletionExternalCleanup` runs AFTER the transaction commits. Each step has its own
+`try/catch` (and the controller wraps the call again), so a provider outage never returns 5xx and
+never reverts the deletion:
 
 1. **Apple Sign In token revocation** (App Review 5.1.1(v)) via
-   `AppleOAuthProvider.revokeToken(appleAuthorizationCode)` (direct `/auth/revoke`, no token
-   exchange). Requires `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`;
-   silently skips (one `console.warn`) when unset, so a Google user (no `appleAuthorizationCode`
-   in the body) or an unconfigured deployment is unaffected. `GoogleOAuthProvider.revokeToken`
-   is a logged no-op because the server never stores Google tokens.
-2. **RevenueCat subscriber deletion** for each `deletedCompanyIds` entry via
-   `IPaymentProvider.deleteSubscriber(companyId)` (the `app_user_id === companyId` convention).
-   The local `Subscription` row was already deleted inside the transaction by
-   `deleteWithAllData`, but the provider side still holds the subscriber and would otherwise
-   keep sending webhooks. Requires `REVENUECAT_API_KEY`; silently skips when unset. Idempotent
-   (200/204/404 all treated as success).
-3. **Confirmation email** via `AccountDeletionEmailSender` (HTML + plain text, es-CR) to the
-   pre-deletion email. A Resend outage is logged, not surfaced.
+   `AppleOAuthProvider.revokeToken(appleAuthCode)`, only when the client sent the code. Requires
+   `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY`; when they are unset it
+   skips with one `console.warn`. `GoogleOAuthProvider.revokeToken` is a logged no-op because the
+   server never stores Google tokens.
+2. **Confirmation email** via `AccountDeletionEmailSender` (HTML + plain text, es-CR) to the
+   pre-deletion address. A Resend outage is logged, not surfaced.
 
-### Webhook hardening
+The controller logs only the `userId`, never the email or the Apple code. Admin deletion
+(`DELETE /api/v1/users/:id`, see "Admin user management") reuses the same service and cleanup, without
+an Apple code.
 
-`SubscriptionSyncService.applyEvent` now looks up the company first and **ignores** (log +
-HTTP 200) events whose `companyId` no longer exists. Without this guard, a late `RENEWAL` /
-`EXPIRATION` webhook for a deleted company would `upsertByProviderCustomerId` against a
-missing `company.id` → FK RESTRICT throw → 500 → RevenueCat retries the webhook forever
-(`Subscription.companyId` has a unique constraint, not a soft-fail column). The guard keeps
-the endpoint returning 200 and writes nothing.
+The Apple env vars do not use `required()`: a deployment without them still boots, and only the
+Apple token revocation is skipped.
 
-### Optional env vars
+### How a reviewer reproduces it
 
-`APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` — none use
-`required()`; a deployment without them still boots, and only Apple token revocation at
-`DELETE /me` is skipped. `REVENUECAT_API_KEY` is the same — it was already optional and is now
-consumed by `deleteSubscriber`.
-
-### App review checklist
-
-- Where the reviewer sees it in the app: **Settings → Cuenta → Eliminar cuenta**. The user
-  taps it, confirms, the iOS client requests a fresh Apple authorization code, sends
-  `DELETE /api/v1/me` with `{ appleAuthorizationCode }`, and signs the user out on 204.
-- How the reviewer reproduces it: log in via the test-login route (see the "Test login"
-  section above) — reviewers cannot exercise Google/Apple OAuth as themselves — then
-  Settings → Cuenta → Eliminar cuenta. A later `GET /api/v1/me` with the same token returns
-  404 "Usuario no encontrado".
+Log in through the test-login route (see "Test login"), since reviewers cannot use Google/Apple
+OAuth as themselves, then send `POST /api/v1/me`. A later `GET /api/v1/me` with the same token
+returns 404.
 
 ## Key Quirks
 
@@ -203,7 +166,7 @@ consumed by `deleteSubscriber`.
 - Some value object files have typos (e.g., `valouObject.ts`) — match existing naming when editing
 - `prisma.config.ts` uses `dotenv/config` import for env loading
 - All API routes mounted under `/api/v1`
-- `requireCompanyId` middleware parses company context from requests
+
 ## API docs (Scalar)
 
 Outside production (`NODE_ENV !== "production"`), the server exposes:
@@ -251,7 +214,8 @@ router.get("/", jwtAuth, requireRole("ADMIN"), asyncHandler(controller.list.bind
   `P2025` → 404. Repositories wrap Prisma errors in `DatabaseError` / `DatabaseInsertError`:
   **always pass the original error as the second argument (`cause`)** so the mapping still works.
 - OpenAPI has reusable `components.parameters` (`Page`, `PageSize`, `Sort`, `UuidId`, `IntId`),
-  `components.responses` (`BadRequest`, `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`) and
+  `components.responses` (`BadRequest`, `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`,
+  `UnprocessableEntity`) and
   the `paginationParams` / `paginated(ref)` helpers exported from `openapi.ts`.
 
 ## Categories
