@@ -42,6 +42,8 @@ import EventController from "@/presentation/http/events/controllers/Event.contro
 import PrismaFavoriteRepository from "@/infrastructure/favorites/repositories/PrismaFavoriteRepository";
 import PrismaDeviceRepository from "@/infrastructure/devices/repositories/PrismaDeviceRepository";
 import { DeviceService } from "@/application/devices/services/implementations/DeviceService";
+import PrismaNotificationRepository from "@/infrastructure/notifications/repositories/PrismaNotificationRepository";
+import { NotificationService } from "@/application/notifications/services/implementations/NotificationService";
 import { FavoriteService } from "@/application/favorites/services/implementations/FavoriteService";
 import FavoriteController from "@/presentation/http/favorites/controllers/Favorite.controller";
 import PrismaSubmissionRepository from "@/infrastructure/submissions/repositories/PrismaSubmissionRepository";
@@ -49,6 +51,7 @@ import { PrismaSubmissionApprovalUnitOfWork } from "@/infrastructure/submissions
 import { SubmissionService } from "@/application/submissions/services/implementations/SubmissionService";
 import MySubmissionsController from "@/presentation/http/submissions/controllers/MySubmissions.controller";
 import MyDevicesController from "@/presentation/http/devices/controllers/MyDevices.controller";
+import MyNotificationsController from "@/presentation/http/notifications/controllers/MyNotifications.controller";
 import SubmissionsController from "@/presentation/http/submissions/controllers/Submissions.controller";
 import ResendEmailProvider from "@/infrastructure/email/providers/ResendEmailProvider";
 import MyProfileController from "@/presentation/http/users/controllers/MyProfile.controller";
@@ -73,6 +76,7 @@ export const eventRepository = new PrismaEventRepository();
 export const favoriteRepository = new PrismaFavoriteRepository();
 export const submissionRepository = new PrismaSubmissionRepository();
 export const deviceRepository = new PrismaDeviceRepository();
+export const notificationRepository = new PrismaNotificationRepository();
 
 // unit of work
 export const userDeletionUOW = new PrismaUserDeletionUnitOfWork();
@@ -106,6 +110,7 @@ export const placeService = new PlaceService(placeRepository, categoryRepository
 export const eventService = new EventService(eventRepository, placeRepository, categoryRepository, sourceRepository);
 export const favoriteService = new FavoriteService(favoriteRepository, placeRepository);
 export const deviceService = new DeviceService(deviceRepository);
+export const notificationService = new NotificationService(notificationRepository);
 export const submissionService = new SubmissionService(submissionRepository, placeRepository, categoryRepository, submissionApprovalUOW);
 export const userInterestService = new UserInterestService(userRepository, userInterestRepository, categoryRepository);
 export const oAuthService = new OAuthService(userService, googleOAuthProvider, appleOAuthProvider, idGenerator);
@@ -150,6 +155,7 @@ export const eventController = new EventController(eventService);
 export const favoriteController = new FavoriteController(favoriteService);
 export const mySubmissionsController = new MySubmissionsController(submissionService);
 export const myDevicesController = new MyDevicesController(deviceService);
+export const myNotificationsController = new MyNotificationsController(notificationService);
 export const submissionsController = new SubmissionsController(submissionService);
 export const adminUsersController = new AdminUsersController(
   adminUserService,
