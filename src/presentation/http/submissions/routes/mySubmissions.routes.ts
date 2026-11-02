@@ -7,9 +7,7 @@ import { uuidParamSchema } from "@/presentation/http/core/validators/params";
 import jwtAuth from "@/presentation/http/auth/middlewares/jwtAuth";
 import { CreateSubmissionSchema } from "../validators/createSubmission";
 import { ListMySubmissionsQuerySchema } from "../validators/listSubmissions";
-
-/** Submission creation limit, per authenticated user. Raise it if a crawler account needs more. */
-export const SUBMISSION_CREATE_RATE_LIMIT = { windowMs: 15 * 60 * 1000, max: 20 };
+import { SUBMISSION_CREATE_RATE_LIMIT } from "../submissionLimits";
 
 // Mounted at /me/submissions (before /me in router.ts).
 const mySubmissionsRouter = Router();
