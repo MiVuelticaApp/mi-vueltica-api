@@ -23,6 +23,12 @@ export interface ISubmissionRepository {
   /** New submissions are always PENDING. */
   create(data: NewSubmission): Promise<Submission>;
   find(id: string): Promise<Submission | null>;
+  /**
+   * Like `find`, but first locks the row (`SELECT ... FOR UPDATE`) until the surrounding
+   * transaction ends, so concurrent reviewers of the same submission run one after another.
+   * Only meaningful inside a unit of work.
+   */
+  findForUpdate(id: string): Promise<Submission | null>;
   list(params: PaginationParams<SubmissionSortField>, filters?: SubmissionListFilters): Promise<PaginatedResult<Submission>>;
   /**
    * Persists the review fields (status, reviewer, date, note) only if the row is still PENDING.
