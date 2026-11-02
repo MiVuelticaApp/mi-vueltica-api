@@ -1,151 +1,206 @@
 ---
 name: Presentation Layer Generator
-description: Rules and templates for generating presentation layer boilerplate (Controllers, Routes, Mappers, etc.).
+description: Rules and templates for the HTTP presentation layer (routes, controllers, validators, DTOs, mappers, OpenAPI).
 ---
 
-# Presentation Layer Code Generator
+# Presentation Layer (HTTP)
 
-You are an expert in **Express.js**, **Clean Architecture**, and **Zod**.
+The HTTP adapter translates requests into service calls and entities into responses. It holds no
+business rules: validation of shape (Zod), authentication/authorization (middlewares), mapping and
+status codes only. The MCP adapter (`src/presentation/mcp/`) is a second adapter over the same
+services; see AGENTS.md.
 
-Your task is to generate the **presentation layer boilerplate code** for a given model, following strict conventions.
-
----
-
-## Folder Structure
-
-For a given `{model}`, generate this structure:
-
-/presentation/http/{model}/
-- /controllers/{model}.controller.ts
-- /routes/{model}.routes.ts
-- /mappers/{model}.mapper.ts
-- /requests/Create{model}Request.ts
-- /responses/{model}Response.ts
-- /validators/{modelLowercase}.validator.ts
+Reference implementation: the `categories` module (`src/presentation/http/categories/`). For other
+cases, see "Variants" at the end.
 
 ---
 
-## Route Rules
+## Folder structure
 
-Generate the Express router:
-
-```ts
-import { Router } from "express";
-import { {modelLowercase}Controller } from "@/dependencyInjection/container";
-import asyncHandler from "@/presentation/http/core/handlers/asyncHandler";
-import jwtAuth from "@/presentation/http/auth/middlewares/jwtAuth";
-import validateSchema from "@/presentation/http/core/middlewares/validateSchema";
-import { Create{model}Schema } from "../validators/{modelLowercase}.validator";
-
-const {modelLowercase}Router = Router();
-
-{modelLowercase}Router.use(jwtAuth);
-{modelLowercase}Router.post("/", validateSchema(Create{model}Schema), asyncHandler({modelLowercase}Controller.create.bind({modelLowercase}Controller)));
-{modelLowercase}Router.get("/:id", asyncHandler({modelLowercase}Controller.get.bind({modelLowercase}Controller)));
-
-export default {modelLowercase}Router;
+```
+src/presentation/http/{module}/
+  controllers/{Model}.controller.ts
+  routes/{module}.routes.ts
+  validators/create{Model}.ts            # one file per action: create, update, list, ...
+  validators/update{Model}.ts
+  validators/list{Models}.ts
+  requests/Create{Model}Request.ts       # plain interfaces for the validated body
+  requests/Update{Model}Request.ts
+  responses/{Model}Response.ts
+  mappers/{Model}.mapper.ts
 ```
 
 ---
 
-## Controller Rules
-
-Generate the controller with dependency injection:
+## Validators (Zod)
 
 ```ts
-import { Request, Response } from "express";
-import { I{model}Service } from "@/application/{model}/services/interfaces/I{model}Service";
-import {model}Mapper from "../mappers/{model}.mapper";
-
-export default class {model}Controller {
-  constructor(private readonly {modelLowercase}Service: I{model}Service) {}
-
-  async create(req: Request, res: Response): Promise<void> {
-    const entity = {model}Mapper.toEntity(req.body);
-    const created = await this.{modelLowercase}Service.create(entity);
-    res.status(201).json({model}Mapper.toResponse(created));
-  }
-
-  async get(req: Request, res: Response): Promise<void> {
-    const { id } = req.params;
-    const entity = await this.{modelLowercase}Service.find(id);
-    if (!entity) {
-      res.status(404).json({ message: "{model} not found" });
-      return;
-    }
-    res.json({model}Mapper.toResponse(entity));
-  }
-}
-```
-
----
-
-## Mapper Rules
-
-Generate the presentation mapper:
-
-```ts
-import { {model} } from "@/domain/{model}/entities/{model}";
-import { Create{model}Request } from "../requests/Create{model}Request";
-import { {model}Response } from "../responses/{model}Response";
-
-export default class {model}Mapper {
-  static toEntity(request: Create{model}Request): {model} {
-    return new {model}({
-      id: "", // Usually generated or handled in application/domain
-      ...request
-    });
-  }
-
-  static toResponse(entity: {model}): {model}Response {
-    return {
-      id: entity.id,
-      // map other fields
-    };
-  }
-}
-```
-
----
-
-## Validator Rules (Zod)
-
-Generate the Zod schema:
-
-```ts
+// validators/createCategory.ts
 import z from "zod";
+import { CATEGORY_NAME_MAX_LENGTH } from "@/domain/categories/valueObjects/categoryName.valueObject";
 
-export const Create{model}Schema = z.object({
-  // define attributes here
+export const categoryNameField = z
+  .string({ error: "El nombre es requerido" })
+  .trim()
+  .min(1, { message: "El nombre es requerido" })
+  .max(CATEGORY_NAME_MAX_LENGTH, { message: `El nombre no puede exceder ${CATEGORY_NAME_MAX_LENGTH} caracteres` });
+
+export const CreateCategorySchema = z.object({ name: categoryNameField });
+```
+
+```ts
+// validators/listCategories.ts
+import z from "zod";
+import { createPaginationQuerySchema } from "@/presentation/http/core/validators/pagination";
+
+export const CATEGORY_SORT_FIELDS = ["id", "name"] as const;
+
+export const ListCategoriesQuerySchema = createPaginationQuerySchema(CATEGORY_SORT_FIELDS).extend({
+  search: z.string().trim().max(100, { message: "La búsqueda no puede exceder 100 caracteres" }).optional(),
 });
 ```
 
+Rules:
+- Zod 4 syntax: `{ error: "..." }` / `{ message: "..." }`; error messages in Spanish.
+- Import limits from the domain value objects so Zod and the domain agree.
+- Share field schemas between create/update (`categoryNameField`); `update` is a full replace (PUT).
+- Lists: `createPaginationQuerySchema(SORT_FIELDS)` (page, pageSize, whitelisted `sort`), then
+  `.extend()` for filters. Export `SORT_FIELDS` so OpenAPI can reuse it.
+- Path params: `uuidParamSchema` / `intIdParamSchema` (or `uuidParam("placeId")`) from
+  `src/presentation/http/core/validators/params.ts`.
+- Request/response interfaces are plain TypeScript (`requests/`, `responses/`); no classes.
+
 ---
 
-## Input Format
+## Mapper and DTOs
 
-You will receive the model name and attributes:
-
-```json
-{
-  "model": "User",
-  "attributes": [
-    { "name": "name", "type": "string" },
-    { "name": "email", "type": "string" }
-  ]
+```ts
+// mappers/Category.mapper.ts
+export default class CategoryDtoMapper {
+  static toResponse(category: Category): CategoryResponse {
+    return { id: category.id, name: category.name };
+  }
 }
 ```
 
----
-
-## Output Requirements
-
-- Generate ALL files in the specified structure.
-- Use absolute paths for each file.
-- No explanations, only code.
+Rules:
+- Static methods; entity → response only (requests are already validated plain data).
+- Dates go out as ISO strings (`date.toISOString()`), nullable dates as `null`.
+- Never expose internal fields (`ssoSubject`, `aiScore` outside moderation responses).
 
 ---
 
-## Goal
+## Controller
 
-Standardize the interface between external requests and application logic, ensuring robust validation and clean data mapping.
+```ts
+// controllers/Category.controller.ts
+type ListQuery = z.output<typeof ListCategoriesQuerySchema>;
+type IdParams = { id: number };
+
+export default class CategoryController {
+  constructor(private readonly categoryService: ICategoryService) {}
+
+  async list(req: Request, res: Response): Promise<void> {
+    const query = getValidated<ListQuery>(req, "query");
+    const result = await this.categoryService.list(toPaginationParams(query), { search: query.search || undefined });
+    res.json(toPaginatedResponse(result, CategoryDtoMapper.toResponse));
+  }
+
+  async get(req: Request, res: Response): Promise<void> {
+    const { id } = getValidated<IdParams>(req, "params");
+    res.json(CategoryDtoMapper.toResponse(await this.categoryService.get(id)));
+  }
+
+  async create(req: Request, res: Response): Promise<void> {
+    const { name }: CreateCategoryRequest = req.body;
+    res.status(201).json(CategoryDtoMapper.toResponse(await this.categoryService.create(name)));
+  }
+
+  async update(req: Request, res: Response): Promise<void> {
+    const { id } = getValidated<IdParams>(req, "params");
+    const { name }: UpdateCategoryRequest = req.body;
+    res.json(CategoryDtoMapper.toResponse(await this.categoryService.update(id, name)));
+  }
+
+  async delete(req: Request, res: Response): Promise<void> {
+    const { id } = getValidated<IdParams>(req, "params");
+    await this.categoryService.delete(id);
+    res.status(204).send();
+  }
+}
+```
+
+Rules:
+- Depend on the service **interface**, injected through the constructor.
+- **No `try/catch`**: errors propagate through `asyncHandler` to `errorHandler`, which maps them by
+  `statusCode`. Do not build 404 responses by hand; the service throws `NotFoundError`.
+- Read validated input with `getValidated<T>(req, "query" | "params")` (Express 5's `req.query` is
+  read-only; `validateSchema` stores the parsed output in `req.validated`). The body is `req.body`.
+- Authenticated user: `getAuthUser(req)` (`const { id: userId } = getAuthUser(req)`).
+- Status codes: 201 on create, 204 (no body) on delete, 200 otherwise.
+- Lists: `toPaginatedResponse(result, mapItem)` → `{ data, page, pageSize, total }`.
+
+---
+
+## Routes
+
+```ts
+// routes/categories.routes.ts
+const categoriesRouter = Router();
+
+// Public reads
+categoriesRouter.get("/", validateSchema(ListCategoriesQuerySchema, "query"), asyncHandler(categoryController.list.bind(categoryController)));
+categoriesRouter.get("/:id", validateSchema(intIdParamSchema, "params"), asyncHandler(categoryController.get.bind(categoryController)));
+
+// Admin writes
+categoriesRouter.post("/", jwtAuth, requireRole("ADMIN"), validateSchema(CreateCategorySchema), asyncHandler(categoryController.create.bind(categoryController)));
+categoriesRouter.put("/:id", jwtAuth, requireRole("ADMIN"), validateSchema(intIdParamSchema, "params"), validateSchema(UpdateCategorySchema), asyncHandler(categoryController.update.bind(categoryController)));
+categoriesRouter.delete("/:id", jwtAuth, requireRole("ADMIN"), validateSchema(intIdParamSchema, "params"), asyncHandler(categoryController.delete.bind(categoryController)));
+
+export default categoriesRouter;
+```
+
+Rules:
+- Middleware order per route: `jwtAuth` → `requireRole(...)` → `validateSchema(...)` →
+  `asyncHandler(controller.method.bind(controller))`. `requireRole` always comes after `jwtAuth`.
+- Put the middleware on each route (reads are often public) instead of `router.use(jwtAuth)`; use
+  `router.use(jwtAuth)` only when every route in the file is authenticated (`/me/...` routers).
+- Public reads that change for logged-in users use `optionalJwtAuth`.
+- Validate params and query/body with `validateSchema(schema, "params" | "query" | "body")`.
+- Rate-limit sensitive routes with `rateLimit(...)`; per user with `keyGenerator: byUserId`.
+
+---
+
+## Wiring (all three are required)
+
+1. **Controller** in `src/dependencyInjection/container.ts`, after its service:
+   ```ts
+   export const categoryController = new CategoryController(categoryService);
+   ```
+2. **Router** in `src/presentation/http/core/routes/router.ts`. Mount more specific paths first
+   (`/me/submissions` before `/me`, `/places/:placeId/favorite` before `/places`) so they are not
+   shadowed.
+3. **OpenAPI** in `src/presentation/http/core/docs/openapi.ts`: the paths (with every status code
+   the route can return), the response schema in `components.schemas`, and the tag in `tags`.
+   Request bodies come from the Zod schema with `jsonBody(Schema)`; use the shared
+   `components.parameters` (`Page`, `PageSize`, `UuidId`, `IntId`) and `components.responses`
+   (`BadRequest`, `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`, `UnprocessableEntity`).
+   **Response schemas are hand-written: keep them in sync with `responses/*.ts`.**
+
+Then document business rules in AGENTS.md (one section per module: endpoints, auth, rules, error
+classes).
+
+---
+
+## Variants
+
+| Case | Example |
+|---|---|
+| UUID ids (`uuidParamSchema`), enum filters, ISO dates in responses | `sources/` |
+| Id sent by the client, `include` option, `setPublicCache(res)` on public reference data | `geography/` |
+| Resource owned by the user: whole router behind `jwtAuth`, mounted under `/me/...`, `getAuthUser`, service methods take `userId` | `submissions/routes/mySubmissions.routes.ts` |
+| Sub-resource with a parent id (`Router({ mergeParams: true })`, `uuidParam("placeId")`) | `favorites/routes/placeFavorite.routes.ts` |
+| Optional auth and visibility by role (controller passes `statuses`) | `places/`, `events/` |
+| Moderation actions (`POST /:id/approve`, `PATCH /:id/status`) | `submissions/`, `places/` |
+| Union body (`z.discriminatedUnion`) | `submissions/validators/createSubmission.ts` |
+| Same service exposed to LLM clients | `src/presentation/mcp/tools/categories.tools.ts` |
