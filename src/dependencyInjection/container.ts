@@ -40,6 +40,8 @@ import PrismaEventRepository from "@/infrastructure/events/repositories/PrismaEv
 import { EventService } from "@/application/events/services/implementations/EventService";
 import EventController from "@/presentation/http/events/controllers/Event.controller";
 import PrismaFavoriteRepository from "@/infrastructure/favorites/repositories/PrismaFavoriteRepository";
+import PrismaDeviceRepository from "@/infrastructure/devices/repositories/PrismaDeviceRepository";
+import { DeviceService } from "@/application/devices/services/implementations/DeviceService";
 import { FavoriteService } from "@/application/favorites/services/implementations/FavoriteService";
 import FavoriteController from "@/presentation/http/favorites/controllers/Favorite.controller";
 import PrismaSubmissionRepository from "@/infrastructure/submissions/repositories/PrismaSubmissionRepository";
@@ -69,6 +71,7 @@ export const placeRepository = new PrismaPlaceRepository();
 export const eventRepository = new PrismaEventRepository();
 export const favoriteRepository = new PrismaFavoriteRepository();
 export const submissionRepository = new PrismaSubmissionRepository();
+export const deviceRepository = new PrismaDeviceRepository();
 
 // unit of work
 export const userDeletionUOW = new PrismaUserDeletionUnitOfWork();
@@ -101,6 +104,7 @@ export const sourceService = new SourceService(sourceRepository);
 export const placeService = new PlaceService(placeRepository, categoryRepository, sourceRepository);
 export const eventService = new EventService(eventRepository, placeRepository, categoryRepository, sourceRepository);
 export const favoriteService = new FavoriteService(favoriteRepository, placeRepository);
+export const deviceService = new DeviceService(deviceRepository);
 export const submissionService = new SubmissionService(submissionRepository, placeRepository, categoryRepository, submissionApprovalUOW);
 export const userInterestService = new UserInterestService(userRepository, userInterestRepository, categoryRepository);
 export const oAuthService = new OAuthService(userService, googleOAuthProvider, appleOAuthProvider, idGenerator);
