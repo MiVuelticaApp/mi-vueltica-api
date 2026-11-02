@@ -1,78 +1,57 @@
-# DDD Domain Layer Code Generator
+---
+name: Domain Layer Generator
+description: Rules and templates for the domain layer (entities, value objects, repository interfaces).
+---
 
-You are an expert in **Domain-Driven Design (DDD)** and **Clean Architecture**.
+# Domain Layer
 
-Your task is to generate the **domain layer boilerplate code** for a given model, following strict conventions.
+The domain layer holds the business rules. It imports nothing from the other layers (no Prisma, no
+Express, no Zod).
+
+Reference implementation: the `categories` module (`src/domain/categories/`). For other cases, see
+"Variants" at the end.
 
 ---
 
-## Folder Structure
+## Folder structure
 
-For a given `{model}`, generate this structure:
+For a model `{Model}` living in module `{module}` (plural, camelCase: `categories`, `devices`):
 
-/domain/{model}/
-- /entities/{model}.ts
-- /valueobjects/{model}{attribute}.vo.ts
-- /repositories/I{model}Repository.ts
-
----
-
-## Entity Rules
-
-Generate an entity with this exact structure:
-
-```ts
-export class {model} {
-  private props: {model}Props;
-
-  constructor(props: {model}ConstructorProps) {
-    this.props = {
-      {attribute}: {valueObject}.create(props.{attribute}),
-    };
-  }
-
-  get {attribute}() {
-    return this.props.{attribute}.value;
-  }
-}
-
-export interface {model}Props {
-  {attribute}: {valueObject};
-}
-
-export interface {model}ConstructorProps {
-  {attribute}: {dataType};
-}
+```
+src/domain/{module}/
+  entities/{Model}.ts
+  valueObjects/{attribute}.valueObject.ts      # e.g. categoryName.valueObject.ts
+  repositories/I{Model}Repository.ts
 ```
 
-### ✅ Rules:
-- Use **Value Objects for ALL attributes**
-- No primitive types stored directly in the entity
-- Entity must be **immutable from outside**
-- Only expose getters
+A module can hold more than one model (`geography` has `Province` and, later, `Canton`).
 
 ---
 
-## Value Object Rules
+## Value objects
 
-Each attribute must have its own Value Object:
+One value object per attribute that has rules (length, format, range). Plain ids, foreign keys
+and dates can stay primitive.
 
 ```ts
+// src/domain/categories/valueObjects/categoryName.valueObject.ts
 import DataException from "@/domain/core/errors/DataError";
 
-export class {model}{attribute} {
-  private readonly _value: {dataType};
+// Exported so the Zod validator uses the same limit.
+export const CATEGORY_NAME_MAX_LENGTH = 100;
 
-  private constructor(value: {dataType}) {
-    this._value = value;
-  }
+export class CategoryName {
+  private constructor(private readonly _value: string) {}
 
-  static create(value: {dataType}) {
-    if (!value) {
-      throw new DataException("{model}{attribute} cannot be empty");
+  static create(value: string) {
+    const trimmed = typeof value === "string" ? value.trim() : "";
+    if (trimmed.length === 0) {
+      throw new DataException("El nombre de la categoría es requerido");
     }
-
-    return new {model}{attribute}(value);
+    if (trimmed.length > CATEGORY_NAME_MAX_LENGTH) {
+      throw new DataException(`El nombre de la categoría no puede exceder ${CATEGORY_NAME_MAX_LENGTH} caracteres`);
+    }
+    return new CategoryName(trimmed);
   }
 
   get value() {
@@ -81,81 +60,123 @@ export class {model}{attribute} {
 }
 ```
 
-### Rules:
-- Constructor must be **private**
-- Use a static `create` method
-- Validate input (at least non-empty)
-- Throw `DataException` on invalid data
-- Value must be **readonly**
+Rules:
+- Private constructor, static `create`, readonly value.
+- Normalize (e.g. `trim`) and validate in `create`; throw `DataException` (`DataError`, HTTP 400).
+- Messages are in Spanish (they reach the client).
+- Export the limits as constants and reuse them in the Zod validator, so both layers agree.
+- Validation lives here **and** in Zod: Zod gives a clear 400 at the HTTP edge; the value object also
+  protects the MCP tools and any other caller of the services.
 
 ---
 
-## Repository Interface Rules
-
-Generate the repository interface:
+## Entity
 
 ```ts
-import { {model} } from "@/domain/{model}/entities/{model}";
+// src/domain/categories/entities/Category.ts
+import { CategoryName } from "../valueObjects/categoryName.valueObject";
 
-export interface I{model}Repository {
-  all(): Promise<{model}[]>;
-  create({model}: {model}): Promise<void>;
-  findOne(value: string, field?: string): Promise<{model} | null>;
-  update({model}: {model}): Promise<void>;
-  delete({model}Id: string): Promise<void>;
+export class Category {
+  private props: CategoryProps;
+
+  constructor(props: CategoryConstructorProps) {
+    this.props = {
+      id: props.id,
+      name: CategoryName.create(props.name),
+    };
+  }
+
+  get id() { return this.props.id; }
+  get name() { return this.props.name.value; }
+
+  rename(name: string) {
+    this.props.name = CategoryName.create(name);
+  }
+}
+
+export interface CategoryProps {
+  id: number;
+  name: CategoryName;
+}
+
+export interface CategoryConstructorProps {
+  id: number;
+  name: string;
 }
 ```
 
-### Rules:
-- Always use the entity type (never primitives)
-- Keep interface minimal and generic
-- Use async methods with Promises
+Rules:
+- `Props` (internal, value objects) and `ConstructorProps` (input, primitives) interfaces.
+- Getters return primitives (`.value`), never the value object.
+- No public setters. State changes go through methods named after the business action (`rename`,
+  `changeStatus(status, now)`, `markCrawled(at)`), which re-validate through the value objects.
+- Use `Date` for timestamps (not ISO strings); the presentation mapper converts to ISO.
 
 ---
 
-## Input Format
+## Repository interface
 
-You will receive:
+```ts
+// src/domain/categories/repositories/ICategoryRepository.ts
+import { Category } from "@/domain/categories/entities/Category";
+import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
 
-```json
-{
-  "model": "User",
-  "attributes": [
-    { "name": "id", "type": "string" },
-    { "name": "email", "type": "string" }
-  ]
+export interface CategoryListFilters {
+  search?: string;
+}
+
+export interface CategoryUsage {
+  places: number;
+  events: number;
+}
+
+export interface ICategoryRepository {
+  list(params: PaginationParams, filters?: CategoryListFilters): Promise<PaginatedResult<Category>>;
+  find(id: number): Promise<Category | null>;
+  findByName(name: string): Promise<Category | null>;
+  create(name: string): Promise<Category>;
+  update(category: Category): Promise<void>;
+  delete(id: number): Promise<void>;
+  countUsages(id: number): Promise<CategoryUsage>;
 }
 ```
 
+Rules:
+- `list` takes `PaginationParams` (plus an optional `{Model}ListFilters`) and returns
+  `PaginatedResult<{Model}>` (`src/domain/core/pagination/Pagination.ts`).
+- `find` returns `null` when missing; throwing "not found" is the service's job.
+- `create` returns the created entity (with its DB-generated id). When the id is generated by the
+  database, `create` takes the input data (`create(name)`, or a `Create{Model}Data` interface when
+  there are several fields), not an entity.
+- Add specific methods only as the business rules need them (`findByName` for uniqueness,
+  `countUsages` to block a delete with a clear 409). Do not add generic `all()` or
+  `find(value, field)` methods.
+
 ---
 
-## Output Requirements
+## Variants
 
-- Generate ALL files
-- Separate each file with a clear title:
+Look at these modules when the model does not fit the reference:
 
-```md
-### /domain/user/entities/User.ts
+| Case | Example |
+|---|---|
+| UUID id generated by Prisma, enum attribute, nullable fields, `Date` fields, `Create{Model}Data` input | `src/domain/sources/` (`Source`, `sourceType.valueObject.ts`, `ISourceRepository`) |
+| Id sent by the client (not generated), read model for nested data | `src/domain/geography/` (`Province`, `ProvinceListItem`) |
+| Resource owned by a user (`userId` in every query) | `src/domain/favorites/`, `src/domain/submissions/` (`deletePendingOwned(id, userId)`) |
+| Status transitions with side effects | `src/domain/places/` (`Place.changeStatus(status, now)` sets `verifiedAt`) |
+| Rules across several fields | `src/domain/events/valueObjects/eventSchedule.valueObject.ts` (`endsAt >= startsAt`) |
+| Several writes in one transaction | `src/domain/submissions/unitsOfWork/`, `src/domain/users/unitsOfWork/` |
+
+An enum is a `const` array + type + parse function instead of a class:
+
 ```ts
-// code here
+export const SOURCE_TYPES = ["CRAWLER", "COMMUNITY", "TEAM"] as const;
+export type SourceType = (typeof SOURCE_TYPES)[number];
+
+export function parseSourceType(value: unknown): SourceType {
+  if (typeof value === "string" && (SOURCE_TYPES as readonly string[]).includes(value)) {
+    return value as SourceType;
+  }
+  throw new DataException("El tipo de fuente no es válido");
+}
 ```
-```
-
-- Use correct imports
-- Follow naming conventions EXACTLY
-- No explanations, only code
-
----
-
-## Constraints
-
-- Do NOT skip Value Objects
-- Do NOT inline primitives inside entities
-- Do NOT add extra methods unless necessary
-- Do NOT change folder structure
-
----
-
-## Goal
-
-Automate repetitive domain-layer code so the developer can focus only on **business logic**.
