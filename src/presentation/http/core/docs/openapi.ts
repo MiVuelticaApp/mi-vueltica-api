@@ -27,6 +27,11 @@ import { CONTENT_STATUSES } from "@/domain/places/valueObjects/contentStatus.val
 import { TARGET_AUDIENCES } from "@/domain/places/valueObjects/targetAudience.valueObject";
 import { ChangeUserRoleSchema } from "@/presentation/http/users/validators/changeUserRole";
 import { USER_SORT_FIELDS } from "@/presentation/http/users/validators/listUsers";
+import { CreateSubmissionSchema } from "@/presentation/http/submissions/validators/createSubmission";
+import { RejectSubmissionSchema } from "@/presentation/http/submissions/validators/rejectSubmission";
+import { SUBMISSION_SORT_FIELDS } from "@/presentation/http/submissions/validators/listSubmissions";
+import { SUBMISSION_CREATE_RATE_LIMIT } from "@/presentation/http/submissions/submissionLimits";
+import { SUBMISSION_TYPES } from "@/domain/submissions/valueObjects/submissionType.valueObject";
 import { AGE_RANGES, USER_ROLES } from "@/domain/users/entities/User";
 import { DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/domain/core/pagination/Pagination";
 
@@ -869,6 +874,165 @@ const paths: Record<string, Record<string, unknown>> = {
       },
     },
   },
+  "/me/submissions": {
+    post: {
+      tags: ["Submissions"],
+      summary: "Suggest a place or event",
+      description:
+        "Creates a PENDING community suggestion for moderators to review. `type` selects the shape of `data`: " +
+        "`PLACE` uses the same fields as `POST /places`, `EVENT` the same fields as `POST /events` (datetimes ISO 8601 " +
+        "with offset, `endsAt >= startsAt`), in both cases without `sourceId`. Unknown keys (including `sourceId`, " +
+        "`aiScore`, `aiReason`, `status`) are ignored. Unknown canton, category or place → 422. " +
+        `Rate-limited to ${SUBMISSION_CREATE_RATE_LIMIT.max} requests per ${SUBMISSION_CREATE_RATE_LIMIT.windowMs / 60000} minutes per user (429).`,
+      security: bearer,
+      requestBody: jsonBody(CreateSubmissionSchema),
+      responses: {
+        201: jsonResponse("Created submission", "Submission"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        422: responseRef("UnprocessableEntity"),
+        429: errorResponse("Too many requests"),
+      },
+    },
+    get: {
+      tags: ["Submissions"],
+      summary: "List my submissions",
+      description: "Only the caller's own submissions, any status. Default order is `createdAt` descending (newest first).",
+      security: bearer,
+      parameters: [
+        { $ref: "#/components/parameters/Page" },
+        { $ref: "#/components/parameters/PageSize" },
+        {
+          name: "sort",
+          in: "query",
+          description: "Field to sort by: `field` ascending, `-field` descending. Default: `-createdAt`.",
+          schema: { type: "string", enum: SUBMISSION_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
+        },
+      ],
+      responses: {
+        200: { description: "Page of submissions", content: { "application/json": { schema: paginated("Submission") } } },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+      },
+    },
+  },
+  "/me/submissions/{id}": {
+    get: {
+      tags: ["Submissions"],
+      summary: "Get one of my submissions",
+      description: "404 if it does not exist or belongs to another user. Shows the moderator's `reviewNote` when rejected.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        200: jsonResponse("Submission", "Submission"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        404: responseRef("NotFound"),
+      },
+    },
+    delete: {
+      tags: ["Submissions"],
+      summary: "Withdraw one of my submissions",
+      description: "Only while it is PENDING (409 otherwise). 404 if it does not exist or belongs to another user.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        204: { description: "Submission deleted" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        404: responseRef("NotFound"),
+        409: responseRef("Conflict"),
+      },
+    },
+  },
+  "/submissions": {
+    get: {
+      tags: ["Submissions"],
+      summary: "Moderation queue (MODERATOR, ADMIN)",
+      description: "Defaults to PENDING submissions, oldest first. Includes the AI pre-screening fields.",
+      security: bearer,
+      parameters: [
+        { $ref: "#/components/parameters/Page" },
+        { $ref: "#/components/parameters/PageSize" },
+        {
+          name: "sort",
+          in: "query",
+          description: "Field to sort by: `field` ascending, `-field` descending. Default: `createdAt`.",
+          schema: { type: "string", enum: SUBMISSION_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
+        },
+        {
+          name: "status",
+          in: "query",
+          description: "Filter by status (default PENDING)",
+          schema: { type: "string", enum: [...CONTENT_STATUSES], default: "PENDING" },
+        },
+        { name: "type", in: "query", description: "Filter by type", schema: { type: "string", enum: [...SUBMISSION_TYPES] } },
+      ],
+      responses: {
+        200: {
+          description: "Page of submissions",
+          content: { "application/json": { schema: paginated("ModerationSubmission") } },
+        },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+      },
+    },
+  },
+  "/submissions/{id}": {
+    get: {
+      tags: ["Submissions"],
+      summary: "Get a submission (MODERATOR, ADMIN)",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        200: jsonResponse("Submission", "ModerationSubmission"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+      },
+    },
+  },
+  "/submissions/{id}/approve": {
+    post: {
+      tags: ["Submissions"],
+      summary: "Approve a submission (MODERATOR, ADMIN)",
+      description:
+        "In one transaction: creates the Place/Event as PUBLISHED, attributed to the community source, and marks the " +
+        "submission PUBLISHED with the reviewer and date. Only PENDING submissions (409 otherwise, also when another " +
+        "moderator approved it first). References are re-checked (422 if the canton, category or place no longer exists).",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        200: jsonResponse("Approved submission and the created resource", "ApproveSubmissionResponse"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+        409: responseRef("Conflict"),
+        422: responseRef("UnprocessableEntity"),
+      },
+    },
+  },
+  "/submissions/{id}/reject": {
+    post: {
+      tags: ["Submissions"],
+      summary: "Reject a submission (MODERATOR, ADMIN)",
+      description: "Only PENDING submissions (409 otherwise). The reason is stored as `reviewNote` and shown to the author.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      requestBody: jsonBody(RejectSubmissionSchema),
+      responses: {
+        200: jsonResponse("Rejected submission", "ModerationSubmission"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+        409: responseRef("Conflict"),
+      },
+    },
+  },
   "/system/min-frontend-version": {
     get: {
       tags: ["System"],
@@ -924,6 +1088,7 @@ const openApiDocument = {
     { name: "Events" },
     { name: "Favorites" },
     { name: "Users" },
+    { name: "Submissions" },
     { name: "System" },
   ],
   paths,
@@ -1136,6 +1301,50 @@ const openApiDocument = {
             required: ["place"],
           },
         ],
+      },
+      Submission: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          userId: { type: "string", format: "uuid", description: "Author" },
+          type: { type: "string", enum: [...SUBMISSION_TYPES] },
+          data: {
+            type: "object",
+            description: "The suggested fields: a POST /places body (PLACE) or POST /events body (EVENT), without sourceId. Event dates as ISO 8601 UTC.",
+          },
+          status: { $ref: "#/components/schemas/ContentStatus" },
+          reviewedById: { type: ["string", "null"], format: "uuid" },
+          reviewedAt: { type: ["string", "null"], format: "date-time" },
+          reviewNote: { type: ["string", "null"], description: "Moderator's reason when REJECTED" },
+          createdAt: { type: "string", format: "date-time" },
+        },
+        required: ["id", "userId", "type", "data", "status", "reviewedById", "reviewedAt", "reviewNote", "createdAt"],
+      },
+      ModerationSubmission: {
+        allOf: [
+          { $ref: "#/components/schemas/Submission" },
+          {
+            type: "object",
+            properties: {
+              aiScore: { type: ["number", "null"], description: "Reserved for the AI moderation job; not writable through the API" },
+              aiReason: { type: ["string", "null"], description: "Reserved for the AI moderation job; not writable through the API" },
+            },
+            required: ["aiScore", "aiReason"],
+          },
+        ],
+      },
+      ApproveSubmissionResponse: {
+        type: "object",
+        properties: {
+          submission: { $ref: "#/components/schemas/ModerationSubmission" },
+          created: {
+            type: "object",
+            description: "The Place or Event created from the submission",
+            properties: { type: { type: "string", enum: [...SUBMISSION_TYPES] }, id: { type: "string", format: "uuid" } },
+            required: ["type", "id"],
+          },
+        },
+        required: ["submission", "created"],
       },
       MyProfileResponse: {
         allOf: [
