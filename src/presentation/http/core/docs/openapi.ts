@@ -9,6 +9,11 @@ import { DeleteAccountSchema } from "@/presentation/http/users/validators/delete
 import { CreateCategorySchema } from "@/presentation/http/categories/validators/createCategory";
 import { UpdateCategorySchema } from "@/presentation/http/categories/validators/updateCategory";
 import { CATEGORY_SORT_FIELDS } from "@/presentation/http/categories/validators/listCategories";
+import { CreateProvinceSchema } from "@/presentation/http/geography/validators/createProvince";
+import { UpdateProvinceSchema } from "@/presentation/http/geography/validators/updateProvince";
+import { PROVINCE_INCLUDES, PROVINCE_SORT_FIELDS } from "@/presentation/http/geography/validators/listProvinces";
+import { PROVINCE_NAME_MAX_LENGTH } from "@/domain/geography/valueObjects/provinceName.valueObject";
+import { REFERENCE_DATA_MAX_AGE_SECONDS } from "@/presentation/http/core/utils/cacheControl";
 import { CreateSourceSchema } from "@/presentation/http/sources/validators/createSource";
 import { UpdateSourceSchema } from "@/presentation/http/sources/validators/updateSource";
 import { SOURCE_SORT_FIELDS } from "@/presentation/http/sources/validators/listSources";
@@ -57,6 +62,14 @@ const bearer = [{ bearerAuth: [] }];
 const optionalBearer = [{}, { bearerAuth: [] }];
 
 const responseRef = (name: string) => ({ $ref: `#/components/responses/${name}` });
+
+// Response header sent by cacheable public reads (setPublicCache), only on success.
+const publicCacheHeaders = {
+  "Cache-Control": {
+    description: "Cacheable public reference data.",
+    schema: { type: "string", example: `public, max-age=${REFERENCE_DATA_MAX_AGE_SECONDS}` },
+  },
+};
 
 // Reusable pieces for paginated list endpoints (see Pagination & errors in AGENTS.md).
 // Endpoints should override the `Sort` description/enum with their own sortable fields.
@@ -318,6 +331,97 @@ const paths: Record<string, Record<string, unknown>> = {
       parameters: [{ $ref: "#/components/parameters/IntId" }],
       responses: {
         204: { description: "Category deleted" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+        409: responseRef("Conflict"),
+      },
+    },
+  },
+  "/provinces": {
+    get: {
+      tags: ["Provinces"],
+      summary: "List provinces",
+      description:
+        "Public and cacheable. Paginated; default order is by id (INEC code). " +
+        "Send `include=cantons` to nest each province's cantons, ordered by id.",
+      parameters: [
+        { $ref: "#/components/parameters/Page" },
+        { $ref: "#/components/parameters/PageSize" },
+        {
+          name: "sort",
+          in: "query",
+          description: "Field to sort by: `field` ascending, `-field` descending.",
+          schema: { type: "string", enum: PROVINCE_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
+        },
+        {
+          name: "include",
+          in: "query",
+          description: "Related data to nest in each item.",
+          schema: { type: "string", enum: [...PROVINCE_INCLUDES] },
+        },
+      ],
+      responses: {
+        200: {
+          description: "Page of provinces",
+          headers: publicCacheHeaders,
+          content: { "application/json": { schema: paginated("Province") } },
+        },
+        400: responseRef("BadRequest"),
+      },
+    },
+    post: {
+      tags: ["Provinces"],
+      summary: "Create a province",
+      description: "ADMIN only. The `id` is the INEC province code and must be provided. 409 if the id or the name already exists.",
+      security: bearer,
+      requestBody: jsonBody(CreateProvinceSchema),
+      responses: {
+        201: jsonResponse("Created province", "Province"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        409: responseRef("Conflict"),
+      },
+    },
+  },
+  "/provinces/{id}": {
+    get: {
+      tags: ["Provinces"],
+      summary: "Get a province",
+      description: "Public and cacheable.",
+      parameters: [{ $ref: "#/components/parameters/IntId" }],
+      responses: {
+        200: { ...jsonResponse("Province", "Province"), headers: publicCacheHeaders },
+        400: responseRef("BadRequest"),
+        404: responseRef("NotFound"),
+      },
+    },
+    put: {
+      tags: ["Provinces"],
+      summary: "Rename a province",
+      description: "ADMIN only. The id (INEC code) cannot change. 409 if another province already has that name.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/IntId" }],
+      requestBody: jsonBody(UpdateProvinceSchema),
+      responses: {
+        200: jsonResponse("Updated province", "Province"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+        409: responseRef("Conflict"),
+      },
+    },
+    delete: {
+      tags: ["Provinces"],
+      summary: "Delete a province",
+      description: "ADMIN only. 409 while the province has cantons.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/IntId" }],
+      responses: {
+        204: { description: "Province deleted" },
         400: responseRef("BadRequest"),
         401: responseRef("Unauthorized"),
         403: responseRef("Forbidden"),
@@ -919,6 +1023,7 @@ const openApiDocument = {
     { name: "Auth" },
     { name: "Profile" },
     { name: "Categories" },
+    { name: "Provinces" },
     { name: "Sources" },
     { name: "Places" },
     { name: "Events" },
@@ -1005,6 +1110,24 @@ const openApiDocument = {
       Category: {
         type: "object",
         properties: { id: { type: "integer" }, name: { type: "string", minLength: 1, maxLength: 100 } },
+        required: ["id", "name"],
+      },
+      CantonSummary: {
+        type: "object",
+        properties: { id: { type: "integer", description: "INEC code (provinceCode * 100 + cantonCode)" }, name: { type: "string" } },
+        required: ["id", "name"],
+      },
+      Province: {
+        type: "object",
+        properties: {
+          id: { type: "integer", description: "INEC province code" },
+          name: { type: "string", minLength: 1, maxLength: PROVINCE_NAME_MAX_LENGTH },
+          cantons: {
+            type: "array",
+            description: "Only in the list, and only with `include=cantons`.",
+            items: { $ref: "#/components/schemas/CantonSummary" },
+          },
+        },
         required: ["id", "name"],
       },
       SourceType: { type: "string", enum: [...SOURCE_TYPES] },

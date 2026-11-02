@@ -261,6 +261,29 @@ Delete returns 409 `CategoryInUseError` while any `Place` or `Event` references 
 `UserInterest` rows cascade at DB level so they never block it. `ICategoryRepository.findByIds`
 and `CategoryResponse` / `CategoryDtoMapper` are meant to be reused by other modules (user interests).
 
+## Provinces
+
+`/api/v1/provinces` (module `geography`: `src/{domain,application,infrastructure}/geography/`,
+`src/presentation/http/geography/`): `GET /` (paginated, sort `id`/`name`, default `id` asc, optional
+`include=cantons`) and `GET /:id` are public; `POST`, `PUT /:id`, `DELETE /:id` require `jwtAuth` +
+`requireRole("ADMIN")`.
+
+- **Id** is the INEC province code, always sent by the client in `POST { id, name }` (never generated) and
+  immutable (`PUT` only takes `{ name }`). Duplicate id or name → 409 `ProvinceAlreadyExistsError`; a P2002
+  race also maps to 409. Names are trimmed, 1-191 chars; uniqueness follows the `utf8mb4_unicode_ci`
+  collation, so it is case- and accent-insensitive ("san jose" clashes with "San José").
+- **Delete** returns 409 `ProvinceInUseError` while the province has cantons (`Canton.provinceId` is
+  `ON DELETE RESTRICT`).
+- **`include=cantons`** nests `cantons: { id, name }[]` (ordered by id) in each list item through the
+  `ProvinceListItem` read model; without it the field is omitted. `CantonSummary` is meant to be reused by
+  the canton module (#8).
+- **Caching**: successful `GET`s send `Cache-Control: public, max-age=3600` via `setPublicCache(res)`
+  (`src/presentation/http/core/utils/cacheControl.ts`), called right before responding so errors are never
+  cached. Reuse it for other public reference data.
+- **Seed caveat**: the seed upserts provinces by id with `update: { name }`, so a rename made through the API
+  is reverted on the next deploy unless `seed/data/geography.ts` is changed too. Provinces created through
+  the API survive (the seed never deletes), but the seed's own validation only covers the data files.
+
 ## Sources
 
 `/api/v1/sources`: `GET /` (paginated, sort `name`/`type`/`lastCrawledAt`, optional `type` enum filter and
