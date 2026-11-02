@@ -7,12 +7,16 @@ import placesRouter from "@/presentation/http/places/routes/places.routes";
 import placeFavoriteRouter from "@/presentation/http/favorites/routes/placeFavorite.routes";
 import eventsRouter from "@/presentation/http/events/routes/events.routes";
 import usersRouter from "@/presentation/http/users/routes/users.routes";
+import mySubmissionsRouter from "@/presentation/http/submissions/routes/mySubmissions.routes";
+import submissionsRouter from "@/presentation/http/submissions/routes/submissions.routes";
 import systemRouter from "@/presentation/http/system/routes/system.route";
 import { Router } from "express";
 const router = Router();
 
 // user routes
 router.use("/auth", authRouter);
+// Before /me so profileRouter never handles the submissions sub-resource.
+router.use("/me/submissions", mySubmissionsRouter);
 router.use('/me', profileRouter);
 router.use("/categories", categoriesRouter);
 router.use("/sources", sourcesRouter);
@@ -21,6 +25,7 @@ router.use("/places/:placeId/favorite", placeFavoriteRouter);
 router.use("/places", placesRouter);
 router.use("/events", eventsRouter);
 router.use("/users", usersRouter);
+router.use("/submissions", submissionsRouter);
 router.use("/system", systemRouter);
 
 
