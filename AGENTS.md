@@ -394,6 +394,27 @@ Push-notification devices of the authenticated user. `/api/v1/me/devices` (`myDe
   clients that send no body behave as before.
 - Account deletion removes devices through the `Device.userId` `ON DELETE CASCADE`.
 
+## Notifications
+
+Log of the events each user was notified about. `/api/v1/me/notifications` (`myNotificationsRouter`, mounted
+**before** `/me`, whole router behind `jwtAuth`). **No create endpoint**: rows are written only by
+`NotificationService.notify`. Push delivery (FCM/APNs) and the job that matches events to user interests are
+not implemented yet; that job is meant to call `notify` and send the push only when it returns `true`.
+
+- `GET /` paginated, sort whitelist `sentAt`, default **desc**, tie-breaker `id`. Items are
+  `{ id, sentAt, event: { id, title, startsAt, endsAt, placeId } }` (the full event is `GET /events/:id`).
+  Only notifications whose event is currently `PUBLISHED` are listed and counted (`where: { event: { status:
+  "PUBLISHED" } }`): unpublishing hides them (the row stays) and re-publishing brings them back, same as
+  favorites.
+- `DELETE /:id` (UUID) → 204. `deleteMany({ id, userId })`: an unknown id or another user's notification is a
+  404 `NotificationNotFoundError`. Works whatever the event status.
+- `notify(userId, eventId): Promise<boolean>` is idempotent thanks to `@@unique([userId, eventId])`: it is a
+  plain `create`, and a P2002 on that index means "already notified" → `false` (a single INSERT, so concurrent
+  calls never duplicate). **Not `createMany({ skipDuplicates })`**: that is `INSERT IGNORE`, which on MariaDB
+  also turns foreign key errors into warnings, so an unknown user or event would be silently ignored instead
+  of failing.
+- Notifications are removed by `ON DELETE CASCADE` when the user or the event is deleted.
+
 ## Submissions
 
 Community suggestions of places/events that become real content once a moderator approves them. Crawlers are
