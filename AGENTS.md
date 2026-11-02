@@ -372,6 +372,28 @@ clears all) and **replaces the whole set**: `PrismaUserInterestRepository.replac
 `ICategoryRepository.findByIds`) or the API answers 422 `InvalidCategoryIdsError`. `GET /me` also
 includes `interests`.
 
+## Devices
+
+Push-notification devices of the authenticated user. `/api/v1/me/devices` (`myDevicesRouter`, mounted
+**before** `/me`, whole router behind `jwtAuth`). No push delivery yet (follow-up to #17).
+
+- `POST /` `{ platform: "ANDROID" | "IOS", pushToken }` registers the device and **always answers 200**
+  (`DeviceResponse`). It is an idempotent upsert on the unique `pushToken`, written as raw
+  `INSERT ... ON DUPLICATE KEY UPDATE` in `PrismaDeviceRepository`. **Not Prisma's `upsert`**: on MariaDB
+  that is a read plus a write, and concurrent calls with the same token failed with P2002 (409) or error
+  1020 "Record has changed since last read" (500). An existing token gets `userId` and `platform` updated, which
+  **moves a token from another user to the caller** (same phone, new login). The app calls it on every
+  login; `updatedAt` (`@updatedAt`) is "last registered". `pushToken` is trimmed, 1-512 chars
+  (`PushToken` value object + Zod).
+- `GET /` paginated, only the caller's devices; sort whitelist `updatedAt`, default **desc**, tie-breaker `id`.
+- `DELETE /:id` (UUID) → 204. `deleteMany({ id, userId })`: an unknown id or another user's device is a
+  404 `DeviceNotFoundError` (existence is not leaked).
+- **Logout**: `POST /auth/logout` accepts an optional body `{ pushToken? }` (`LogoutSchema`; Express 5
+  leaves `req.body` undefined without a body). With a token, `DeviceService.removeByPushToken` deletes it
+  only if it belongs to the caller, and never fails; the response is unchanged (200 `{ message }`), so
+  clients that send no body behave as before.
+- Account deletion removes devices through the `Device.userId` `ON DELETE CASCADE`.
+
 ## Submissions
 
 Community suggestions of places/events that become real content once a moderator approves them. Crawlers are

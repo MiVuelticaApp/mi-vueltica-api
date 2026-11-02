@@ -40,12 +40,15 @@ import PrismaEventRepository from "@/infrastructure/events/repositories/PrismaEv
 import { EventService } from "@/application/events/services/implementations/EventService";
 import EventController from "@/presentation/http/events/controllers/Event.controller";
 import PrismaFavoriteRepository from "@/infrastructure/favorites/repositories/PrismaFavoriteRepository";
+import PrismaDeviceRepository from "@/infrastructure/devices/repositories/PrismaDeviceRepository";
+import { DeviceService } from "@/application/devices/services/implementations/DeviceService";
 import { FavoriteService } from "@/application/favorites/services/implementations/FavoriteService";
 import FavoriteController from "@/presentation/http/favorites/controllers/Favorite.controller";
 import PrismaSubmissionRepository from "@/infrastructure/submissions/repositories/PrismaSubmissionRepository";
 import { PrismaSubmissionApprovalUnitOfWork } from "@/infrastructure/submissions/unitsOfWork/PrismaSubmissionApprovalUnitOfWork";
 import { SubmissionService } from "@/application/submissions/services/implementations/SubmissionService";
 import MySubmissionsController from "@/presentation/http/submissions/controllers/MySubmissions.controller";
+import MyDevicesController from "@/presentation/http/devices/controllers/MyDevices.controller";
 import SubmissionsController from "@/presentation/http/submissions/controllers/Submissions.controller";
 import ResendEmailProvider from "@/infrastructure/email/providers/ResendEmailProvider";
 import MyProfileController from "@/presentation/http/users/controllers/MyProfile.controller";
@@ -69,6 +72,7 @@ export const placeRepository = new PrismaPlaceRepository();
 export const eventRepository = new PrismaEventRepository();
 export const favoriteRepository = new PrismaFavoriteRepository();
 export const submissionRepository = new PrismaSubmissionRepository();
+export const deviceRepository = new PrismaDeviceRepository();
 
 // unit of work
 export const userDeletionUOW = new PrismaUserDeletionUnitOfWork();
@@ -101,6 +105,7 @@ export const sourceService = new SourceService(sourceRepository);
 export const placeService = new PlaceService(placeRepository, categoryRepository, sourceRepository);
 export const eventService = new EventService(eventRepository, placeRepository, categoryRepository, sourceRepository);
 export const favoriteService = new FavoriteService(favoriteRepository, placeRepository);
+export const deviceService = new DeviceService(deviceRepository);
 export const submissionService = new SubmissionService(submissionRepository, placeRepository, categoryRepository, submissionApprovalUOW);
 export const userInterestService = new UserInterestService(userRepository, userInterestRepository, categoryRepository);
 export const oAuthService = new OAuthService(userService, googleOAuthProvider, appleOAuthProvider, idGenerator);
@@ -144,6 +149,7 @@ export const placeController = new PlaceController(placeService, favoriteService
 export const eventController = new EventController(eventService);
 export const favoriteController = new FavoriteController(favoriteService);
 export const mySubmissionsController = new MySubmissionsController(submissionService);
+export const myDevicesController = new MyDevicesController(deviceService);
 export const submissionsController = new SubmissionsController(submissionService);
 export const adminUsersController = new AdminUsersController(
   adminUserService,
@@ -154,7 +160,8 @@ export const authController = new AuthController(
   oAuthService,
   jwtService,
   userService,
-  testLoginService
+  testLoginService,
+  deviceService,
 )
 
 export const systemController = new SystemController(ENV.MIN_FRONTEND_VERSION);

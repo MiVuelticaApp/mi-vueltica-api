@@ -3,6 +3,10 @@ import ENV from "@/presentation/http/core/config/env";
 import { GoogleLoginSchema } from "@/presentation/http/auth/validators/googleLogin";
 import { AppleLoginSchema } from "@/presentation/http/auth/validators/appleLogin";
 import { TestLoginSchema } from "@/presentation/http/auth/validators/testLogin";
+import { LogoutBodySchema } from "@/presentation/http/auth/validators/logout";
+import { RegisterDeviceSchema } from "@/presentation/http/devices/validators/registerDevice";
+import { DEVICE_SORT_FIELDS } from "@/presentation/http/devices/validators/listDevices";
+import { PLATFORMS } from "@/domain/devices/valueObjects/platform.valueObject";
 import { UpdateUserSchema } from "@/presentation/http/users/validators/updateUser";
 import { UpdateInterestsSchema } from "@/presentation/http/users/validators/updateInterests";
 import { DeleteAccountSchema } from "@/presentation/http/users/validators/deleteAccount";
@@ -143,10 +147,15 @@ const paths: Record<string, Record<string, unknown>> = {
     post: {
       tags: ["Auth"],
       summary: "Logout",
-      description: "Tokens are stateless; the client is expected to discard its token.",
+      description:
+        "Tokens are stateless; the client is expected to discard its token. The body is optional: send the " +
+        "current device's `pushToken` to stop it receiving this user's notifications (ignored if the token is " +
+        "unknown or belongs to another user).",
       security: bearer,
+      requestBody: { ...jsonBody(LogoutBodySchema), required: false },
       responses: {
         200: jsonResponse("Logged out", "Message"),
+        400: responseRef("BadRequest"),
         401: responseRef("Unauthorized"),
       },
     },
@@ -256,6 +265,58 @@ const paths: Record<string, Record<string, unknown>> = {
         },
         400: responseRef("BadRequest"),
         401: responseRef("Unauthorized"),
+      },
+    },
+  },
+  "/me/devices": {
+    get: {
+      tags: ["Devices"],
+      summary: "List my devices",
+      description: "Devices registered for push notifications. Default order is `updatedAt` descending (most recently registered first).",
+      security: bearer,
+      parameters: [
+        { $ref: "#/components/parameters/Page" },
+        { $ref: "#/components/parameters/PageSize" },
+        {
+          name: "sort",
+          in: "query",
+          description: "Field to sort by: `field` ascending, `-field` descending. Default: `-updatedAt`.",
+          schema: { type: "string", enum: DEVICE_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
+        },
+      ],
+      responses: {
+        200: { description: "Page of devices", content: { "application/json": { schema: paginated("Device") } } },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+      },
+    },
+    post: {
+      tags: ["Devices"],
+      summary: "Register this device",
+      description:
+        "Idempotent upsert by `pushToken`, always 200: call it on every login. If the token already belongs to " +
+        "another user it is moved to the caller (same phone, new login).",
+      security: bearer,
+      requestBody: jsonBody(RegisterDeviceSchema),
+      responses: {
+        200: jsonResponse("Registered device", "Device"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+      },
+    },
+  },
+  "/me/devices/{id}": {
+    delete: {
+      tags: ["Devices"],
+      summary: "Remove one of my devices",
+      description: "404 if it does not exist or belongs to another user.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        204: { description: "Device removed" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        404: responseRef("NotFound"),
       },
     },
   },
@@ -1290,6 +1351,7 @@ const openApiDocument = {
     { name: "Places" },
     { name: "Events" },
     { name: "Favorites" },
+    { name: "Devices" },
     { name: "Users" },
     { name: "Submissions" },
     { name: "System" },
@@ -1364,6 +1426,16 @@ const openApiDocument = {
         type: "object",
         properties: { message: { type: "string" } },
         required: ["message"],
+      },
+      Device: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          platform: { type: "string", enum: [...PLATFORMS] },
+          pushToken: { type: "string" },
+          updatedAt: { type: "string", format: "date-time", description: "Last time the device was registered" },
+        },
+        required: ["id", "platform", "pushToken", "updatedAt"],
       },
       UserResponse: {
         type: "object",

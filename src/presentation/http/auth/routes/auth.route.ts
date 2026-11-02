@@ -4,6 +4,7 @@ import validateSchema from "@/presentation/http/core/middlewares/validateSchema"
 import { GoogleLoginSchema } from "../validators/googleLogin";
 import { AppleLoginSchema } from "../validators/appleLogin";
 import { TestLoginSchema } from "../validators/testLogin";
+import { LogoutSchema } from "../validators/logout";
 import { authController } from "@/dependencyInjection/container";
 import jwtAuth from "../middlewares/jwtAuth";
 import rateLimit from "@/presentation/http/core/middlewares/rateLimit";
@@ -42,6 +43,7 @@ authRouter.post("/refresh",
 // Logout (client-side token removal)
 authRouter.post("/logout",
   jwtAuth, // Require valid token to logout
+  validateSchema(LogoutSchema),
   asyncHandler(authController.logout.bind(authController))
 );
 
