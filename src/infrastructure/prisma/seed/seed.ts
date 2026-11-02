@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { prisma } from "../client";
 import { CATEGORIES } from "./data/categories";
+import { SOURCES } from "./data/sources";
 import {
   CANTONS,
   PROVINCES,
@@ -83,12 +84,21 @@ export async function main(): Promise<void> {
           create: { name },
         });
       }
+
+      // Only created, never modified: an admin may rename it through /sources.
+      for (const { id, name, type } of SOURCES) {
+        await tx.source.upsert({
+          where: { id },
+          update: {},
+          create: { id, name, type },
+        });
+      }
     },
     { timeout: 60_000, maxWait: 10_000 },
   );
 
   console.log(
-    `Seed complete: ${PROVINCES.length} provinces, ${CANTONS.length} cantons, ${CATEGORIES.length} categories`,
+    `Seed complete: ${PROVINCES.length} provinces, ${CANTONS.length} cantons, ${CATEGORIES.length} categories, ${SOURCES.length} sources`,
   );
 }
 

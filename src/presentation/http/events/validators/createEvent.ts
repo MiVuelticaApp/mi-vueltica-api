@@ -23,21 +23,31 @@ export const eventDescriptionField = z
 
 export const eventTargetAudienceField = z.enum(TARGET_AUDIENCES, { error: "El público objetivo no es válido" });
 
-export const CreateEventSchema = z
-  .object({
-    placeId: z.uuid({ error: "El lugar debe ser un UUID válido" }).nullish(),
-    categoryId: z
-      .number({ error: "La categoría es requerida" })
-      .int("La categoría debe ser un número entero")
-      .positive("La categoría debe ser un número positivo"),
-    sourceId: z.uuid({ error: "La fuente debe ser un UUID válido" }).nullish(),
-    title: eventTitleField,
-    description: eventDescriptionField.nullish(),
-    startsAt: dateTimeField("La fecha de inicio"),
-    endsAt: dateTimeField("La fecha de fin").nullish(),
-    targetAudience: eventTargetAudienceField.default("EVERYONE"),
-  })
-  .refine((event) => !event.endsAt || event.endsAt.getTime() >= event.startsAt.getTime(), {
-    path: ["endsAt"],
-    message: "La fecha de fin no puede ser anterior a la de inicio",
-  });
+/**
+ * Event body without the cross-field rule. Zod 4 forbids `.omit()`/`.pick()` on refined
+ * objects, so schemas derived from it (e.g. submissions) apply `endsAtNotBeforeStartsAt` themselves.
+ */
+export const CreateEventBaseSchema = z.object({
+  placeId: z.uuid({ error: "El lugar debe ser un UUID válido" }).nullish(),
+  categoryId: z
+    .number({ error: "La categoría es requerida" })
+    .int("La categoría debe ser un número entero")
+    .positive("La categoría debe ser un número positivo"),
+  sourceId: z.uuid({ error: "La fuente debe ser un UUID válido" }).nullish(),
+  title: eventTitleField,
+  description: eventDescriptionField.nullish(),
+  startsAt: dateTimeField("La fecha de inicio"),
+  endsAt: dateTimeField("La fecha de fin").nullish(),
+  targetAudience: eventTargetAudienceField.default("EVERYONE"),
+});
+
+/** `endsAt >= startsAt` (also enforced by the `EventSchedule` value object). */
+export const endsAtNotBeforeStartsAt = (event: { startsAt: Date; endsAt?: Date | null }) =>
+  !event.endsAt || event.endsAt.getTime() >= event.startsAt.getTime();
+
+export const endsAtNotBeforeStartsAtError = {
+  path: ["endsAt"],
+  message: "La fecha de fin no puede ser anterior a la de inicio",
+};
+
+export const CreateEventSchema = CreateEventBaseSchema.refine(endsAtNotBeforeStartsAt, endsAtNotBeforeStartsAtError);
