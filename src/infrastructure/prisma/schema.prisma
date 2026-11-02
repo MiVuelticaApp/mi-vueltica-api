@@ -233,6 +233,7 @@ model Submission {
   aiReason     String?       @db.Text
   reviewedById String?
   reviewedAt   DateTime?
+  reviewNote   String?       @db.Text // moderator's reason when rejecting (aiReason is reserved for the AI job)
 
   createdAt DateTime @default(now())
 
