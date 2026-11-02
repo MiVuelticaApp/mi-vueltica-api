@@ -250,6 +250,28 @@ and `CategoryResponse` / `CategoryDtoMapper` are meant to be reused by other mod
   is reverted on the next deploy unless `seed/data/geography.ts` is changed too. Provinces created through
   the API survive (the seed never deletes), but the seed's own validation only covers the data files.
 
+## Cantons
+
+Same `geography` module as provinces. `GET /api/v1/provinces/:provinceId/cantons` (`provinceCantonsRouter`,
+`Router({ mergeParams: true })`, mounted **before** `/provinces`; paginated, sort `id`/`name`, default `id` asc)
+and `GET /api/v1/cantons/:id` are public and cacheable (`setPublicCache`); `POST /cantons`, `PUT /cantons/:id`
+and `DELETE /cantons/:id` require `jwtAuth` + `requireRole("ADMIN")`. Responses are `{ id, provinceId, name }`.
+
+- **Id** is the INEC canton code, always sent by the client in `POST { id, provinceId, name }`, and must be
+  `provinceId * 100 + cantonNumber` with cantonNumber 1-99 (`assertCantonIdMatchesProvince`, checked by the
+  `Canton` entity → 400 `DataException`; Zod only checks the types, so the rule lives in one place). The id
+  encodes the province, so both are immutable: `PUT` only takes `{ name }` (other keys are stripped).
+- **Province**: unknown `provinceId` in the POST body → 422 `InvalidProvinceError`; unknown `provinceId` in the
+  list URL → 404 `ProvinceNotFoundError` (not an empty list).
+- **Uniqueness**: duplicate id or duplicate name within the same province → 409 `CantonAlreadyExistsError`
+  (`withId()` / `withName()`); same collation as provinces (case- and accent-insensitive); a P2002 race also
+  maps to 409. The same name is allowed in different provinces.
+- **Delete** returns 409 `CantonInUseError` while any `Place` references the canton (`Place.cantonId` is
+  `ON DELETE RESTRICT`).
+- **Seed caveat**: same as provinces. The seed upserts cantons by id with `update: { name, provinceId }`, so a
+  rename made through the API is reverted on the next deploy unless `seed/data/geography.ts` is changed too.
+  Cantons created through the API survive; the seed's "84 cantons" check only covers the data file.
+
 ## Sources
 
 `/api/v1/sources`: `GET /` (paginated, sort `name`/`type`/`lastCrawledAt`, optional `type` enum filter and
@@ -288,7 +310,7 @@ token or missing/soft-deleted user continues anonymously, never 401; a valid one
   `{ open: "HH:MM", close: "HH:MM" }` (24h, `open < close`, no overlaps within a day, touching is allowed); `[]` = closed
   that day. Zod schema in `validators/openingHours.ts`, re-validated by the `OpeningHours` value object; stored as JSON.
 - **422 rules**: unknown `cantonId`/`categoryId`/`sourceId` give `InvalidCantonError` / `InvalidCategoryError` /
-  `InvalidSourceError` on create and update. `cantonExists` lives in `IPlaceRepository` until the canton module (#8) exists.
+  `InvalidSourceError` on create and update. `cantonExists` still lives in `IPlaceRepository`; moving it to `ICantonRepository` is a pending follow-up.
 - **verifiedAt**: `Place.changeStatus(status, now)` sets `verifiedAt = now` whenever the place transitions to
   `PUBLISHED` (an already-PUBLISHED place keeps its `verifiedAt`); other statuses leave it untouched.
 - **isFavorite**: `GET /:id` adds `isFavorite: boolean` when the caller is authenticated (see Favorites) and omits it for anonymous callers; the list endpoint is unchanged.
