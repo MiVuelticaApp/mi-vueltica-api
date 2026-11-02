@@ -3,6 +3,8 @@ import authRouter from "@/presentation/http/auth/routes/auth.route";
 import profileRouter from "@/presentation/http/users/routes/profiles.routes";
 import categoriesRouter from "@/presentation/http/categories/routes/categories.routes";
 import provincesRouter from "@/presentation/http/geography/routes/provinces.routes";
+import provinceCantonsRouter from "@/presentation/http/geography/routes/provinceCantons.routes";
+import cantonsRouter from "@/presentation/http/geography/routes/cantons.routes";
 import sourcesRouter from "@/presentation/http/sources/routes/sources.routes";
 import placesRouter from "@/presentation/http/places/routes/places.routes";
 import placeFavoriteRouter from "@/presentation/http/favorites/routes/placeFavorite.routes";
@@ -20,7 +22,10 @@ router.use("/auth", authRouter);
 router.use("/me/submissions", mySubmissionsRouter);
 router.use('/me', profileRouter);
 router.use("/categories", categoriesRouter);
+// Before /provinces so the cantons sub-resource is never shadowed.
+router.use("/provinces/:provinceId/cantons", provinceCantonsRouter);
 router.use("/provinces", provincesRouter);
+router.use("/cantons", cantonsRouter);
 router.use("/sources", sourcesRouter);
 // Before /places so the favorite sub-resource is never shadowed.
 router.use("/places/:placeId/favorite", placeFavoriteRouter);

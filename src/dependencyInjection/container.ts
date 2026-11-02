@@ -27,6 +27,9 @@ import CategoryController from "@/presentation/http/categories/controllers/Categ
 import PrismaProvinceRepository from "@/infrastructure/geography/repositories/PrismaProvinceRepository";
 import { ProvinceService } from "@/application/geography/services/implementations/ProvinceService";
 import ProvinceController from "@/presentation/http/geography/controllers/Province.controller";
+import PrismaCantonRepository from "@/infrastructure/geography/repositories/PrismaCantonRepository";
+import { CantonService } from "@/application/geography/services/implementations/CantonService";
+import CantonController from "@/presentation/http/geography/controllers/Canton.controller";
 import PrismaSourceRepository from "@/infrastructure/sources/repositories/PrismaSourceRepository";
 import { SourceService } from "@/application/sources/services/implementations/SourceService";
 import SourceController from "@/presentation/http/sources/controllers/Source.controller";
@@ -59,6 +62,7 @@ import { createMcpServerFactory } from "@/presentation/mcp/server/createMcpServe
 export const userRepository = new PrismaUsersRepository();
 export const categoryRepository = new PrismaCategoryRepository();
 export const provinceRepository = new PrismaProvinceRepository();
+export const cantonRepository = new PrismaCantonRepository();
 export const userInterestRepository = new PrismaUserInterestRepository();
 export const sourceRepository = new PrismaSourceRepository();
 export const placeRepository = new PrismaPlaceRepository();
@@ -92,6 +96,7 @@ export const jwtService = new JwtTokenService();
 export const userService = new UserService(userRepository);
 export const categoryService = new CategoryService(categoryRepository);
 export const provinceService = new ProvinceService(provinceRepository);
+export const cantonService = new CantonService(cantonRepository, provinceRepository);
 export const sourceService = new SourceService(sourceRepository);
 export const placeService = new PlaceService(placeRepository, categoryRepository, sourceRepository);
 export const eventService = new EventService(eventRepository, placeRepository, categoryRepository, sourceRepository);
@@ -133,6 +138,7 @@ export const myInterestsController = new MyInterestsController(userInterestServi
 
 export const categoryController = new CategoryController(categoryService);
 export const provinceController = new ProvinceController(provinceService);
+export const cantonController = new CantonController(cantonService);
 export const sourceController = new SourceController(sourceService);
 export const placeController = new PlaceController(placeService, favoriteService);
 export const eventController = new EventController(eventService);
