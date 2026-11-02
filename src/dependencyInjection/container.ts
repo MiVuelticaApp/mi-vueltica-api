@@ -51,6 +51,7 @@ import { PrismaSubmissionApprovalUnitOfWork } from "@/infrastructure/submissions
 import { SubmissionService } from "@/application/submissions/services/implementations/SubmissionService";
 import MySubmissionsController from "@/presentation/http/submissions/controllers/MySubmissions.controller";
 import MyDevicesController from "@/presentation/http/devices/controllers/MyDevices.controller";
+import MyNotificationsController from "@/presentation/http/notifications/controllers/MyNotifications.controller";
 import SubmissionsController from "@/presentation/http/submissions/controllers/Submissions.controller";
 import ResendEmailProvider from "@/infrastructure/email/providers/ResendEmailProvider";
 import MyProfileController from "@/presentation/http/users/controllers/MyProfile.controller";
@@ -154,6 +155,7 @@ export const eventController = new EventController(eventService);
 export const favoriteController = new FavoriteController(favoriteService);
 export const mySubmissionsController = new MySubmissionsController(submissionService);
 export const myDevicesController = new MyDevicesController(deviceService);
+export const myNotificationsController = new MyNotificationsController(notificationService);
 export const submissionsController = new SubmissionsController(submissionService);
 export const adminUsersController = new AdminUsersController(
   adminUserService,
