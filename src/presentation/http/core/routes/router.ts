@@ -11,6 +11,7 @@ import placeFavoriteRouter from "@/presentation/http/favorites/routes/placeFavor
 import eventsRouter from "@/presentation/http/events/routes/events.routes";
 import usersRouter from "@/presentation/http/users/routes/users.routes";
 import mySubmissionsRouter from "@/presentation/http/submissions/routes/mySubmissions.routes";
+import myDevicesRouter from "@/presentation/http/devices/routes/myDevices.routes";
 import submissionsRouter from "@/presentation/http/submissions/routes/submissions.routes";
 import systemRouter from "@/presentation/http/system/routes/system.route";
 import { Router } from "express";
@@ -18,8 +19,9 @@ const router = Router();
 
 // user routes
 router.use("/auth", authRouter);
-// Before /me so profileRouter never handles the submissions sub-resource.
+// Before /me so profileRouter never handles these sub-resources.
 router.use("/me/submissions", mySubmissionsRouter);
+router.use("/me/devices", myDevicesRouter);
 router.use('/me', profileRouter);
 router.use("/categories", categoriesRouter);
 // Before /provinces so the cantons sub-resource is never shadowed.
