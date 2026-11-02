@@ -160,7 +160,8 @@ export const authController = new AuthController(
   oAuthService,
   jwtService,
   userService,
-  testLoginService
+  testLoginService,
+  deviceService,
 )
 
 export const systemController = new SystemController(ENV.MIN_FRONTEND_VERSION);

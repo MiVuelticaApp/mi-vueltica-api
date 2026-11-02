@@ -6,6 +6,9 @@ import { IUserService } from "@/application/users/services/interfaces/IUserServi
 import { ITestLoginService } from "@/application/auth/services/interfaces/ITestLoginService";
 import UserDtoMapper from "@/presentation/http/users/mappers/User.mapper";
 import { TestLoginRequest } from "../requests/TestLoginRequest";
+import { LogoutRequest } from "../requests/LogoutRequest";
+import { IDeviceService } from "@/application/devices/services/interfaces/IDeviceService";
+import { getAuthUser } from "../utils/getAuthUser";
 import ApplicationError from "@/application/core/errors/ApplicationError";
 
 export default class AuthController {
@@ -13,7 +16,8 @@ export default class AuthController {
     private readonly oAuthService: IOAuthService,
     private readonly jwtService: IJwtService,
     private readonly usersService: IUserService,
-    private readonly testLoginService: ITestLoginService
+    private readonly testLoginService: ITestLoginService,
+    private readonly deviceService: IDeviceService,
   ) {}
 
   async googleLogin(req: Request, res: Response): Promise<void> {
@@ -164,8 +168,13 @@ export default class AuthController {
   }
 
   async logout(req: Request, res: Response): Promise<void> {
-    // With JWT, logout is handled client-side by removing the token
-    // Optionally, you could implement a token blacklist here
+    // With JWT, logout is handled client-side by removing the token.
+    // If the client sends its push token, that device stops receiving this user's
+    // notifications (idempotent: unknown or someone else's token is ignored).
+    const pushToken = (req.body as LogoutRequest | undefined)?.pushToken;
+    if (pushToken) {
+      await this.deviceService.removeByPushToken(getAuthUser(req).id, pushToken);
+    }
     res.json({ message: "Sesión cerrada exitosamente" });
   }
 }
