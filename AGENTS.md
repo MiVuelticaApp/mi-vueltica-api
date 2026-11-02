@@ -41,8 +41,10 @@ Reference data (Costa Rica provinces, cantons, initial categories) is seeded, no
 - Prod: `npm run db:seed:prod` runs the compiled `dist/infrastructure/prisma/seed/seed.js`; the Docker
   CMD runs it automatically after `prisma migrate deploy` and before the server starts (every deploy).
 - Data files (versioned source of truth): `src/infrastructure/prisma/seed/data/geography.ts`
-  (`PROVINCES`, `CANTONS`) and `src/infrastructure/prisma/seed/data/categories.ts` (`CATEGORIES`).
-  Script: `src/infrastructure/prisma/seed/seed.ts`.
+  (`PROVINCES`, `CANTONS`), `src/infrastructure/prisma/seed/data/categories.ts` (`CATEGORIES`) and
+  `src/infrastructure/prisma/seed/data/sources.ts` (`SOURCES`: the "Comunidad" `COMMUNITY` source with the fixed id
+  `COMMUNITY_SOURCE_ID` from `src/domain/sources/communitySource.ts`; upserted by id with `update: {}`, so it is only
+  created and admin renames are kept). Script: `src/infrastructure/prisma/seed/seed.ts`.
 - INEC id convention: province id = INEC province code (1-7); canton id = `provinceCode * 100 + cantonCode`
   (101 = San José, 216 = Río Cuarto). 7 provinces / 84 cantons; the seed validates this before writing.
 - Idempotent: everything is upserted in one transaction (provinces by id, cantons by id, categories by
@@ -353,6 +355,42 @@ clears all) and **replaces the whole set**: `PrismaUserInterestRepository.replac
 `deleteMany` + `createMany` in one transaction. Every id must exist (checked via
 `ICategoryRepository.findByIds`) or the API answers 422 `InvalidCategoryIdsError`. `GET /me` also
 includes `interests`.
+
+## Submissions
+
+Community suggestions of places/events that become real content once a moderator approves them. Crawlers are
+expected to use this same API as regular authenticated clients (discovering it through `/openapi.json`).
+
+- **Author side** — `/api/v1/me/submissions` (`mySubmissionsRouter`, mounted **before** `/me`, own `jwtAuth`):
+  `POST /` (201), `GET /` (paginated, own only, default `-createdAt`), `GET /:id`, `DELETE /:id` (204, only while
+  `PENDING`, else 409). Someone else's submission is a 404 (existence is not leaked).
+- **Moderation** — `/api/v1/submissions` (`jwtAuth` + `requireRole("MODERATOR", "ADMIN")` on the whole router):
+  `GET /` (queue: `status` defaults to `PENDING`, optional `type`, default order `createdAt` asc), `GET /:id`,
+  `POST /:id/approve` (200 `{ submission, created: { type, id } }`), `POST /:id/reject` (`{ reason }`, 1-1000 chars,
+  stored in `Submission.reviewNote`). Approve/reject only from `PENDING`, else 409 `SubmissionNotPendingError`.
+- **Body** `{ type: "PLACE" | "EVENT", data }`: a Zod discriminated union (`validators/createSubmission.ts`, rendered
+  as `oneOf`). `data` is the `POST /places` or `POST /events` body **without `sourceId`**; unknown keys (`sourceId`,
+  `aiScore`, `aiReason`, `status`, ...) are stripped. The event variant reuses `CreateEventBaseSchema` +
+  `endsAtNotBeforeStartsAt` (Zod 4 forbids `.omit()` on refined objects). The domain re-validates the payload with
+  `normalizePlaceData` / `normalizeEventData` (`domain/submissions/entities/SubmissionPayload.ts`); event dates are
+  stored in the JSON column as ISO strings. Unknown canton/category/place → 422 (on create and again on approve).
+- **Approve** runs in one transaction (`ISubmissionApprovalUnitOfWork` / `PrismaSubmissionApprovalUnitOfWork`, same
+  pattern as user deletion): lock the submission row (`findForUpdate`, `SELECT ... FOR UPDATE`), check `PENDING`,
+  re-check references, create the Place/Event (repositories insert as `PENDING`), publish it through the entity
+  (`place.changeStatus("PUBLISHED", now)` sets `verifiedAt`) with `sourceId = COMMUNITY_SOURCE_ID` (falls back to
+  `null` with a warning if an admin deleted that source), then `markReviewed`. The row lock is required: MariaDB 11's
+  `innodb_snapshot_isolation` makes a concurrent conditional `UPDATE` fail with "Record has changed since last read"
+  (500) instead of matching zero rows; with the lock, concurrent approvals get a clean 409 and create nothing.
+  `markReviewed` / `deletePendingOwned` still only write while the row is `PENDING` (second guard).
+- **Rate limit**: `POST /me/submissions` allows `SUBMISSION_CREATE_RATE_LIMIT` (20 / 15 min,
+  `src/presentation/http/submissions/submissionLimits.ts`) **per user** via `rateLimit({ keyGenerator: byUserId })`
+  (in-memory, per process). Raise it if a crawler account needs more.
+- `aiScore` / `aiReason` are never writable through the API (reserved for an AI moderation job) and only shown in the
+  moderation responses. There is no column linking a submission to the Place/Event it created; the approve
+  response returns it.
+- Caveat: reading a submission re-validates its stored `data` with the current Place/Event rules, so tightening
+  those rules can make old submissions fail to load (400). Migrate or relax the data if that ever happens.
+
 ## Admin user management
 
 `/api/v1/users` (`GET /`, `GET /:id`, `PATCH /:id/role`, `DELETE /:id`) is `jwtAuth` + `requireRole("ADMIN")`
