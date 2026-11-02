@@ -250,6 +250,13 @@ router.get("/", jwtAuth, requireRole("ADMIN"), asyncHandler(controller.list.bind
 - `errorHandler` maps Prisma errors via `mapPrismaError`: `P2002` → 409, `P2003` → 409,
   `P2025` → 404. Repositories wrap Prisma errors in `DatabaseError` / `DatabaseInsertError`:
   **always pass the original error as the second argument (`cause`)** so the mapping still works.
+- MariaDB error **1020** "Record has changed since last read" → **409** ("modified by another request,
+  try again"). With MariaDB 11's `innodb_snapshot_isolation`, concurrent updates of the same row (e.g.
+  two `PUT`s on one category) make all but one fail with it; Prisma does not give it a P-code, it arrives
+  as a `DriverAdapterError` whose `cause` is `{ kind: "mysql", code: 1020 }`. This is the generic
+  fallback. Where a concurrent request must succeed rather than retry, avoid the read-then-write
+  instead: lock the row first (`SELECT ... FOR UPDATE`, submission approval) or use a single statement
+  (`INSERT ... ON DUPLICATE KEY UPDATE`).
 - OpenAPI has reusable `components.parameters` (`Page`, `PageSize`, `Sort`, `UuidId`, `IntId`),
   `components.responses` (`BadRequest`, `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`) and
   the `paginationParams` / `paginated(ref)` helpers exported from `openapi.ts`.
