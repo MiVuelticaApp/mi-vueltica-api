@@ -24,6 +24,9 @@ import MyInterestsController from "@/presentation/http/users/controllers/MyInter
 import PrismaCategoryRepository from "@/infrastructure/categories/repositories/PrismaCategoryRepository";
 import { CategoryService } from "@/application/categories/services/implementations/CategoryService";
 import CategoryController from "@/presentation/http/categories/controllers/Category.controller";
+import PrismaProvinceRepository from "@/infrastructure/geography/repositories/PrismaProvinceRepository";
+import { ProvinceService } from "@/application/geography/services/implementations/ProvinceService";
+import ProvinceController from "@/presentation/http/geography/controllers/Province.controller";
 import PrismaSourceRepository from "@/infrastructure/sources/repositories/PrismaSourceRepository";
 import { SourceService } from "@/application/sources/services/implementations/SourceService";
 import SourceController from "@/presentation/http/sources/controllers/Source.controller";
@@ -50,6 +53,7 @@ import { createMcpServerFactory } from "@/presentation/mcp/server/createMcpServe
 // repositories
 export const userRepository = new PrismaUsersRepository();
 export const categoryRepository = new PrismaCategoryRepository();
+export const provinceRepository = new PrismaProvinceRepository();
 export const userInterestRepository = new PrismaUserInterestRepository();
 export const sourceRepository = new PrismaSourceRepository();
 export const placeRepository = new PrismaPlaceRepository();
@@ -80,6 +84,7 @@ export const jwtService = new JwtTokenService();
 // services
 export const userService = new UserService(userRepository);
 export const categoryService = new CategoryService(categoryRepository);
+export const provinceService = new ProvinceService(provinceRepository);
 export const sourceService = new SourceService(sourceRepository);
 export const placeService = new PlaceService(placeRepository, categoryRepository, sourceRepository);
 export const eventService = new EventService(eventRepository, placeRepository, categoryRepository, sourceRepository);
@@ -119,6 +124,7 @@ export const myProfileController = new MyProfileController(
 export const myInterestsController = new MyInterestsController(userInterestService);
 
 export const categoryController = new CategoryController(categoryService);
+export const provinceController = new ProvinceController(provinceService);
 export const sourceController = new SourceController(sourceService);
 export const placeController = new PlaceController(placeService, favoriteService);
 export const eventController = new EventController(eventService);
