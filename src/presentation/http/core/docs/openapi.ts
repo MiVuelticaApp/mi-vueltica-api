@@ -6,6 +6,7 @@ import { TestLoginSchema } from "@/presentation/http/auth/validators/testLogin";
 import { LogoutBodySchema } from "@/presentation/http/auth/validators/logout";
 import { RegisterDeviceSchema } from "@/presentation/http/devices/validators/registerDevice";
 import { DEVICE_SORT_FIELDS } from "@/presentation/http/devices/validators/listDevices";
+import { NOTIFICATION_SORT_FIELDS } from "@/presentation/http/notifications/validators/listNotifications";
 import { PLATFORMS } from "@/domain/devices/valueObjects/platform.valueObject";
 import { UpdateUserSchema } from "@/presentation/http/users/validators/updateUser";
 import { UpdateInterestsSchema } from "@/presentation/http/users/validators/updateInterests";
@@ -314,6 +315,48 @@ const paths: Record<string, Record<string, unknown>> = {
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       responses: {
         204: { description: "Device removed" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        404: responseRef("NotFound"),
+      },
+    },
+  },
+  "/me/notifications": {
+    get: {
+      tags: ["Notifications"],
+      summary: "List my notifications",
+      description:
+        "Events the user was notified about. Only notifications whose event is currently PUBLISHED are listed and " +
+        "counted: an unpublished event's notification disappears (it is kept) and reappears when the event is " +
+        "published again. Default order is `sentAt` descending (newest first). There is no create endpoint: " +
+        "notifications are recorded internally when they are sent.",
+      security: bearer,
+      parameters: [
+        { $ref: "#/components/parameters/Page" },
+        { $ref: "#/components/parameters/PageSize" },
+        {
+          name: "sort",
+          in: "query",
+          description: "Field to sort by: `field` ascending, `-field` descending. Default: `-sentAt`.",
+          schema: { type: "string", enum: NOTIFICATION_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
+        },
+      ],
+      responses: {
+        200: { description: "Page of notifications", content: { "application/json": { schema: paginated("Notification") } } },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+      },
+    },
+  },
+  "/me/notifications/{id}": {
+    delete: {
+      tags: ["Notifications"],
+      summary: "Delete one of my notifications",
+      description: "404 if it does not exist or belongs to another user.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        204: { description: "Notification deleted" },
         400: responseRef("BadRequest"),
         401: responseRef("Unauthorized"),
         404: responseRef("NotFound"),
@@ -1352,6 +1395,7 @@ const openApiDocument = {
     { name: "Events" },
     { name: "Favorites" },
     { name: "Devices" },
+    { name: "Notifications" },
     { name: "Users" },
     { name: "Submissions" },
     { name: "System" },
@@ -1436,6 +1480,27 @@ const openApiDocument = {
           updatedAt: { type: "string", format: "date-time", description: "Last time the device was registered" },
         },
         required: ["id", "platform", "pushToken", "updatedAt"],
+      },
+      NotificationEvent: {
+        type: "object",
+        description: "Summary of the notified event (full data in `GET /events/{id}`)",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          title: { type: "string" },
+          startsAt: { type: "string", format: "date-time" },
+          endsAt: { type: ["string", "null"], format: "date-time" },
+          placeId: { type: ["string", "null"], format: "uuid" },
+        },
+        required: ["id", "title", "startsAt", "endsAt", "placeId"],
+      },
+      Notification: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          sentAt: { type: "string", format: "date-time", description: "When the user was notified" },
+          event: { $ref: "#/components/schemas/NotificationEvent" },
+        },
+        required: ["id", "sentAt", "event"],
       },
       UserResponse: {
         type: "object",
