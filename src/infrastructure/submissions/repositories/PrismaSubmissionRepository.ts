@@ -43,6 +43,21 @@ export default class PrismaSubmissionRepository implements ISubmissionRepository
     }
   }
 
+  async findForUpdate(id: string): Promise<Submission | null> {
+    try {
+      // The locking read must come first: InnoDB takes the transaction's snapshot at its first
+      // plain read, so the findUnique below sees whatever the previous lock holder committed.
+      // Without it, MariaDB's snapshot isolation fails the later conditional UPDATE with
+      // "Record has changed since last read" instead of matching zero rows.
+      await this.client.$queryRaw`SELECT id FROM Submission WHERE id = ${id} FOR UPDATE`;
+      const row = await this.client.submission.findUnique({ where: { id } });
+      return row ? PrismaSubmissionMapper.toDomain(row) : null;
+    } catch (error) {
+      console.error("Error locking submission:", error);
+      throw new DatabaseError("Could not find submission", error);
+    }
+  }
+
   async list(
     params: PaginationParams<SubmissionSortField>,
     filters: SubmissionListFilters = {},

@@ -74,7 +74,9 @@ export class SubmissionService implements ISubmissionService {
       const submissionRepository = ctx.getSubmissionRepository();
       const placeRepository = ctx.getPlaceRepository();
 
-      const submission = await submissionRepository.find(id);
+      // Locks the row: a concurrent approval waits here, then sees the committed status
+      // and gets a clean 409 before creating anything.
+      const submission = await submissionRepository.findForUpdate(id);
       if (!submission) throw new SubmissionNotFoundError();
       if (!submission.isPending()) throw new SubmissionNotPendingError();
 
@@ -104,8 +106,8 @@ export class SubmissionService implements ISubmissionService {
       }
 
       submission.approve(reviewerId, now);
-      // Only succeeds if the row is still PENDING: if another moderator won the race, this
-      // throws and the transaction rolls back the Place/Event created above.
+      // Second guard (the row lock is the first): only succeeds if the row is still PENDING;
+      // otherwise this throws and the transaction rolls back the Place/Event created above.
       if (!(await submissionRepository.markReviewed(submission))) throw new SubmissionNotPendingError();
 
       return { submission, created };
