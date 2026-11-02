@@ -29,6 +29,7 @@ import { ProvinceService } from "@/application/geography/services/implementation
 import ProvinceController from "@/presentation/http/geography/controllers/Province.controller";
 import PrismaCantonRepository from "@/infrastructure/geography/repositories/PrismaCantonRepository";
 import { CantonService } from "@/application/geography/services/implementations/CantonService";
+import CantonController from "@/presentation/http/geography/controllers/Canton.controller";
 import PrismaSourceRepository from "@/infrastructure/sources/repositories/PrismaSourceRepository";
 import { SourceService } from "@/application/sources/services/implementations/SourceService";
 import SourceController from "@/presentation/http/sources/controllers/Source.controller";
@@ -137,6 +138,7 @@ export const myInterestsController = new MyInterestsController(userInterestServi
 
 export const categoryController = new CategoryController(categoryService);
 export const provinceController = new ProvinceController(provinceService);
+export const cantonController = new CantonController(cantonService);
 export const sourceController = new SourceController(sourceService);
 export const placeController = new PlaceController(placeService, favoriteService);
 export const eventController = new EventController(eventService);
