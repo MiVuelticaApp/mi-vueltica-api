@@ -378,8 +378,10 @@ Push-notification devices of the authenticated user. `/api/v1/me/devices` (`myDe
 **before** `/me`, whole router behind `jwtAuth`). No push delivery yet (follow-up to #17).
 
 - `POST /` `{ platform: "ANDROID" | "IOS", pushToken }` registers the device and **always answers 200**
-  (`DeviceResponse`). It is an idempotent upsert on the unique `pushToken` (one atomic Prisma `upsert`,
-  so concurrent calls never duplicate a row): an existing token gets `userId` and `platform` updated, which
+  (`DeviceResponse`). It is an idempotent upsert on the unique `pushToken`, written as raw
+  `INSERT ... ON DUPLICATE KEY UPDATE` in `PrismaDeviceRepository`. **Not Prisma's `upsert`**: on MariaDB
+  that is a read plus a write, and concurrent calls with the same token failed with P2002 (409) or error
+  1020 "Record has changed since last read" (500). An existing token gets `userId` and `platform` updated, which
   **moves a token from another user to the caller** (same phone, new login). The app calls it on every
   login; `updatedAt` (`@updatedAt`) is "last registered". `pushToken` is trimmed, 1-512 chars
   (`PushToken` value object + Zod).
