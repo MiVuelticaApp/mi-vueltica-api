@@ -13,6 +13,10 @@ import { CreateProvinceSchema } from "@/presentation/http/geography/validators/c
 import { UpdateProvinceSchema } from "@/presentation/http/geography/validators/updateProvince";
 import { PROVINCE_INCLUDES, PROVINCE_SORT_FIELDS } from "@/presentation/http/geography/validators/listProvinces";
 import { PROVINCE_NAME_MAX_LENGTH } from "@/domain/geography/valueObjects/provinceName.valueObject";
+import { CreateCantonSchema } from "@/presentation/http/geography/validators/createCanton";
+import { UpdateCantonSchema } from "@/presentation/http/geography/validators/updateCanton";
+import { CANTON_SORT_FIELDS } from "@/presentation/http/geography/validators/listCantons";
+import { CANTON_NAME_MAX_LENGTH } from "@/domain/geography/valueObjects/cantonName.valueObject";
 import { REFERENCE_DATA_MAX_AGE_SECONDS } from "@/presentation/http/core/utils/cacheControl";
 import { CreateSourceSchema } from "@/presentation/http/sources/validators/createSource";
 import { UpdateSourceSchema } from "@/presentation/http/sources/validators/updateSource";
@@ -427,6 +431,99 @@ const paths: Record<string, Record<string, unknown>> = {
       parameters: [{ $ref: "#/components/parameters/IntId" }],
       responses: {
         204: { description: "Province deleted" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+        409: responseRef("Conflict"),
+      },
+    },
+  },
+  "/provinces/{provinceId}/cantons": {
+    get: {
+      tags: ["Cantons"],
+      summary: "List the cantons of a province",
+      description: "Public and cacheable. Paginated; default order is by id (INEC code). 404 if the province does not exist.",
+      parameters: [
+        { name: "provinceId", in: "path", required: true, description: "INEC province code", schema: { type: "integer", minimum: 1 } },
+        { $ref: "#/components/parameters/Page" },
+        { $ref: "#/components/parameters/PageSize" },
+        {
+          name: "sort",
+          in: "query",
+          description: "Field to sort by: `field` ascending, `-field` descending. Default: `id`.",
+          schema: { type: "string", enum: CANTON_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
+        },
+      ],
+      responses: {
+        200: {
+          description: "Page of cantons",
+          headers: publicCacheHeaders,
+          content: { "application/json": { schema: paginated("Canton") } },
+        },
+        400: responseRef("BadRequest"),
+        404: responseRef("NotFound"),
+      },
+    },
+  },
+  "/cantons": {
+    post: {
+      tags: ["Cantons"],
+      summary: "Create a canton",
+      description:
+        "ADMIN only. The `id` is the INEC canton code and must be provided: `provinceId * 100 + cantonNumber` " +
+        "(1-99), e.g. 216 for canton 16 of province 2; any other id is a 400. 422 if the province does not exist. " +
+        "409 if the id, or the name within the same province, already exists.",
+      security: bearer,
+      requestBody: jsonBody(CreateCantonSchema),
+      responses: {
+        201: jsonResponse("Created canton", "Canton"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        409: responseRef("Conflict"),
+        422: responseRef("UnprocessableEntity"),
+      },
+    },
+  },
+  "/cantons/{id}": {
+    get: {
+      tags: ["Cantons"],
+      summary: "Get a canton",
+      description: "Public and cacheable.",
+      parameters: [{ $ref: "#/components/parameters/IntId" }],
+      responses: {
+        200: { ...jsonResponse("Canton", "Canton"), headers: publicCacheHeaders },
+        400: responseRef("BadRequest"),
+        404: responseRef("NotFound"),
+      },
+    },
+    put: {
+      tags: ["Cantons"],
+      summary: "Rename a canton",
+      description:
+        "ADMIN only. Only the name can change: the id (INEC code) encodes the province, so neither can be updated. " +
+        "409 if another canton of the same province already has that name.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/IntId" }],
+      requestBody: jsonBody(UpdateCantonSchema),
+      responses: {
+        200: jsonResponse("Updated canton", "Canton"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+        409: responseRef("Conflict"),
+      },
+    },
+    delete: {
+      tags: ["Cantons"],
+      summary: "Delete a canton",
+      description: "ADMIN only. 409 while any place references the canton.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/IntId" }],
+      responses: {
+        204: { description: "Canton deleted" },
         400: responseRef("BadRequest"),
         401: responseRef("Unauthorized"),
         403: responseRef("Forbidden"),
@@ -1188,6 +1285,7 @@ const openApiDocument = {
     { name: "Profile" },
     { name: "Categories" },
     { name: "Provinces" },
+    { name: "Cantons" },
     { name: "Sources" },
     { name: "Places" },
     { name: "Events" },
@@ -1281,6 +1379,15 @@ const openApiDocument = {
         type: "object",
         properties: { id: { type: "integer", description: "INEC code (provinceCode * 100 + cantonCode)" }, name: { type: "string" } },
         required: ["id", "name"],
+      },
+      Canton: {
+        type: "object",
+        properties: {
+          id: { type: "integer", description: "INEC code (provinceId * 100 + cantonNumber)" },
+          provinceId: { type: "integer", description: "INEC province code" },
+          name: { type: "string", minLength: 1, maxLength: CANTON_NAME_MAX_LENGTH },
+        },
+        required: ["id", "provinceId", "name"],
       },
       Province: {
         type: "object",
