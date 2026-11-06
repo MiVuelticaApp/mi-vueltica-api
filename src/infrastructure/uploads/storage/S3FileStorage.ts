@@ -5,6 +5,7 @@ import {
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -30,6 +31,30 @@ const isNotFound = (error: unknown) => {
   return NOT_FOUND_NAMES.has(name ?? "") || $metadata?.httpStatusCode === 404;
 };
 
+/** What to do about the most common S3 errors, so the boot log says how to fix it. */
+const HINTS: Record<string, string> = {
+  InvalidAccessKeyId: "S3_ACCESS_KEY is not an identity known to the S3 server (check its s3 config / identities).",
+  SignatureDoesNotMatch:
+    "S3_SECRET_KEY is wrong, or a reverse proxy in front of the S3 server changes the Host header or the request " +
+    "(point S3_ENDPOINT at the internal service, e.g. http://seaweedfs:8333, instead of a public domain).",
+  AccessDenied: "the identity lacks permissions: it needs Admin (to create the bucket) or Read, Write and List on it.",
+  RequestTimeTooSkewed: "the API server's clock is too far from the S3 server's clock.",
+};
+
+/**
+ * One-line description of an S3 SDK error: `Code (HTTP status): message`, plus a hint for the
+ * common ones. HEAD responses have no body, so for them the SDK can only say `UnknownError`.
+ */
+export function describeS3Error(error: unknown): string {
+  if (typeof error !== "object" || error === null) return String(error);
+  const { name, message, $metadata } = error as { name?: string; message?: string; $metadata?: { httpStatusCode?: number } };
+  const status = $metadata?.httpStatusCode;
+  const code = name ?? "Error";
+  const detail = message && message !== code && message !== "UnknownError" ? `: ${message}` : "";
+  const hint = HINTS[code] ? ` → ${HINTS[code]}` : "";
+  return `${code}${status ? ` (HTTP ${status})` : ""}${detail}${hint}`;
+}
+
 /**
  * Object storage through the S3 API. The project runs SeaweedFS (its S3 gateway), but any
  * S3-compatible server works. The bucket stays private: there is no public policy and no
@@ -38,6 +63,7 @@ const isNotFound = (error: unknown) => {
 export default class S3FileStorage implements IFileStorage {
   private readonly client: S3Client;
   private readonly bucket: string;
+  private readonly endpoint: string;
 
   constructor(config: S3StorageConfig) {
     this.client = new S3Client({
@@ -51,19 +77,39 @@ export default class S3FileStorage implements IFileStorage {
       responseChecksumValidation: "WHEN_REQUIRED",
     });
     this.bucket = config.bucket;
+    this.endpoint = config.endpoint;
   }
 
   async ensureReady(): Promise<void> {
     try {
       await this.client.send(new HeadBucketCommand({ Bucket: this.bucket }));
+      return;
     } catch (error) {
-      if (!isNotFound(error)) throw new FileStorageError(`Could not reach bucket "${this.bucket}"`, error);
-      try {
-        await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
-        console.log(`[storage] created bucket "${this.bucket}"`);
-      } catch (createError) {
-        throw new FileStorageError(`Could not create bucket "${this.bucket}"`, createError);
+      if (!isNotFound(error)) {
+        // HEAD responses carry no error body, so a 403 is just "UnknownError". Repeat the check
+        // as a GET (list one key), whose XML error says why: bad key, bad signature, no permission.
+        const reason = await this.explainBucketAccessError(error);
+        throw new FileStorageError(`Could not access bucket "${this.bucket}" at ${this.endpoint}: ${reason}`, error);
       }
+    }
+    try {
+      await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
+      console.log(`[storage] created bucket "${this.bucket}"`);
+    } catch (createError) {
+      throw new FileStorageError(
+        `Could not create bucket "${this.bucket}" at ${this.endpoint}: ${describeS3Error(createError)}`,
+        createError,
+      );
+    }
+  }
+
+  private async explainBucketAccessError(headError: unknown): Promise<string> {
+    try {
+      await this.client.send(new ListObjectsV2Command({ Bucket: this.bucket, MaxKeys: 1 }));
+      // Listing works but HEAD did not: report the HEAD error as it is.
+      return describeS3Error(headError);
+    } catch (listError) {
+      return describeS3Error(listError);
     }
   }
 
@@ -77,7 +123,7 @@ export default class S3FileStorage implements IFileStorage {
         ContentLength: body.length,
       }));
     } catch (error) {
-      console.error(`[storage] could not store ${key}:`, error);
+      console.error(`[storage] could not store ${key}: ${describeS3Error(error)}`);
       throw new FileStorageError("No se pudo guardar el archivo, intenta de nuevo más tarde", error);
     }
   }
@@ -93,7 +139,7 @@ export default class S3FileStorage implements IFileStorage {
       };
     } catch (error) {
       if (isNotFound(error)) return null;
-      console.error(`[storage] could not stat ${key}:`, error);
+      console.error(`[storage] could not stat ${key}: ${describeS3Error(error)}`);
       throw new FileStorageError("No se pudo leer el archivo, intenta de nuevo más tarde", error);
     }
   }
@@ -105,7 +151,7 @@ export default class S3FileStorage implements IFileStorage {
       return object.Body as Readable;
     } catch (error) {
       if (isNotFound(error)) return null;
-      console.error(`[storage] could not read ${key}:`, error);
+      console.error(`[storage] could not read ${key}: ${describeS3Error(error)}`);
       throw new FileStorageError("No se pudo leer el archivo, intenta de nuevo más tarde", error);
     }
   }
