@@ -9,7 +9,7 @@ type IdParams = { id: string };
 const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
 
 /**
- * GET /files/:id — proxies a file from MinIO. Public: the random v4 id is the capability, so
+ * GET /files/:id — proxies a file from the object storage (SeaweedFS). Public: the random v4 id is the capability, so
  * the app can use the URL directly in <Image>. The bucket itself is never exposed.
  */
 export default class FileController {

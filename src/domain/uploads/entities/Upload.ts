@@ -1,6 +1,6 @@
 /**
- * A file stored in object storage (MinIO). The API proxies it at `GET /api/v1/files/:id`;
- * clients never talk to MinIO directly. Files are immutable: a new picture is a new upload.
+ * A file stored in object storage (SeaweedFS). The API proxies it at `GET /api/v1/files/:id`;
+ * clients never talk to the storage directly. Files are immutable: a new picture is a new upload.
  */
 export class Upload {
   constructor(private readonly props: UploadProps) {}

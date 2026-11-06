@@ -37,13 +37,13 @@ also what the Prisma CLI reads (`prisma.config.ts`).
 Env vars (see `.env.example`):
 
 - **Required at boot** (the server throws without them): `DATABASE_URL` (`mysql.ts`), `RESEND_API_KEY`,
-  `MAIL_FROM`, `MIN_FRONTEND_VERSION` (semver, validated), `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`,
-  `MINIO_SECRET_KEY`, and in production `PUBLIC_API_URL` (`required()` in
+  `MAIL_FROM`, `MIN_FRONTEND_VERSION` (semver, validated), `S3_ENDPOINT` (URL), `S3_ACCESS_KEY`,
+  `S3_SECRET_KEY`, and in production `PUBLIC_API_URL` (`required()` in
   `src/presentation/http/core/config/env.ts`; see "Uploads & files").
 - **Needed in practice**: `JWT_SECRET` (`JwtTokenService` falls back to a hard-coded secret when it is unset,
   so always set it outside local dev), `JWT_EXPIRES_IN` (default `7d`), and `GOOGLE_CLIENT_ID`,
   `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_ANDROID_CLIENT_ID` for Google login.
-- **Optional**: `MINIO_PORT` (9000), `MINIO_USE_SSL` (false), `MINIO_BUCKET` (`mi-vueltica`), `MINIO_REGION`,
+- **Optional**: `S3_BUCKET` (`mi-vueltica`), `S3_REGION` (`us-east-1`), `S3_FORCE_PATH_STYLE` (true),
   `UPLOAD_ORPHAN_GRACE_HOURS` (24), `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (see "Account
   deletion") and `TEST_LOGIN_ENABLED`, `TEST_LOGIN_EMAIL`, `TEST_LOGIN_PASSWORD` (see "Test login").
 
@@ -459,10 +459,12 @@ expected to use this same API as regular authenticated clients (discovering it t
 - Caveat: reading a submission re-validates its stored `data` with the current Place/Event rules, so tightening
   those rules can make old submissions fail to load (400). Migrate or relax the data if that ever happens.
 
-## Uploads & files (MinIO, proxied by the API)
+## Uploads & files (SeaweedFS over S3, proxied by the API)
 
-Photos are stored in **MinIO** and the API is the only client of the bucket: there is no public bucket policy and
-no pre-signed URL. Module `uploads` (`src/{domain,application,infrastructure}/uploads/`,
+Photos are stored in **SeaweedFS** through its **S3 gateway** (`S3FileStorage`, `@aws-sdk/client-s3`, path-style
+addressing, checksums only when required) and the API is the only client of the bucket: there is no public bucket
+policy and no pre-signed URL. Any S3-compatible server works by changing the `S3_*` vars (MinIO was dropped
+because its community edition is no longer maintained). Module `uploads` (`src/{domain,application,infrastructure}/uploads/`,
 `src/presentation/http/uploads/`).
 
 - `POST /api/v1/uploads` (`jwtAuth`, any role): `multipart/form-data`, one file in the `file` field, max 10 MB
@@ -474,9 +476,9 @@ no pre-signed URL. Module `uploads` (`src/{domain,application,infrastructure}/up
   stored as JPEG. 50 MP input limit against decompression bombs.
 - **Ids are random v4 UUIDs** (`RandomUuidIDGenerator`, not the v7 `UuidIDGenerator`): the id is the capability in the
   public file URL. Object key is `uploads/<id>` (`uploadObjectKey`), so serving needs no DB lookup.
-- `GET /api/v1/files/:id` (public, also HEAD): `FileController` stats the object then streams it from MinIO, with
+- `GET /api/v1/files/:id` (public, also HEAD): `FileController` stats the object then streams it from the storage, with
   `Cache-Control: public, max-age=31536000, immutable`, `ETag`/`Last-Modified` (304 via `req.fresh`), `nosniff` and a
-  sandbox CSP. Missing → 404 `FileNotFoundError`; MinIO down → 503 `FileStorageError`. Files of pending submissions are
+  sandbox CSP. Missing → 404 `FileNotFoundError`; storage down → 503 `FileStorageError`. Files of pending submissions are
   reachable by anyone who has the (unguessable) URL.
 - **URLs**: `${PUBLIC_API_URL}/api/v1/files/<id>` (`UploadService.urlFor`). That absolute URL is what gets stored in
   `Photo.url` and in submission JSON; if the public domain ever changes, rewrite them with SQL (the id is in
@@ -492,7 +494,12 @@ no pre-signed URL. Module `uploads` (`src/{domain,application,infrastructure}/up
 - **Reviews / verifications / reports** (#38, #39) do not exist yet; when added, reuse
   `IUploadService.resolveOwnUploads(userId, urls)` and link the uploads with a join table (like `SubmissionUpload`)
   and add it to the cleanup's "referenced" checks (`PrismaUploadRepository`).
-- Local dev: run MinIO (`docker compose up minio` or any S3-compatible server) and set the `MINIO_*` vars.
+- **docker-compose**: the `seaweedfs` service (`chrislusf/seaweedfs`, `weed server -s3`, port 8333, not published) writes
+  its S3 identity file at start-up from the same `S3_ACCESS_KEY` / `S3_SECRET_KEY` the API uses, so they must not
+  contain quotes or backslashes (`openssl rand -base64 24` is fine). Without that config SeaweedFS's S3 gateway
+  would accept anonymous requests.
+- Local dev: `docker compose up seaweedfs`, or the `weed` binary: `weed server -dir=./data -s3 -s3.config=s3.json`
+  with `S3_ENDPOINT=http://127.0.0.1:8333`.
 
 ## Photos (place & event galleries)
 

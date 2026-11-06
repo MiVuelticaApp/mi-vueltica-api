@@ -212,7 +212,7 @@ model Event {
 }
 
 /// Ordered gallery photo of exactly one Place or one Event (CHECK constraint `Photo_owner_check`
-/// in the migration). `uploadId` is set when the file lives in our object storage (MinIO);
+/// in the migration). `uploadId` is set when the file lives in our object storage (SeaweedFS, S3 API);
 /// external https URLs added by moderators have no upload.
 model Photo {
   id        String   @id @default(uuid())
@@ -232,10 +232,10 @@ model Photo {
 }
 
 /// ===============================
-/// FILES (object storage: MinIO, proxied by the API)
+/// FILES (S3-compatible object storage: SeaweedFS, proxied by the API)
 /// ===============================
 
-/// A file stored in MinIO under `objectKey` and served through GET /api/v1/files/:id.
+/// A file stored in the object storage under `objectKey` and served through GET /api/v1/files/:id.
 /// It is kept while a Photo or a Submission references it; unreferenced uploads older than
 /// the grace period are removed by the cleanup job (object first, then the row).
 model Upload {

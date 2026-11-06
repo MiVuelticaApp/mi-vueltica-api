@@ -1436,7 +1436,7 @@ const paths: Record<string, Record<string, unknown>> = {
       description:
         `Any authenticated user. \`multipart/form-data\` with one file in the \`${UPLOAD_FIELD_NAME}\` field, at most ${UPLOAD_MAX_BYTES / (1024 * 1024)} MB. ` +
         `The format is detected from the bytes (JPEG, PNG or WebP; HEIC/AVIF are rejected, send them as JPEG) → 415 otherwise. ` +
-        `The image is re-encoded: EXIF orientation applied, **all metadata (GPS position included) removed**, scaled down to at most ${MAX_IMAGE_DIMENSION} px per side, stored as JPEG in MinIO. ` +
+        `The image is re-encoded: EXIF orientation applied, **all metadata (GPS position included) removed**, scaled down to at most ${MAX_IMAGE_DIMENSION} px per side, stored as JPEG in the object storage (SeaweedFS). ` +
         "The returned `url` is served by this API (`GET /files/{id}`) and is what clients send in a submission's `data.photos`. " +
         `Uploads that nothing references (no submission, no gallery photo) are deleted after a grace period (24 h by default). ` +
         `Rate-limited to ${UPLOAD_RATE_LIMIT.max} uploads per ${UPLOAD_RATE_LIMIT.windowMs / 60000} minutes per user (429).`,
@@ -1471,7 +1471,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Uploads"],
       summary: "Download an uploaded file",
       description:
-        "Public. Streams the file from MinIO (the bucket itself is private; the API is the only way to reach it). " +
+        "Public. Streams the file from the object storage (SeaweedFS; the bucket itself is private; the API is the only way to reach it). " +
         "The random id is the capability, so these URLs can be used directly as image sources. Files are immutable: " +
         "`Cache-Control: public, max-age=31536000, immutable`, `ETag`/`Last-Modified` with 304 on conditional requests. HEAD is supported.",
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
