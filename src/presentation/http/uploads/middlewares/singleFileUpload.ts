@@ -3,7 +3,7 @@ import multer from "multer";
 import { UPLOAD_FIELD_NAME, UPLOAD_MAX_BYTES } from "../uploadLimits";
 
 // In memory: files are small (UPLOAD_MAX_BYTES) and go straight to the image processor and
-// then to MinIO, so nothing ever touches the local disk.
+// then to the object storage, so nothing ever touches the local disk.
 const parseSingleFile = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: UPLOAD_MAX_BYTES, files: 1, fields: 5, parts: 6 },

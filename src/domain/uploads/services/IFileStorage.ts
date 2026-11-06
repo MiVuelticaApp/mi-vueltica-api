@@ -9,10 +9,10 @@ export interface StoredFileInfo {
 }
 
 /**
- * Object storage (MinIO in every environment). Only the API talks to it: files are uploaded
+ * S3-compatible object storage (SeaweedFS in every environment). Only the API talks to it: files are uploaded
  * through `POST /uploads` and served through `GET /files/:id`.
  *
- * @see src/infrastructure/uploads/storage/MinioFileStorage.ts
+ * @see src/infrastructure/uploads/storage/S3FileStorage.ts
  */
 export interface IFileStorage {
   /** Creates the bucket if it does not exist. Called once at boot. */

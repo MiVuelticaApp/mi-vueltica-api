@@ -51,15 +51,15 @@ const ENV = {
     ? required("PUBLIC_API_URL")
     : process.env.PUBLIC_API_URL || `http://localhost:${process.env.PORT || 3000}`
   ).replace(/\/+$/, ""),
-  // MinIO (object storage for uploads). The API is the only client: the bucket stays private
-  // and every file is proxied through GET /api/v1/files/:id.
-  MINIO_ENDPOINT: required("MINIO_ENDPOINT"),
-  MINIO_PORT: intFromEnv("MINIO_PORT", 9000),
-  MINIO_USE_SSL: process.env.MINIO_USE_SSL === "true",
-  MINIO_ACCESS_KEY: required("MINIO_ACCESS_KEY"),
-  MINIO_SECRET_KEY: required("MINIO_SECRET_KEY"),
-  MINIO_BUCKET: process.env.MINIO_BUCKET || "mi-vueltica",
-  MINIO_REGION: process.env.MINIO_REGION || "us-east-1",
+  // S3-compatible object storage for uploads (SeaweedFS's S3 gateway). The API is the only
+  // client: the bucket stays private and every file is proxied through GET /api/v1/files/:id.
+  S3_ENDPOINT: required("S3_ENDPOINT"),
+  S3_ACCESS_KEY: required("S3_ACCESS_KEY"),
+  S3_SECRET_KEY: required("S3_SECRET_KEY"),
+  S3_BUCKET: process.env.S3_BUCKET || "mi-vueltica",
+  S3_REGION: process.env.S3_REGION || "us-east-1",
+  // Path-style URLs (`endpoint/bucket/key`), which SeaweedFS needs. Only "false" turns it off.
+  S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE !== "false",
   // Uploads that nothing references are deleted after this many hours (default 24).
   UPLOAD_ORPHAN_GRACE_HOURS: intFromEnv("UPLOAD_ORPHAN_GRACE_HOURS", 24),
 };
@@ -133,5 +133,15 @@ function validatePublicApiUrlConfig(): void {
 }
 
 validatePublicApiUrlConfig();
+
+function validateS3EndpointConfig(): void {
+  try {
+    new URL(ENV.S3_ENDPOINT);
+  } catch {
+    throw new Error("S3_ENDPOINT must be an absolute URL (e.g. \"http://seaweedfs:8333\").");
+  }
+}
+
+validateS3EndpointConfig();
 
 export default ENV;

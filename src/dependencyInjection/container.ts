@@ -62,7 +62,7 @@ import AuthController from "@/presentation/http/auth/controllers/Auth.controller
 import McpController from "@/presentation/mcp/controllers/Mcp.controller";
 import RandomUuidIDGenerator from "@/infrastructure/core/services/RandomUuidIDGenerator";
 import PrismaUploadRepository from "@/infrastructure/uploads/repositories/PrismaUploadRepository";
-import MinioFileStorage from "@/infrastructure/uploads/storage/MinioFileStorage";
+import S3FileStorage from "@/infrastructure/uploads/storage/S3FileStorage";
 import SharpImageProcessor from "@/infrastructure/uploads/images/SharpImageProcessor";
 import { IFileStorage } from "@/domain/uploads/services/IFileStorage";
 import { UploadService } from "@/application/uploads/services/implementations/UploadService";
@@ -109,14 +109,13 @@ export const appleOAuthProvider = new AppleOAuthProvider(
   ENV.APPLE_CLIENT_ID,
 );
 export const emailService: IEmailService = new ResendEmailProvider(ENV.RESEND_API_KEY, ENV.MAIL_FROM);
-export const fileStorage: IFileStorage = new MinioFileStorage({
-  endPoint: ENV.MINIO_ENDPOINT,
-  port: ENV.MINIO_PORT,
-  useSSL: ENV.MINIO_USE_SSL,
-  accessKey: ENV.MINIO_ACCESS_KEY,
-  secretKey: ENV.MINIO_SECRET_KEY,
-  bucket: ENV.MINIO_BUCKET,
-  region: ENV.MINIO_REGION,
+export const fileStorage: IFileStorage = new S3FileStorage({
+  endpoint: ENV.S3_ENDPOINT,
+  region: ENV.S3_REGION,
+  accessKeyId: ENV.S3_ACCESS_KEY,
+  secretAccessKey: ENV.S3_SECRET_KEY,
+  bucket: ENV.S3_BUCKET,
+  forcePathStyle: ENV.S3_FORCE_PATH_STYLE,
 });
 export const imageProcessor = new SharpImageProcessor();
 
