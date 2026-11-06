@@ -12,6 +12,7 @@ import { paginate } from "@/infrastructure/core/repositories/prismaPagination";
 import DatabaseError from "@/infrastructure/core/errors/DatabaseError";
 import DatabaseInsertError from "@/infrastructure/core/errors/DatabaseInsertError";
 import { PrismaPlaceMapper } from "../mappers/PrismaPlaceMapper";
+import { PrismaPhotoMapper } from "@/infrastructure/photos/mappers/PrismaPhotoMapper";
 
 const KM_PER_DEGREE = 111.32;
 const EARTH_RADIUS_KM = 6371;
@@ -75,7 +76,7 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
       if (!row) return null;
       return {
         place: PrismaPlaceMapper.toDomain(row),
-        photos: row.photos.map(PrismaPlaceMapper.photoToDomain),
+        photos: row.photos.map(PrismaPhotoMapper.toGalleryPhoto),
         rating: { average: ratings._avg.rating ?? null, count: ratings._count._all },
       };
     } catch (error) {

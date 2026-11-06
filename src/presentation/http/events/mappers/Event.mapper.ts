@@ -34,6 +34,7 @@ export default class EventDtoMapper {
             status: detail.place.status,
           }
         : null,
+      photos: detail.photos.map((photo) => ({ id: photo.id, url: photo.url, position: photo.position })),
     };
   }
 }

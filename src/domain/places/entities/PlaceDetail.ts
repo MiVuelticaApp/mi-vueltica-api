@@ -1,10 +1,7 @@
 import { Place } from "./Place";
+import { GalleryPhoto } from "@/domain/photos/entities/Photo";
 
-export interface PlacePhoto {
-  id: string;
-  url: string;
-  position: number;
-}
+export type PlacePhoto = GalleryPhoto;
 
 /** Aggregated over PUBLISHED reviews only. `average` is null when there are none. */
 export interface PlaceRating {
