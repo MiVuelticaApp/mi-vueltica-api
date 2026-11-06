@@ -27,7 +27,15 @@ export interface PlaceSummaryResponse {
   status: ContentStatus;
 }
 
+export interface EventPhotoResponse {
+  id: string;
+  url: string;
+  position: number;
+}
+
 export interface EventDetailResponse extends EventResponse {
   /** Null when the event has no place or the caller may not see it (not PUBLISHED). */
   place: PlaceSummaryResponse | null;
+  /** The event's own gallery, ordered by `position` ascending. */
+  photos: EventPhotoResponse[];
 }

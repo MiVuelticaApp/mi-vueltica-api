@@ -48,6 +48,16 @@ import { SUBMISSION_CREATE_RATE_LIMIT } from "@/presentation/http/submissions/su
 import { SUBMISSION_TYPES } from "@/domain/submissions/valueObjects/submissionType.valueObject";
 import { AGE_RANGES, USER_ROLES } from "@/domain/users/entities/User";
 import { DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/domain/core/pagination/Pagination";
+import { SUBMISSION_MAX_PHOTOS } from "@/domain/submissions/entities/SubmissionPayload";
+import { AddPhotoSchema } from "@/presentation/http/photos/validators/addPhoto";
+import { ReorderPhotosSchema } from "@/presentation/http/photos/validators/reorderPhotos";
+import {
+  UPLOAD_ACCEPTED_TYPES,
+  UPLOAD_FIELD_NAME,
+  UPLOAD_MAX_BYTES,
+  UPLOAD_RATE_LIMIT,
+} from "@/presentation/http/uploads/uploadLimits";
+import { MAX_IMAGE_DIMENSION } from "@/domain/uploads/services/IImageProcessor";
 
 // OpenAPI document served to Scalar (see app.ts). Request bodies are generated from the
 // same Zod schemas used by validateSchema, so docs can't drift from validation. Responses
@@ -104,6 +114,66 @@ export const paginated = (itemRef: string) => ({
     { $ref: "#/components/schemas/PaginationMeta" },
   ],
 });
+
+/** GET / POST / PATCH order of a Place or Event gallery (`/places/{placeId}/photos`, `/events/{eventId}/photos`). */
+const galleryPaths = (kind: "place" | "event") => {
+  const tag = "Photos";
+  const base = `/${kind}s/{${kind}Id}/photos`;
+  const parameters = [{ $ref: `#/components/parameters/${kind === "place" ? "PlaceId" : "EventId"}` }];
+  return {
+    [base]: {
+      get: {
+        tags: [tag],
+        summary: `List the ${kind}'s photos`,
+        description:
+          `Public (optional bearer token). The ${kind}'s gallery ordered by \`position\`. 404 if the ${kind} does not exist or is not PUBLISHED, unless the caller is MODERATOR / ADMIN.`,
+        security: optionalBearer,
+        parameters,
+        responses: {
+          200: { description: "Photos", content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Photo" } } } } },
+          400: responseRef("BadRequest"),
+          404: responseRef("NotFound"),
+        },
+      },
+      post: {
+        tags: [tag],
+        summary: `Add a photo to the ${kind} (MODERATOR, ADMIN)`,
+        description:
+          `Appended at the end of the gallery (\`position = max + 1\`). \`url\` is either a URL returned by \`POST /uploads\` (linked to that upload, stored in canonical form) or any external **https** URL (max 2048 chars). 422 when it looks like one of our file URLs but the upload does not exist.`,
+        security: bearer,
+        parameters,
+        requestBody: jsonBody(AddPhotoSchema),
+        responses: {
+          201: jsonResponse("Created photo", "Photo"),
+          400: responseRef("BadRequest"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+          422: responseRef("UnprocessableEntity"),
+        },
+      },
+    },
+    [`${base}/order`]: {
+      patch: {
+        tags: [tag],
+        summary: `Reorder the ${kind}'s photos (MODERATOR, ADMIN)`,
+        description:
+          "`photoIds` must contain exactly the gallery's photo ids, each once (else 422); the first gets position 0. Applied in one transaction. Returns the reordered gallery.",
+        security: bearer,
+        parameters,
+        requestBody: jsonBody(ReorderPhotosSchema),
+        responses: {
+          200: { description: "Reordered photos", content: { "application/json": { schema: { type: "array", items: { $ref: "#/components/schemas/Photo" } } } } },
+          400: responseRef("BadRequest"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+          422: responseRef("UnprocessableEntity"),
+        },
+      },
+    },
+  };
+};
 
 const paths: Record<string, Record<string, unknown>> = {
   "/auth/google": {
@@ -1041,7 +1111,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Events"],
       summary: "Get an event",
       description:
-        "Public (optional bearer token). Includes a summary of the event's place. A non-PUBLISHED event is 404 unless the caller is MODERATOR / ADMIN; for other callers `place` is null when the linked place is not PUBLISHED.",
+        "Public (optional bearer token). Includes a summary of the event's place and the event's photos ordered by position. A non-PUBLISHED event is 404 unless the caller is MODERATOR / ADMIN; for other callers `place` is null when the linked place is not PUBLISHED.",
       security: optionalBearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       responses: {
@@ -1188,6 +1258,8 @@ const paths: Record<string, Record<string, unknown>> = {
         "`PLACE` uses the same fields as `POST /places`, `EVENT` the same fields as `POST /events` (datetimes ISO 8601 " +
         "with offset, `endsAt >= startsAt`), in both cases without `sourceId`. Unknown keys (including `sourceId`, " +
         "`aiScore`, `aiReason`, `status`) are ignored. Unknown canton, category or place → 422. " +
+        `\`data.photos\` (optional): up to ${SUBMISSION_MAX_PHOTOS} URLs returned by \`POST /uploads\` for the caller's own uploads, in gallery order ` +
+        "(anything else, or a repeated photo → 422); on approval they become the Place/Event gallery. " +
         `Rate-limited to ${SUBMISSION_CREATE_RATE_LIMIT.max} requests per ${SUBMISSION_CREATE_RATE_LIMIT.windowMs / 60000} minutes per user (429).`,
       security: bearer,
       requestBody: jsonBody(CreateSubmissionSchema),
@@ -1338,6 +1410,87 @@ const paths: Record<string, Record<string, unknown>> = {
       },
     },
   },
+  ...galleryPaths("place"),
+  ...galleryPaths("event"),
+  "/photos/{id}": {
+    delete: {
+      tags: ["Photos"],
+      summary: "Delete a photo (MODERATOR, ADMIN)",
+      description:
+        "Removes a photo from its Place/Event gallery; the other photos keep their positions. The stored file (if it was an upload) is removed later by the orphan cleanup once nothing references it.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        204: { description: "Photo deleted" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+      },
+    },
+  },
+  "/uploads": {
+    post: {
+      tags: ["Uploads"],
+      summary: "Upload a photo",
+      description:
+        `Any authenticated user. \`multipart/form-data\` with one file in the \`${UPLOAD_FIELD_NAME}\` field, at most ${UPLOAD_MAX_BYTES / (1024 * 1024)} MB. ` +
+        `The format is detected from the bytes (JPEG, PNG or WebP; HEIC/AVIF are rejected, send them as JPEG) → 415 otherwise. ` +
+        `The image is re-encoded: EXIF orientation applied, **all metadata (GPS position included) removed**, scaled down to at most ${MAX_IMAGE_DIMENSION} px per side, stored as JPEG in the object storage (SeaweedFS). ` +
+        "The returned `url` is served by this API (`GET /files/{id}`) and is what clients send in a submission's `data.photos`. " +
+        `Uploads that nothing references (no submission, no gallery photo) are deleted after a grace period (24 h by default). ` +
+        `Rate-limited to ${UPLOAD_RATE_LIMIT.max} uploads per ${UPLOAD_RATE_LIMIT.windowMs / 60000} minutes per user (429).`,
+      security: bearer,
+      requestBody: {
+        required: true,
+        content: {
+          "multipart/form-data": {
+            schema: {
+              type: "object",
+              properties: {
+                [UPLOAD_FIELD_NAME]: { type: "string", format: "binary", description: `${UPLOAD_ACCEPTED_TYPES.join(", ")}` },
+              },
+              required: [UPLOAD_FIELD_NAME],
+            },
+          },
+        },
+      },
+      responses: {
+        201: jsonResponse("Stored upload", "Upload"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        413: errorResponse("File too large"),
+        415: errorResponse("Not a JPEG, PNG or WebP image (or damaged / too many pixels)"),
+        429: errorResponse("Too many requests"),
+        503: errorResponse("Object storage unavailable, retry later"),
+      },
+    },
+  },
+  "/files/{id}": {
+    get: {
+      tags: ["Uploads"],
+      summary: "Download an uploaded file",
+      description:
+        "Public. Streams the file from the object storage (SeaweedFS; the bucket itself is private; the API is the only way to reach it). " +
+        "The random id is the capability, so these URLs can be used directly as image sources. Files are immutable: " +
+        "`Cache-Control: public, max-age=31536000, immutable`, `ETag`/`Last-Modified` with 304 on conditional requests. HEAD is supported.",
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        200: {
+          description: "File bytes",
+          headers: {
+            "Cache-Control": { schema: { type: "string" }, description: "public, max-age=31536000, immutable" },
+            ETag: { schema: { type: "string" } },
+          },
+          content: { "image/jpeg": { schema: { type: "string", format: "binary" } } },
+        },
+        304: { description: "Not modified" },
+        400: responseRef("BadRequest"),
+        404: responseRef("NotFound"),
+        503: errorResponse("Object storage unavailable, retry later"),
+      },
+    },
+  },
   "/system/min-frontend-version": {
     get: {
       tags: ["System"],
@@ -1393,6 +1546,8 @@ const openApiDocument = {
     { name: "Sources" },
     { name: "Places" },
     { name: "Events" },
+    { name: "Photos" },
+    { name: "Uploads" },
     { name: "Favorites" },
     { name: "Devices" },
     { name: "Notifications" },
@@ -1429,6 +1584,12 @@ const openApiDocument = {
       },
       PlaceId: {
         name: "placeId",
+        in: "path",
+        required: true,
+        schema: { type: "string", format: "uuid" },
+      },
+      EventId: {
+        name: "eventId",
         in: "path",
         required: true,
         schema: { type: "string", format: "uuid" },
@@ -1563,6 +1724,31 @@ const openApiDocument = {
         },
         required: ["id", "url", "position"],
       },
+      Photo: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          placeId: { type: ["string", "null"], format: "uuid", description: "Set for place photos" },
+          eventId: { type: ["string", "null"], format: "uuid", description: "Set for event photos" },
+          url: { type: "string", maxLength: 2048 },
+          position: { type: "integer", description: "Gallery order, ascending" },
+          createdAt: { type: "string", format: "date-time" },
+        },
+        required: ["id", "placeId", "eventId", "url", "position", "createdAt"],
+      },
+      Upload: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          url: { type: "string", description: "Durable URL served by this API (`/api/v1/files/{id}`); send it in a submission's `data.photos`" },
+          contentType: { type: "string", enum: ["image/jpeg"], description: "Every upload is re-encoded as JPEG" },
+          size: { type: "integer", description: "Stored size in bytes" },
+          width: { type: "integer" },
+          height: { type: "integer" },
+          createdAt: { type: "string", format: "date-time" },
+        },
+        required: ["id", "url", "contentType", "size", "width", "height", "createdAt"],
+      },
       Place: {
         type: "object",
         properties: {
@@ -1664,8 +1850,13 @@ const openApiDocument = {
                 oneOf: [{ $ref: "#/components/schemas/PlaceSummary" }, { type: "null" }],
                 description: "Null when the event has no place or the caller may not see it (not PUBLISHED)",
               },
+              photos: {
+                type: "array",
+                items: { $ref: "#/components/schemas/PlacePhoto" },
+                description: "The event's own gallery, ordered by position",
+              },
             },
-            required: ["place"],
+            required: ["place", "photos"],
           },
         ],
       },
@@ -1677,7 +1868,7 @@ const openApiDocument = {
           type: { type: "string", enum: [...SUBMISSION_TYPES] },
           data: {
             type: "object",
-            description: "The suggested fields: a POST /places body (PLACE) or POST /events body (EVENT), without sourceId. Event dates as ISO 8601 UTC.",
+            description: "The suggested fields: a POST /places body (PLACE) or POST /events body (EVENT), without sourceId, plus `photos` (array of upload URLs, possibly empty). Event dates as ISO 8601 UTC.",
           },
           status: { $ref: "#/components/schemas/ContentStatus" },
           reviewedById: { type: ["string", "null"], format: "uuid" },

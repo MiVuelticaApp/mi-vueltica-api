@@ -8,6 +8,7 @@ import PrismaPlaceRepository from "@/infrastructure/places/repositories/PrismaPl
 import PrismaEventRepository from "@/infrastructure/events/repositories/PrismaEventRepository";
 import PrismaCategoryRepository from "@/infrastructure/categories/repositories/PrismaCategoryRepository";
 import PrismaSourceRepository from "@/infrastructure/sources/repositories/PrismaSourceRepository";
+import PrismaPhotoRepository from "@/infrastructure/photos/repositories/PrismaPhotoRepository";
 
 /** Same pattern as PrismaUserDeletionUnitOfWork: every repository shares the transaction client. */
 export class PrismaSubmissionApprovalUnitOfWork implements ISubmissionApprovalUnitOfWork {
@@ -19,6 +20,7 @@ export class PrismaSubmissionApprovalUnitOfWork implements ISubmissionApprovalUn
         getEventRepository: () => new PrismaEventRepository(tx),
         getCategoryRepository: () => new PrismaCategoryRepository(tx),
         getSourceRepository: () => new PrismaSourceRepository(tx),
+        getPhotoRepository: () => new PrismaPhotoRepository(tx),
       };
       return work(context);
     });

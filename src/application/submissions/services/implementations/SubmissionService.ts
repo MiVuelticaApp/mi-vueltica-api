@@ -1,11 +1,17 @@
 import { Submission } from "@/domain/submissions/entities/Submission";
-import { SubmissionPayloadInput, normalizeSubmissionPayload } from "@/domain/submissions/entities/SubmissionPayload";
+import {
+  SubmissionPayloadInput,
+  normalizeSubmissionPayload,
+  withSubmissionPhotos,
+} from "@/domain/submissions/entities/SubmissionPayload";
 import { ISubmissionRepository, SubmissionSortField } from "@/domain/submissions/repositories/ISubmissionRepository";
 import { ISubmissionApprovalUnitOfWork } from "@/domain/submissions/unitsOfWork/SubmissionApprovalUnitOfWork";
 import { IPlaceRepository } from "@/domain/places/repositories/IPlaceRepository";
 import { ICategoryRepository } from "@/domain/categories/repositories/ICategoryRepository";
 import { ISourceRepository } from "@/domain/sources/repositories/ISourceRepository";
 import { COMMUNITY_SOURCE_ID } from "@/domain/sources/communitySource";
+import { PhotoOwner } from "@/domain/photos/valueObjects/photoOwner.valueObject";
+import { IUploadService } from "@/application/uploads/services/interfaces/IUploadService";
 import { PaginatedResult, PaginationParams, SortDirection } from "@/domain/core/pagination/Pagination";
 import { ISubmissionService, SubmissionApprovalResult, SubmissionQueueFilters } from "../interfaces/ISubmissionService";
 import { ensureSubmissionReferencesExist } from "../submissionReferences";
@@ -26,6 +32,7 @@ export class SubmissionService implements ISubmissionService {
     private readonly placeRepository: IPlaceRepository,
     private readonly categoryRepository: ICategoryRepository,
     private readonly approvalUOW: ISubmissionApprovalUnitOfWork,
+    private readonly uploadService: IUploadService,
   ) {}
 
   async create(userId: string, input: SubmissionPayloadInput): Promise<Submission> {
@@ -35,7 +42,14 @@ export class SubmissionService implements ISubmissionService {
       placeRepository: this.placeRepository,
       categoryRepository: this.categoryRepository,
     });
-    return this.submissionRepository.create({ userId, payload });
+    // Every photo must be one of the author's own uploads (422); stored in canonical form and
+    // linked to the submission so the orphan cleanup keeps the files while it exists.
+    const photos = await this.uploadService.resolveOwnUploads(userId, payload.data.photos);
+    return this.submissionRepository.create({
+      userId,
+      payload: withSubmissionPhotos(payload, photos.map((photo) => photo.url)),
+      uploadIds: photos.map((photo) => photo.uploadId),
+    });
   }
 
   async listMine(userId: string, params: Params): Promise<PaginatedResult<Submission>> {
@@ -91,18 +105,29 @@ export class SubmissionService implements ISubmissionService {
       let created: SubmissionApprovalResult["created"];
 
       if (payload.type === "PLACE") {
+        const { photos: _photos, ...data } = payload.data;
         // Repositories always insert as PENDING; publishing goes through the entity so
         // `verifiedAt` is set exactly as in PATCH /places/:id/status.
-        const place = await placeRepository.create({ ...payload.data, sourceId });
+        const place = await placeRepository.create({ ...data, sourceId });
         place.changeStatus("PUBLISHED", now);
         await placeRepository.update(place);
         created = { type: "PLACE", id: place.id };
       } else {
+        const { photos: _photos, ...data } = payload.data;
         const eventRepository = ctx.getEventRepository();
-        const event = await eventRepository.create({ ...payload.data, sourceId });
+        const event = await eventRepository.create({ ...data, sourceId });
         event.changeStatus("PUBLISHED");
         await eventRepository.update(event);
         created = { type: "EVENT", id: event.id };
+      }
+
+      // The submission's photos become the new Place/Event gallery, in the submitted order.
+      const owner: PhotoOwner = { type: created.type, id: created.id };
+      const photoRepository = ctx.getPhotoRepository();
+      for (const [position, url] of payload.data.photos.entries()) {
+        const uploadId = this.uploadService.uploadIdFromUrl(url);
+        if (!uploadId) throw new Error(`Submission ${id} has a photo that is not an upload: ${url}`);
+        await photoRepository.create({ owner, url: this.uploadService.urlFor(uploadId), uploadId, position });
       }
 
       submission.approve(reviewerId, now);
