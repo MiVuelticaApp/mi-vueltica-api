@@ -50,5 +50,6 @@ ALTER TABLE `SubmissionUpload` ADD CONSTRAINT `SubmissionUpload_submissionId_fke
 -- AddForeignKey
 ALTER TABLE `SubmissionUpload` ADD CONSTRAINT `SubmissionUpload_uploadId_fkey` FOREIGN KEY (`uploadId`) REFERENCES `Upload`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- A photo belongs to exactly one Place or one Event (not modeled by Prisma).
-ALTER TABLE `Photo` ADD CONSTRAINT `Photo_owner_check` CHECK ((`placeId` IS NULL) <> (`eventId` IS NULL));
+-- A photo belongs to exactly one Place or one Event. This is enforced by the application
+-- (PhotoOwner / PrismaPhotoRepository), not by a CHECK constraint: MySQL 8 rejects a CHECK on
+-- columns used by a foreign key with a referential action (error 3823).
