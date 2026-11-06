@@ -31,6 +31,12 @@ npx prisma generate
 
 MariaDB (not MySQL, not MongoDB). Uses `@prisma/adapter-mariadb`. Connection config in `src/infrastructure/core/config/keys/mysql.ts`.
 
+**Migrations must also run on MySQL 8**: the production database rejected a MariaDB-only construct (a CHECK on
+columns used by a foreign key with `ON DELETE CASCADE`, MySQL error 3823). Test hand-written SQL on `mysql:8.4` as
+well as MariaDB, and remember MySQL commits each DDL statement, so a failed migration leaves the earlier statements
+applied: check what ran, then mark it with `npx prisma migrate resolve --applied <name>` (or `--rolled-back`
+after undoing it by hand).
+
 The connection parameters (host, user, password, database, port) are parsed from `DATABASE_URL`, which is
 also what the Prisma CLI reads (`prisma.config.ts`).
 
@@ -503,8 +509,10 @@ because its community edition is no longer maintained). Module `uploads` (`src/{
 
 ## Photos (place & event galleries)
 
-Module `photos`. One `Photo` table for both galleries: exactly one of `placeId` / `eventId` is set (DB CHECK
-`Photo_owner_check`, added by hand in the migration since Prisma does not model it); both cascade on delete.
+Module `photos`. One `Photo` table for both galleries: exactly one of `placeId` / `eventId` is set, enforced by the
+application (`PhotoOwner`, `PrismaPhotoRepository.create`, and `PrismaPhotoMapper` throws on a row that breaks it), **not**
+by a CHECK constraint: MySQL 8 refuses a CHECK on columns used by a foreign key with a referential action (error 3823),
+which made the first deploy of this migration fail. Both foreign keys cascade on delete.
 `uploadId` is set for files from `POST /uploads` and null for external URLs.
 
 - `GET /api/v1/places/:placeId/photos` and `GET /api/v1/events/:eventId/photos`: public with `optionalJwtAuth`, ordered by
