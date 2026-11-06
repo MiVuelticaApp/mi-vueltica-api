@@ -15,6 +15,10 @@ import myDevicesRouter from "@/presentation/http/devices/routes/myDevices.routes
 import myNotificationsRouter from "@/presentation/http/notifications/routes/myNotifications.routes";
 import submissionsRouter from "@/presentation/http/submissions/routes/submissions.routes";
 import systemRouter from "@/presentation/http/system/routes/system.route";
+import uploadsRouter from "@/presentation/http/uploads/routes/uploads.routes";
+import filesRouter from "@/presentation/http/uploads/routes/files.routes";
+import photosRouter from "@/presentation/http/photos/routes/photos.routes";
+import { eventPhotosRouter, placePhotosRouter } from "@/presentation/http/photos/routes/galleryRouter";
 import { Router } from "express";
 const router = Router();
 
@@ -33,8 +37,14 @@ router.use("/cantons", cantonsRouter);
 router.use("/sources", sourcesRouter);
 // Before /places so the favorite sub-resource is never shadowed.
 router.use("/places/:placeId/favorite", placeFavoriteRouter);
+router.use("/places/:placeId/photos", placePhotosRouter);
 router.use("/places", placesRouter);
+// Before /events so the photos sub-resource is never shadowed.
+router.use("/events/:eventId/photos", eventPhotosRouter);
 router.use("/events", eventsRouter);
+router.use("/photos", photosRouter);
+router.use("/uploads", uploadsRouter);
+router.use("/files", filesRouter);
 router.use("/users", usersRouter);
 router.use("/submissions", submissionsRouter);
 router.use("/system", systemRouter);

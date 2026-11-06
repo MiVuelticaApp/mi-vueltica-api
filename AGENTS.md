@@ -37,12 +37,14 @@ also what the Prisma CLI reads (`prisma.config.ts`).
 Env vars (see `.env.example`):
 
 - **Required at boot** (the server throws without them): `DATABASE_URL` (`mysql.ts`), `RESEND_API_KEY`,
-  `MAIL_FROM`, `MIN_FRONTEND_VERSION` (semver, validated; `required()` in
-  `src/presentation/http/core/config/env.ts`).
+  `MAIL_FROM`, `MIN_FRONTEND_VERSION` (semver, validated), `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`,
+  `MINIO_SECRET_KEY`, and in production `PUBLIC_API_URL` (`required()` in
+  `src/presentation/http/core/config/env.ts`; see "Uploads & files").
 - **Needed in practice**: `JWT_SECRET` (`JwtTokenService` falls back to a hard-coded secret when it is unset,
   so always set it outside local dev), `JWT_EXPIRES_IN` (default `7d`), and `GOOGLE_CLIENT_ID`,
   `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_ANDROID_CLIENT_ID` for Google login.
-- **Optional**: `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (see "Account
+- **Optional**: `MINIO_PORT` (9000), `MINIO_USE_SSL` (false), `MINIO_BUCKET` (`mi-vueltica`), `MINIO_REGION`,
+  `UPLOAD_ORPHAN_GRACE_HOURS` (24), `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (see "Account
   deletion") and `TEST_LOGIN_ENABLED`, `TEST_LOGIN_EMAIL`, `TEST_LOGIN_PASSWORD` (see "Test login").
 
 ## Seed data
@@ -321,6 +323,7 @@ token or missing/soft-deleted user continues anonymously, never 401; a valid one
 - **verifiedAt**: `Place.changeStatus(status, now)` sets `verifiedAt = now` whenever the place transitions to
   `PUBLISHED` (an already-PUBLISHED place keeps its `verifiedAt`); other statuses leave it untouched.
 - **isFavorite**: `GET /:id` adds `isFavorite: boolean` when the caller is authenticated (see Favorites) and omits it for anonymous callers; the list endpoint is unchanged.
+- **Photos**: `GET /:id` embeds the gallery (`photos`, ordered by `position`); managed through the Photos endpoints.
 - **Delete** is a plain `place.delete`: photos, favorites and reviews cascade at DB level and events keep existing with
   `placeId = null` (SET NULL). Category/source deletes still return 409 while any place references them.
 
@@ -346,7 +349,8 @@ require `jwtAuth` + `requireRole("MODERATOR", "ADMIN")`; `DELETE /:id` requires 
   (the last two are reused from `application/places/errors`).
 - **Detail** (`EventDetail` read model): `place: PlaceSummary | null` (`id, name, cantonId, latitude, longitude, address, status`). For non-privileged
   callers the place is `null` when it is not PUBLISHED (`placeId` is still returned); done in `EventService.get` through the same `statuses` option.
-- **Delete** is a plain `event.delete`; notifications cascade at DB level.
+- **Photos**: events have their own gallery (same `Photo` table); `GET /:id` embeds `photos` (ordered by `position`).
+- **Delete** is a plain `event.delete`; notifications and photos cascade at DB level.
 
 ## Favorites
 
@@ -441,6 +445,11 @@ expected to use this same API as regular authenticated clients (discovering it t
   `innodb_snapshot_isolation` makes a concurrent conditional `UPDATE` fail with "Record has changed since last read"
   (500) instead of matching zero rows; with the lock, concurrent approvals get a clean 409 and create nothing.
   `markReviewed` / `deletePendingOwned` still only write while the row is `PENDING` (second guard).
+- **Photos**: `data.photos` (optional, max 5, no duplicates) holds URLs returned by `POST /uploads`. Each must be one of
+  the **author's own** uploads (`UploadService.resolveOwnUploads`, else 422 `InvalidUploadError`); they are stored in
+  canonical form and linked through `SubmissionUpload` so the orphan cleanup keeps them while the submission exists.
+  On approval, inside the same transaction, they become the Place/Event gallery in the submitted order (`Photo` rows
+  with `uploadId`). Old submissions without the key read back as `photos: []`.
 - **Rate limit**: `POST /me/submissions` allows `SUBMISSION_CREATE_RATE_LIMIT` (20 / 15 min,
   `src/presentation/http/submissions/submissionLimits.ts`) **per user** via `rateLimit({ keyGenerator: byUserId })`
   (in-memory, per process). Raise it if a crawler account needs more.
@@ -449,6 +458,58 @@ expected to use this same API as regular authenticated clients (discovering it t
   response returns it.
 - Caveat: reading a submission re-validates its stored `data` with the current Place/Event rules, so tightening
   those rules can make old submissions fail to load (400). Migrate or relax the data if that ever happens.
+
+## Uploads & files (MinIO, proxied by the API)
+
+Photos are stored in **MinIO** and the API is the only client of the bucket: there is no public bucket policy and
+no pre-signed URL. Module `uploads` (`src/{domain,application,infrastructure}/uploads/`,
+`src/presentation/http/uploads/`).
+
+- `POST /api/v1/uploads` (`jwtAuth`, any role): `multipart/form-data`, one file in the `file` field, max 10 MB
+  (multer in memory, `uploadLimits.ts`; too large → 413, missing/other field → 400). Rate-limited per user
+  (`UPLOAD_RATE_LIMIT`, 60 / 15 min). Answers 201 `{ id, url, contentType, size, width, height, createdAt }`.
+- **Image processing** (`SharpImageProcessor`, sharp/libvips): the format is detected from the bytes, never the client's
+  Content-Type. JPEG/PNG/WebP are accepted; HEIC/AVIF and anything else → 415 `UnsupportedImageError`. Every upload is
+  re-encoded: EXIF orientation applied, **all metadata dropped (GPS!)**, scaled to max 2048 px per side, alpha flattened,
+  stored as JPEG. 50 MP input limit against decompression bombs.
+- **Ids are random v4 UUIDs** (`RandomUuidIDGenerator`, not the v7 `UuidIDGenerator`): the id is the capability in the
+  public file URL. Object key is `uploads/<id>` (`uploadObjectKey`), so serving needs no DB lookup.
+- `GET /api/v1/files/:id` (public, also HEAD): `FileController` stats the object then streams it from MinIO, with
+  `Cache-Control: public, max-age=31536000, immutable`, `ETag`/`Last-Modified` (304 via `req.fresh`), `nosniff` and a
+  sandbox CSP. Missing → 404 `FileNotFoundError`; MinIO down → 503 `FileStorageError`. Files of pending submissions are
+  reachable by anyone who has the (unguessable) URL.
+- **URLs**: `${PUBLIC_API_URL}/api/v1/files/<id>` (`UploadService.urlFor`). That absolute URL is what gets stored in
+  `Photo.url` and in submission JSON; if the public domain ever changes, rewrite them with SQL (the id is in
+  `Photo.uploadId`). `uploadIdFromUrl` only looks at the path, so a URL with another host/scheme is still recognized
+  and is re-written to the canonical form.
+- **Boot**: `server.ts` calls `fileStorage.ensureReady()` (creates the bucket) without blocking startup.
+- **Orphan cleanup**: an `Upload` stays alive while a `Photo` (`uploadId`) or a `SubmissionUpload` row references it.
+  `startUploadCleanupJob` (`src/presentation/jobs/`, every 6 h, first run 1 min after boot, timers `unref`ed) calls
+  `UploadService.cleanupOrphans`: uploads older than `UPLOAD_ORPHAN_GRACE_HOURS` with no reference are deleted, the row
+  first with one conditional `DELETE ... NOT EXISTS` (a reference added meanwhile keeps it), then the object. So a
+  deleted photo, a withdrawn submission, a deleted place/event or a deleted account all release their files.
+  `Upload.userId` is `SET NULL` on account deletion.
+- **Reviews / verifications / reports** (#38, #39) do not exist yet; when added, reuse
+  `IUploadService.resolveOwnUploads(userId, urls)` and link the uploads with a join table (like `SubmissionUpload`)
+  and add it to the cleanup's "referenced" checks (`PrismaUploadRepository`).
+- Local dev: run MinIO (`docker compose up minio` or any S3-compatible server) and set the `MINIO_*` vars.
+
+## Photos (place & event galleries)
+
+Module `photos`. One `Photo` table for both galleries: exactly one of `placeId` / `eventId` is set (DB CHECK
+`Photo_owner_check`, added by hand in the migration since Prisma does not model it); both cascade on delete.
+`uploadId` is set for files from `POST /uploads` and null for external URLs.
+
+- `GET /api/v1/places/:placeId/photos` and `GET /api/v1/events/:eventId/photos`: public with `optionalJwtAuth`, ordered by
+  `position` then `id`; 404 when the owner is missing or not PUBLISHED, unless MODERATOR/ADMIN.
+- `POST .../photos` `{ url }` (MODERATOR, ADMIN) appends (`position = max + 1`): our own file URL (any host, even http in
+  dev) is linked to its upload (422 `InvalidUploadError` if it does not exist); anything else must be https and <= 2048.
+- `PATCH .../photos/order` `{ photoIds }` (MODERATOR, ADMIN): exactly the gallery's ids, each once, else 422
+  `InvalidPhotoOrderError`; sets positions 0..n-1. `DELETE /api/v1/photos/:id` (MODERATOR, ADMIN) → 204 / 404
+  `PhotoNotFoundError`; other positions are left as they are (gaps are fine).
+- Appends and reorders run in `PrismaPhotoGalleryUnitOfWork` after `lockOwner` (`SELECT ... FOR UPDATE` on the Place/Event
+  row), so concurrent appends never share a position. Routers are built by `createGalleryRouter(type)`
+  (`Router({ mergeParams: true })`, mounted before `/places` and `/events`).
 
 ## Admin user management
 
