@@ -13,9 +13,15 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - DATABASE_URL=${DATABASE_URL}
+      - PUBLIC_API_URL=${PUBLIC_API_URL}
+      - S3_ENDPOINT=http://seaweedfs:8333
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-mivueltica}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-changeme-s3}
+      - S3_BUCKET=${S3_BUCKET:-mi-vueltica}
       # Add other environment variables as needed
     depends_on:
       - db
+      - seaweedfs
     networks:
       - tributocr-network
     healthcheck:
@@ -46,8 +52,32 @@ services:
       timeout: 5s
       retries: 5
 
+  # Object storage for uploaded photos: SeaweedFS (master + volume + filer + S3 gateway in one
+  # process). Only the API talks to it (files are proxied through GET /api/v1/files/:id), so no
+  # port is published. The S3 credentials are written to a config file at start-up from the same
+  # S3_ACCESS_KEY / S3_SECRET_KEY the API uses (no quotes or backslashes in them: they go into
+  # JSON; `openssl rand -base64 24` is fine). The API creates the bucket on boot.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.52
+    container_name: tributocr-seaweedfs
+    restart: unless-stopped
+    environment:
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-mivueltica}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-changeme-s3}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        printf '{"identities":[{"name":"api","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json
+        exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/tmp/s3.json
+    volumes:
+      - seaweedfs-data:/data
+    networks:
+      - tributocr-network
+
 volumes:
   db-data:
+    driver: local
+  seaweedfs-data:
     driver: local
 
 networks:

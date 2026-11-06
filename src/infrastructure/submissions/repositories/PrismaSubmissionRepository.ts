@@ -21,10 +21,16 @@ export default class PrismaSubmissionRepository implements ISubmissionRepository
     this.client = client || prisma;
   }
 
-  async create({ userId, payload }: NewSubmission): Promise<Submission> {
+  async create({ userId, payload, uploadIds }: NewSubmission): Promise<Submission> {
     try {
       const row = await this.client.submission.create({
-        data: { userId, type: payload.type, data: PrismaSubmissionMapper.payloadToJson(payload), status: "PENDING" },
+        data: {
+          userId,
+          type: payload.type,
+          data: PrismaSubmissionMapper.payloadToJson(payload),
+          status: "PENDING",
+          uploads: { create: uploadIds.map((uploadId) => ({ uploadId })) },
+        },
       });
       return PrismaSubmissionMapper.toDomain(row);
     } catch (error) {

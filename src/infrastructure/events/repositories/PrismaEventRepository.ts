@@ -7,6 +7,7 @@ import { Prisma } from "@/infrastructure/prisma/generated/prisma/client";
 import { paginate } from "@/infrastructure/core/repositories/prismaPagination";
 import DatabaseError from "@/infrastructure/core/errors/DatabaseError";
 import DatabaseInsertError from "@/infrastructure/core/errors/DatabaseInsertError";
+import { PrismaPhotoMapper } from "@/infrastructure/photos/mappers/PrismaPhotoMapper";
 import { PrismaEventMapper } from "../mappers/PrismaEventMapper";
 
 export default class PrismaEventRepository implements IEventRepository {
@@ -54,11 +55,15 @@ export default class PrismaEventRepository implements IEventRepository {
 
   async findDetail(id: string): Promise<EventDetail | null> {
     try {
-      const row = await this.client.event.findUnique({ where: { id }, include: { place: true } });
+      const row = await this.client.event.findUnique({
+        where: { id },
+        include: { place: true, photos: { orderBy: [{ position: "asc" }, { id: "asc" }] } },
+      });
       if (!row) return null;
       return {
         event: PrismaEventMapper.toDomain(row),
         place: row.place ? PrismaEventMapper.placeSummaryToDomain(row.place) : null,
+        photos: row.photos.map(PrismaPhotoMapper.toGalleryPhoto),
       };
     } catch (error) {
       console.error("Error finding event detail:", error);

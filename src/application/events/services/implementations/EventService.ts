@@ -33,7 +33,7 @@ export class EventService implements IEventService {
     }
     // Do not leak a place that the caller is not allowed to see.
     if (statuses && detail.place && !statuses.includes(detail.place.status)) {
-      return { event: detail.event, place: null };
+      return { ...detail, place: null };
     }
     return detail;
   }

@@ -60,6 +60,20 @@ import AdminUsersController from "@/presentation/http/users/controllers/AdminUse
 import SystemController from "@/presentation/http/system/controllers/SystemController";
 import AuthController from "@/presentation/http/auth/controllers/Auth.controller";
 import McpController from "@/presentation/mcp/controllers/Mcp.controller";
+import RandomUuidIDGenerator from "@/infrastructure/core/services/RandomUuidIDGenerator";
+import PrismaUploadRepository from "@/infrastructure/uploads/repositories/PrismaUploadRepository";
+import S3FileStorage from "@/infrastructure/uploads/storage/S3FileStorage";
+import SharpImageProcessor from "@/infrastructure/uploads/images/SharpImageProcessor";
+import { IFileStorage } from "@/domain/uploads/services/IFileStorage";
+import { UploadService } from "@/application/uploads/services/implementations/UploadService";
+import { IUploadService } from "@/application/uploads/services/interfaces/IUploadService";
+import UploadController from "@/presentation/http/uploads/controllers/Upload.controller";
+import FileController from "@/presentation/http/uploads/controllers/File.controller";
+import PrismaPhotoRepository from "@/infrastructure/photos/repositories/PrismaPhotoRepository";
+import { PrismaPhotoGalleryUnitOfWork } from "@/infrastructure/photos/unitsOfWork/PrismaPhotoGalleryUnitOfWork";
+import { PhotoService } from "@/application/photos/services/implementations/PhotoService";
+import { IPhotoService } from "@/application/photos/services/interfaces/IPhotoService";
+import PhotoController from "@/presentation/http/photos/controllers/Photo.controller";
 import { createMcpServerFactory } from "@/presentation/mcp/server/createMcpServer";
 
 // ==================== INFRASTRUCTURE ====================
@@ -77,10 +91,13 @@ export const favoriteRepository = new PrismaFavoriteRepository();
 export const submissionRepository = new PrismaSubmissionRepository();
 export const deviceRepository = new PrismaDeviceRepository();
 export const notificationRepository = new PrismaNotificationRepository();
+export const uploadRepository = new PrismaUploadRepository();
+export const photoRepository = new PrismaPhotoRepository();
 
 // unit of work
 export const userDeletionUOW = new PrismaUserDeletionUnitOfWork();
 export const submissionApprovalUOW = new PrismaSubmissionApprovalUnitOfWork();
+export const photoGalleryUOW = new PrismaPhotoGalleryUnitOfWork();
 
 // providers
 export const idGenerator = new UuidIDGenerator();
@@ -92,6 +109,15 @@ export const appleOAuthProvider = new AppleOAuthProvider(
   ENV.APPLE_CLIENT_ID,
 );
 export const emailService: IEmailService = new ResendEmailProvider(ENV.RESEND_API_KEY, ENV.MAIL_FROM);
+export const fileStorage: IFileStorage = new S3FileStorage({
+  endpoint: ENV.S3_ENDPOINT,
+  region: ENV.S3_REGION,
+  accessKeyId: ENV.S3_ACCESS_KEY,
+  secretAccessKey: ENV.S3_SECRET_KEY,
+  bucket: ENV.S3_BUCKET,
+  forcePathStyle: ENV.S3_FORCE_PATH_STYLE,
+});
+export const imageProcessor = new SharpImageProcessor();
 
 
 // services
@@ -111,7 +137,19 @@ export const eventService = new EventService(eventRepository, placeRepository, c
 export const favoriteService = new FavoriteService(favoriteRepository, placeRepository);
 export const deviceService = new DeviceService(deviceRepository);
 export const notificationService = new NotificationService(notificationRepository);
-export const submissionService = new SubmissionService(submissionRepository, placeRepository, categoryRepository, submissionApprovalUOW);
+export const uploadService: IUploadService = new UploadService(
+  uploadRepository,
+  fileStorage,
+  imageProcessor,
+  // Upload ids are capabilities (public file URLs): random v4, not time-ordered v7.
+  new RandomUuidIDGenerator(),
+  {
+    fileUrlPrefix: `${ENV.PUBLIC_API_URL}/api/v1/files`,
+    orphanGraceMs: ENV.UPLOAD_ORPHAN_GRACE_HOURS * 60 * 60 * 1000,
+  },
+);
+export const photoService: IPhotoService = new PhotoService(photoRepository, photoGalleryUOW, placeRepository, eventRepository, uploadService);
+export const submissionService = new SubmissionService(submissionRepository, placeRepository, categoryRepository, submissionApprovalUOW, uploadService);
 export const userInterestService = new UserInterestService(userRepository, userInterestRepository, categoryRepository);
 export const oAuthService = new OAuthService(userService, googleOAuthProvider, appleOAuthProvider, idGenerator);
 
@@ -157,6 +195,9 @@ export const mySubmissionsController = new MySubmissionsController(submissionSer
 export const myDevicesController = new MyDevicesController(deviceService);
 export const myNotificationsController = new MyNotificationsController(notificationService);
 export const submissionsController = new SubmissionsController(submissionService);
+export const uploadController = new UploadController(uploadService);
+export const fileController = new FileController(uploadService);
+export const photoController = new PhotoController(photoService);
 export const adminUsersController = new AdminUsersController(
   adminUserService,
   accountDeletionExternalCleanup,

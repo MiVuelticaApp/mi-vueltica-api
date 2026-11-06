@@ -11,8 +11,18 @@ function required(name: string): string {
   return value;
 }
 
+function intFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) throw new Error(`${name} must be a positive integer`);
+  return value;
+}
+
+const NODE_ENV = process.env.NODE_ENV || "development";
+
 const ENV = {
-  NODE_ENV: process.env.NODE_ENV || "development",
+  NODE_ENV,
   PORT: process.env.PORT || 3000,
   DATABASE_URL: process.env.DATABASE_URL || "mongodb://localhost:27017/myapp",
   JWT_SECRET: process.env.JWT_SECRET || "your_jwt_secret",
@@ -34,6 +44,24 @@ const ENV = {
   // Minimum supported frontend/app version. Required and validated as semver at boot so
   // a typo doesn't silently ship a broken version gate to clients.
   MIN_FRONTEND_VERSION: required("MIN_FRONTEND_VERSION"),
+  // Public origin of this API (scheme + host [+ path prefix], no trailing slash). Uploaded files
+  // are served at `${PUBLIC_API_URL}/api/v1/files/:id` and that absolute URL is what gets stored
+  // in photo galleries. Required in production; defaults to localhost elsewhere.
+  PUBLIC_API_URL: (NODE_ENV === "production"
+    ? required("PUBLIC_API_URL")
+    : process.env.PUBLIC_API_URL || `http://localhost:${process.env.PORT || 3000}`
+  ).replace(/\/+$/, ""),
+  // S3-compatible object storage for uploads (SeaweedFS's S3 gateway). The API is the only
+  // client: the bucket stays private and every file is proxied through GET /api/v1/files/:id.
+  S3_ENDPOINT: required("S3_ENDPOINT"),
+  S3_ACCESS_KEY: required("S3_ACCESS_KEY"),
+  S3_SECRET_KEY: required("S3_SECRET_KEY"),
+  S3_BUCKET: process.env.S3_BUCKET || "mi-vueltica",
+  S3_REGION: process.env.S3_REGION || "us-east-1",
+  // Path-style URLs (`endpoint/bucket/key`), which SeaweedFS needs. Only "false" turns it off.
+  S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE !== "false",
+  // Uploads that nothing references are deleted after this many hours (default 24).
+  UPLOAD_ORPHAN_GRACE_HOURS: intFromEnv("UPLOAD_ORPHAN_GRACE_HOURS", 24),
 };
 
 const TEST_LOGIN_MIN_PASSWORD_LENGTH = 16;
@@ -87,5 +115,33 @@ function validateMinFrontendVersionConfig(): void {
 }
 
 validateMinFrontendVersionConfig();
+
+// Fail-fast: a malformed PUBLIC_API_URL would be baked into every stored photo URL.
+function validatePublicApiUrlConfig(): void {
+  let url: URL;
+  try {
+    url = new URL(ENV.PUBLIC_API_URL);
+  } catch {
+    throw new Error("PUBLIC_API_URL must be an absolute URL (e.g. \"https://api.example.com\").");
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("PUBLIC_API_URL must be an http(s) URL.");
+  }
+  if (ENV.NODE_ENV === "production" && url.protocol !== "https:") {
+    console.warn("[env] PUBLIC_API_URL is not https: photo URLs given to clients will be plain http.");
+  }
+}
+
+validatePublicApiUrlConfig();
+
+function validateS3EndpointConfig(): void {
+  try {
+    new URL(ENV.S3_ENDPOINT);
+  } catch {
+    throw new Error("S3_ENDPOINT must be an absolute URL (e.g. \"http://seaweedfs:8333\").");
+  }
+}
+
+validateS3EndpointConfig();
 
 export default ENV;
