@@ -1,6 +1,5 @@
 import { Place } from "@/domain/places/entities/Place";
-import { PlacePhoto } from "@/domain/places/entities/PlaceDetail";
-import { Place as PrismaPlace, Photo as PrismaPhoto, Prisma } from "@/infrastructure/prisma/generated/prisma/client";
+import { Place as PrismaPlace, Prisma } from "@/infrastructure/prisma/generated/prisma/client";
 
 export class PrismaPlaceMapper {
   static toDomain(row: PrismaPlace): Place {
@@ -22,10 +21,6 @@ export class PrismaPlaceMapper {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });
-  }
-
-  static photoToDomain(row: PrismaPhoto): PlacePhoto {
-    return { id: row.id, url: row.url, position: row.position };
   }
 
   /** Nullable JSON columns need `Prisma.DbNull` to store SQL NULL. */
