@@ -11,8 +11,18 @@ function required(name: string): string {
   return value;
 }
 
+function intFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) throw new Error(`${name} must be a positive integer`);
+  return value;
+}
+
+const NODE_ENV = process.env.NODE_ENV || "development";
+
 const ENV = {
-  NODE_ENV: process.env.NODE_ENV || "development",
+  NODE_ENV,
   PORT: process.env.PORT || 3000,
   DATABASE_URL: process.env.DATABASE_URL || "mongodb://localhost:27017/myapp",
   JWT_SECRET: process.env.JWT_SECRET || "your_jwt_secret",
@@ -34,6 +44,24 @@ const ENV = {
   // Minimum supported frontend/app version. Required and validated as semver at boot so
   // a typo doesn't silently ship a broken version gate to clients.
   MIN_FRONTEND_VERSION: required("MIN_FRONTEND_VERSION"),
+  // Public origin of this API (scheme + host [+ path prefix], no trailing slash). Uploaded files
+  // are served at `${PUBLIC_API_URL}/api/v1/files/:id` and that absolute URL is what gets stored
+  // in photo galleries. Required in production; defaults to localhost elsewhere.
+  PUBLIC_API_URL: (NODE_ENV === "production"
+    ? required("PUBLIC_API_URL")
+    : process.env.PUBLIC_API_URL || `http://localhost:${process.env.PORT || 3000}`
+  ).replace(/\/+$/, ""),
+  // MinIO (object storage for uploads). The API is the only client: the bucket stays private
+  // and every file is proxied through GET /api/v1/files/:id.
+  MINIO_ENDPOINT: required("MINIO_ENDPOINT"),
+  MINIO_PORT: intFromEnv("MINIO_PORT", 9000),
+  MINIO_USE_SSL: process.env.MINIO_USE_SSL === "true",
+  MINIO_ACCESS_KEY: required("MINIO_ACCESS_KEY"),
+  MINIO_SECRET_KEY: required("MINIO_SECRET_KEY"),
+  MINIO_BUCKET: process.env.MINIO_BUCKET || "mi-vueltica",
+  MINIO_REGION: process.env.MINIO_REGION || "us-east-1",
+  // Uploads that nothing references are deleted after this many hours (default 24).
+  UPLOAD_ORPHAN_GRACE_HOURS: intFromEnv("UPLOAD_ORPHAN_GRACE_HOURS", 24),
 };
 
 const TEST_LOGIN_MIN_PASSWORD_LENGTH = 16;
@@ -87,5 +115,23 @@ function validateMinFrontendVersionConfig(): void {
 }
 
 validateMinFrontendVersionConfig();
+
+// Fail-fast: a malformed PUBLIC_API_URL would be baked into every stored photo URL.
+function validatePublicApiUrlConfig(): void {
+  let url: URL;
+  try {
+    url = new URL(ENV.PUBLIC_API_URL);
+  } catch {
+    throw new Error("PUBLIC_API_URL must be an absolute URL (e.g. \"https://api.example.com\").");
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("PUBLIC_API_URL must be an http(s) URL.");
+  }
+  if (ENV.NODE_ENV === "production" && url.protocol !== "https:") {
+    console.warn("[env] PUBLIC_API_URL is not https: photo URLs given to clients will be plain http.");
+  }
+}
+
+validatePublicApiUrlConfig();
 
 export default ENV;
