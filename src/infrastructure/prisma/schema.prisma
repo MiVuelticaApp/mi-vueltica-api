@@ -92,6 +92,7 @@ model User {
   reviews             Review[]
   devices             Device[]
   notifications       Notification[]
+  uploads             Upload[]
 
   @@unique([ssoProvider, ssoSubject])
 }
@@ -205,17 +206,66 @@ model Event {
   category      Category       @relation(fields: [categoryId], references: [id])
   source        Source?        @relation(fields: [sourceId], references: [id])
   notifications Notification[]
+  photos        Photo[]
 
   @@index([startsAt, status])
 }
 
+/// Ordered gallery photo of exactly one Place or one Event (CHECK constraint `Photo_owner_check`
+/// in the migration). `uploadId` is set when the file lives in our object storage (MinIO);
+/// external https URLs added by moderators have no upload.
 model Photo {
-  id       String @id @default(uuid())
-  placeId  String
-  url      String @db.VarChar(2048)
-  position Int    @default(0)
+  id        String   @id @default(uuid())
+  placeId   String?
+  eventId   String?
+  uploadId  String?
+  url       String   @db.VarChar(2048)
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
 
-  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  place  Place?  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  event  Event?  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  upload Upload? @relation(fields: [uploadId], references: [id], onDelete: Restrict)
+
+  @@index([placeId, position])
+  @@index([eventId, position])
+}
+
+/// ===============================
+/// FILES (object storage: MinIO, proxied by the API)
+/// ===============================
+
+/// A file stored in MinIO under `objectKey` and served through GET /api/v1/files/:id.
+/// It is kept while a Photo or a Submission references it; unreferenced uploads older than
+/// the grace period are removed by the cleanup job (object first, then the row).
+model Upload {
+  id          String   @id @default(uuid())
+  userId      String?
+  objectKey   String   @unique @db.VarChar(255)
+  contentType String   @db.VarChar(100)
+  size        Int
+  width       Int
+  height      Int
+  createdAt   DateTime @default(now())
+
+  user        User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  photos      Photo[]
+  submissions SubmissionUpload[]
+
+  @@index([createdAt])
+}
+
+/// Uploads attached to a submission (its `data.photos`). Keeps them alive until the
+/// submission is deleted; on approval they are copied into the Place/Event gallery.
+model SubmissionUpload {
+  submissionId String
+  uploadId     String
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  upload     Upload     @relation(fields: [uploadId], references: [id], onDelete: Restrict)
+
+  @@id([submissionId, uploadId])
+  @@index([uploadId])
 }
 
 /// ===============================
@@ -237,8 +287,9 @@ model Submission {
 
   createdAt DateTime @default(now())
 
-  author     User  @relation("SubmissionAuthor", fields: [userId], references: [id], onDelete: Cascade)
-  reviewedBy User? @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  author     User               @relation("SubmissionAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy User?              @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  uploads    SubmissionUpload[]
 
   @@index([status, createdAt])
 }
