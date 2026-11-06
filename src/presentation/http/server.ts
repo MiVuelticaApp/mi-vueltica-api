@@ -5,7 +5,7 @@ import { startUploadCleanupJob } from "@/presentation/jobs/uploadCleanup.job";
 
 // Creates the bucket on first boot. A storage outage must not keep the API down: uploads and
 // file reads answer 503 until the object storage (SeaweedFS) is reachable again.
-fileStorage.ensureReady().catch((error) => console.error("[storage] object storage is not ready:", error));
+fileStorage.ensureReady().catch((error: Error) => console.error(`[storage] object storage is not ready: ${error.message}`));
 startUploadCleanupJob(uploadService);
 
 app.listen(ENV.PORT, () => {
