@@ -17,6 +17,8 @@ export interface SubmissionListFilters {
 export interface NewSubmission {
   userId: string;
   payload: SubmissionPayload;
+  /** Uploads referenced by `payload.data.photos`; linked so they are not cleaned up. */
+  uploadIds: string[];
 }
 
 export interface ISubmissionRepository {
