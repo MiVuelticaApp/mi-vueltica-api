@@ -211,8 +211,8 @@ model Event {
   @@index([startsAt, status])
 }
 
-/// Ordered gallery photo of exactly one Place or one Event (CHECK constraint `Photo_owner_check`
-/// in the migration). `uploadId` is set when the file lives in our object storage (SeaweedFS, S3 API);
+/// Ordered gallery photo of exactly one Place or one Event (enforced by the application: MySQL 8
+/// rejects a CHECK on columns with FK referential actions). `uploadId` is set when the file lives in our object storage (SeaweedFS, S3 API);
 /// external https URLs added by moderators have no upload.
 model Photo {
   id        String   @id @default(uuid())

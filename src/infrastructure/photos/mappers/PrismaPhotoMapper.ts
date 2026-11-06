@@ -4,8 +4,7 @@ import { Photo as PrismaPhoto, Prisma } from "@/infrastructure/prisma/generated/
 
 export class PrismaPhotoMapper {
   static toDomain(row: PrismaPhoto): Photo {
-    // The CHECK constraint guarantees exactly one of placeId / eventId is set.
-    const owner: PhotoOwner = row.placeId ? { type: "PLACE", id: row.placeId } : { type: "EVENT", id: row.eventId! };
+    const owner = PrismaPhotoMapper.ownerOf(row);
     return new Photo({
       id: row.id,
       owner,
@@ -14,6 +13,16 @@ export class PrismaPhotoMapper {
       uploadId: row.uploadId,
       createdAt: row.createdAt,
     });
+  }
+
+  /**
+   * Exactly one of placeId / eventId must be set. The database cannot enforce it (MySQL 8 refuses
+   * a CHECK on columns with FK referential actions), so a broken row fails loudly here.
+   */
+  private static ownerOf(row: PrismaPhoto): PhotoOwner {
+    if (row.placeId && !row.eventId) return { type: "PLACE", id: row.placeId };
+    if (row.eventId && !row.placeId) return { type: "EVENT", id: row.eventId };
+    throw new Error(`Photo ${row.id} must belong to exactly one place or event`);
   }
 
   static toGalleryPhoto(row: PrismaPhoto): GalleryPhoto {
