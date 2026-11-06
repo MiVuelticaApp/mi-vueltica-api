@@ -3,6 +3,7 @@ import { IPlaceRepository } from "@/domain/places/repositories/IPlaceRepository"
 import { IEventRepository } from "@/domain/events/repositories/IEventRepository";
 import { ICategoryRepository } from "@/domain/categories/repositories/ICategoryRepository";
 import { ISourceRepository } from "@/domain/sources/repositories/ISourceRepository";
+import { IPhotoRepository } from "@/domain/photos/repositories/IPhotoRepository";
 
 /**
  * Runs a submission approval in one transaction: creating the Place/Event and marking the
@@ -21,4 +22,5 @@ export interface ISubmissionApprovalContext {
   getEventRepository(): IEventRepository;
   getCategoryRepository(): ICategoryRepository;
   getSourceRepository(): ISourceRepository;
+  getPhotoRepository(): IPhotoRepository;
 }
