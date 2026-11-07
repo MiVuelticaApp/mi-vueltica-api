@@ -333,6 +333,32 @@ token or missing/soft-deleted user continues anonymously, never 401; a valid one
 - **Delete** is a plain `place.delete`: photos, favorites and reviews cascade at DB level and events keep existing with
   `placeId = null` (SET NULL). Category/source deletes still return 409 while any place references them.
 
+## Price, audiences & accessibility (places and events)
+
+The app's core rule is "plans that are free or cost up to ₡5.000". `Place` and `Event` share four fields, validated by
+the `PlanConditions` value object (`src/domain/places/valueObjects/planConditions.valueObject.ts`), so HTTP, MCP and
+submissions behave the same:
+
+- `pricePerPerson`: integer colones, `0` = free, `null`/omitted = unknown (every row created before this existed).
+  Negative / non-integer → 400; **above 5000 → 422 `PriceAboveLimitError`** (a `DomainError`, so also on `PUT`,
+  `POST /me/submissions` and MCP `create_*`). Responses add the derived `priceTier` (`gratis` 0, `hasta2500` 1-2500,
+  `hasta5000` 2501-5000, `null` when unknown).
+- `freeFor`: subset of `estudiantes | ciudadanosOro`, groups that enter free even when the price is > 0 (default `[]`).
+- `audiences`: non-empty subset of `todo | familias | estudiantes | ciudadanosOro` (default `["todo"]`). The old
+  single-value `targetAudience` is kept unchanged for older clients; the two are independent.
+- `wheelchair`: boolean (default `false`).
+
+Values are the app's own strings (`src/domain/types.ts` in mi-vueltica-app). Stored as one column per flag
+(`pricePerPerson`, `freeForStudents`, `freeForSeniors`, `audienceEveryone/Families/Students/Seniors`,
+`wheelchairAccessible`), mapped and filtered by `src/infrastructure/core/repositories/planConditions.ts`. The migration
+backfilled `targetAudience` SENIORS → `ciudadanosOro` and CHILDREN → `familias`. Like every editable field, `PUT` is a full
+replace: omitted price/audience fields go back to their defaults.
+
+List filters on `GET /places` and `GET /events` mirror the app's `matchesFilters`: `maxPrice` (`gratis` / `hasta2500` /
+`hasta5000`; `hasta5000` also matches an unknown price, which the app shows as that tier), `students` / `seniors`
+(`"true"`: in `audiences` **or** in `freeFor`), `families` (`"true"`: in `audiences`), `wheelchair` (`"true"`). Flags take
+only `"true"` / `"false"` (`"false"` does not filter); anything else is 400.
+
 ## Events
 
 `/api/v1/events`: `GET /` (paginated, sort `startsAt`/`createdAt`/`title`, default `startsAt` **asc**, tie-breaker `id`) and `GET /:id`

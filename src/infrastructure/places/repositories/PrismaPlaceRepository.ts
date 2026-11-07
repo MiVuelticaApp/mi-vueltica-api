@@ -11,6 +11,7 @@ import { Prisma } from "@/infrastructure/prisma/generated/prisma/client";
 import { paginate } from "@/infrastructure/core/repositories/prismaPagination";
 import DatabaseError from "@/infrastructure/core/errors/DatabaseError";
 import DatabaseInsertError from "@/infrastructure/core/errors/DatabaseInsertError";
+import { planConditionsToColumns, planConditionsWhere } from "@/infrastructure/core/repositories/planConditions";
 import { PrismaPlaceMapper } from "../mappers/PrismaPlaceMapper";
 import { PrismaPhotoMapper } from "@/infrastructure/photos/mappers/PrismaPhotoMapper";
 
@@ -99,6 +100,7 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
           address: data.address,
           openingHours: PrismaPlaceMapper.openingHoursToPersistence(data.openingHours),
           targetAudience: data.targetAudience,
+          ...planConditionsToColumns(data),
           status: "PENDING",
         },
       });
@@ -124,6 +126,7 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
           address: place.address,
           openingHours: PrismaPlaceMapper.openingHoursToPersistence(place.openingHours),
           targetAudience: place.targetAudience,
+          ...planConditionsToColumns(place),
           status: place.status,
           verifiedAt: place.verifiedAt,
         },
@@ -167,6 +170,8 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
         { address: { contains: filters.search } },
       ];
     }
+    const conditions = planConditionsWhere(filters);
+    if (conditions.length > 0) where.AND = conditions;
 
     if (filters.bbox) {
       const { minLat, maxLat, minLng, maxLng } = filters.bbox;

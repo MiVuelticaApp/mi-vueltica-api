@@ -1,6 +1,7 @@
 import { Place, NormalizedPlaceData } from "@/domain/places/entities/Place";
 import { PlaceDetail } from "@/domain/places/entities/PlaceDetail";
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
+import { PlanConditionsFilters } from "@/domain/places/valueObjects/planConditions.valueObject";
 import { TargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
 import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
 
@@ -17,7 +18,8 @@ export interface RadiusFilter {
   radiusKm: number;
 }
 
-export interface PlaceListFilters {
+/** Price/audience/accessibility filters come from `PlanConditionsFilters`. */
+export interface PlaceListFilters extends PlanConditionsFilters {
   cantonId?: number;
   provinceId?: number;
   categoryId?: number;

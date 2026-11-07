@@ -8,6 +8,7 @@ import { paginate } from "@/infrastructure/core/repositories/prismaPagination";
 import DatabaseError from "@/infrastructure/core/errors/DatabaseError";
 import DatabaseInsertError from "@/infrastructure/core/errors/DatabaseInsertError";
 import { PrismaPhotoMapper } from "@/infrastructure/photos/mappers/PrismaPhotoMapper";
+import { planConditionsToColumns, planConditionsWhere } from "@/infrastructure/core/repositories/planConditions";
 import { PrismaEventMapper } from "../mappers/PrismaEventMapper";
 
 export default class PrismaEventRepository implements IEventRepository {
@@ -83,6 +84,7 @@ export default class PrismaEventRepository implements IEventRepository {
           startsAt: data.startsAt,
           endsAt: data.endsAt,
           targetAudience: data.targetAudience,
+          ...planConditionsToColumns(data),
           status: "PENDING",
         },
       });
@@ -106,6 +108,7 @@ export default class PrismaEventRepository implements IEventRepository {
           startsAt: event.startsAt,
           endsAt: event.endsAt,
           targetAudience: event.targetAudience,
+          ...planConditionsToColumns(event),
           status: event.status,
         },
       });
@@ -152,6 +155,7 @@ export default class PrismaEventRepository implements IEventRepository {
         ],
       });
     }
+    and.push(...planConditionsWhere(filters));
     if (and.length > 0) where.AND = and;
 
     return where;

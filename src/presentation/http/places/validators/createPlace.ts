@@ -10,6 +10,7 @@ import {
 } from "@/domain/places/valueObjects/coordinates.valueObject";
 import { TARGET_AUDIENCES } from "@/domain/places/valueObjects/targetAudience.valueObject";
 import { OpeningHoursSchema } from "./openingHours";
+import { planConditionsFields } from "./planConditions";
 
 export const placeNameField = z
   .string({ error: "El nombre es requerido" })
@@ -50,4 +51,5 @@ export const CreatePlaceSchema = z.object({
     .nullish(),
   openingHours: OpeningHoursSchema.nullish(),
   targetAudience: targetAudienceField.default("EVERYONE"),
+  ...planConditionsFields,
 });

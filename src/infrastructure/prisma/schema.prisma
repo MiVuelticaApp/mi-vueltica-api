@@ -169,6 +169,17 @@ model Place {
   status         ContentStatus  @default(PENDING)
   verifiedAt     DateTime?
 
+  // Price and audience (issue #36). `pricePerPerson` is in colones, 0 = free, NULL = unknown;
+  // values above 5000 are rejected by the domain. `targetAudience` is kept for older clients.
+  pricePerPerson       Int?
+  freeForStudents      Boolean @default(false)
+  freeForSeniors       Boolean @default(false)
+  audienceEveryone     Boolean @default(true)
+  audienceFamilies     Boolean @default(false)
+  audienceStudents     Boolean @default(false)
+  audienceSeniors      Boolean @default(false)
+  wheelchairAccessible Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -183,6 +194,7 @@ model Place {
   @@index([cantonId, status])
   @@index([categoryId])
   @@index([latitude, longitude])
+  @@index([status, pricePerPerson])
 }
 
 model Event {
@@ -198,6 +210,17 @@ model Event {
 
   targetAudience TargetAudience @default(EVERYONE)
   status         ContentStatus  @default(PENDING)
+
+  // Price and audience (issue #36). `pricePerPerson` is in colones, 0 = free, NULL = unknown;
+  // values above 5000 are rejected by the domain. `targetAudience` is kept for older clients.
+  pricePerPerson       Int?
+  freeForStudents      Boolean @default(false)
+  freeForSeniors       Boolean @default(false)
+  audienceEveryone     Boolean @default(true)
+  audienceFamilies     Boolean @default(false)
+  audienceStudents     Boolean @default(false)
+  audienceSeniors      Boolean @default(false)
+  wheelchairAccessible Boolean @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

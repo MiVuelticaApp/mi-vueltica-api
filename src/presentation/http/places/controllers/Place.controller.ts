@@ -42,6 +42,11 @@ export default class PlaceController {
       // Anonymous/regular users only ever see PUBLISHED and the `status` param is ignored.
       statuses: privileged ? (query.status ? [query.status] : undefined) : PUBLIC_STATUSES,
       search: query.q || undefined,
+      maxPrice: query.maxPrice,
+      students: query.students,
+      seniors: query.seniors,
+      families: query.families,
+      wheelchair: query.wheelchair,
     };
 
     if (query.minLat !== undefined) {

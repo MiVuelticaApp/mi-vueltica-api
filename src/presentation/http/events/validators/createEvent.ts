@@ -2,6 +2,7 @@ import z from "zod";
 import { EVENT_TITLE_MAX_LENGTH } from "@/domain/events/valueObjects/eventTitle.valueObject";
 import { EVENT_DESCRIPTION_MAX_LENGTH } from "@/domain/events/valueObjects/eventDescription.valueObject";
 import { TARGET_AUDIENCES } from "@/domain/places/valueObjects/targetAudience.valueObject";
+import { planConditionsFields } from "@/presentation/http/places/validators/planConditions";
 
 /** ISO 8601 datetime that must carry an offset (`Z` or `+hh:mm`), kept as a string. */
 export const isoDateTimeField = (label: string) =>
@@ -39,6 +40,7 @@ export const CreateEventBaseSchema = z.object({
   startsAt: dateTimeField("La fecha de inicio"),
   endsAt: dateTimeField("La fecha de fin").nullish(),
   targetAudience: eventTargetAudienceField.default("EVERYONE"),
+  ...planConditionsFields,
 });
 
 /** `endsAt >= startsAt` (also enforced by the `EventSchedule` value object). */

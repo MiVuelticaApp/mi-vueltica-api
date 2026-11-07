@@ -13,6 +13,7 @@ import {
   targetAudienceField,
 } from "@/presentation/http/places/validators/createPlace";
 import { MAX_RADIUS_KM } from "@/presentation/http/places/validators/listPlaces";
+import { planConditionsInput, planConditionsOutput } from "../utils/planConditions";
 import { toolError, toolErrorMessage, toolOk } from "../utils/toolResult";
 
 const contentStatus = z.enum(CONTENT_STATUSES);
@@ -30,6 +31,7 @@ const placeOutput = z.object({
   // Weekly schedule keyed by weekday (monday..sunday); permissive on purpose.
   openingHours: z.record(z.string(), z.unknown()).nullable(),
   targetAudience: z.enum(TARGET_AUDIENCES),
+  ...planConditionsOutput,
   status: contentStatus,
   verifiedAt: z.string().nullable(),
   createdAt: z.string(),
@@ -126,6 +128,7 @@ const createPlaceInput = {
   targetAudience: CreatePlaceSchema.shape.targetAudience.describe(
     "Público objetivo: EVERYONE (por defecto), CHILDREN, ADULTS o SENIORS.",
   ),
+  ...planConditionsInput,
 };
 
 /** `lat`, `lng` and `radiusKm` work only together: all absent -> no radius; some absent -> `null` (invalid). */
