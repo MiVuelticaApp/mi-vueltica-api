@@ -13,6 +13,7 @@ import DatabaseError from "@/infrastructure/core/errors/DatabaseError";
 import DatabaseInsertError from "@/infrastructure/core/errors/DatabaseInsertError";
 import { planConditionsToColumns, planConditionsWhere } from "@/infrastructure/core/repositories/planConditions";
 import { PrismaPlaceMapper } from "../mappers/PrismaPlaceMapper";
+import { publishedRatingSummary } from "@/infrastructure/reviews/repositories/ratingSummary";
 import { PrismaPhotoMapper } from "@/infrastructure/photos/mappers/PrismaPhotoMapper";
 
 const KM_PER_DEGREE = 111.32;
@@ -63,22 +64,18 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
 
   async findDetail(id: string): Promise<PlaceDetail | null> {
     try {
-      const [row, ratings] = await Promise.all([
+      const [row, rating] = await Promise.all([
         this.client.place.findUnique({
           where: { id },
           include: { photos: { orderBy: [{ position: "asc" }, { id: "asc" }] } },
         }),
-        this.client.review.aggregate({
-          _avg: { rating: true },
-          _count: { _all: true },
-          where: { placeId: id, status: "PUBLISHED" },
-        }),
+        publishedRatingSummary(this.client, { placeId: id }),
       ]);
       if (!row) return null;
       return {
         place: PrismaPlaceMapper.toDomain(row),
         photos: row.photos.map(PrismaPhotoMapper.toGalleryPhoto),
-        rating: { average: ratings._avg.rating ?? null, count: ratings._count._all },
+        rating,
       };
     } catch (error) {
       console.error("Error finding place detail:", error);

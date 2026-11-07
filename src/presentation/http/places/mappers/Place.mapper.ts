@@ -1,6 +1,7 @@
 import { Place } from "@/domain/places/entities/Place";
 import { PlaceDetail } from "@/domain/places/entities/PlaceDetail";
 import { PlaceDetailResponse, PlaceResponse } from "../responses/PlaceResponse";
+import RatingSummaryDtoMapper from "@/presentation/http/reviews/mappers/RatingSummary.mapper";
 
 export default class PlaceDtoMapper {
   static toResponse(place: Place): PlaceResponse {
@@ -32,8 +33,7 @@ export default class PlaceDtoMapper {
     return {
       ...PlaceDtoMapper.toResponse(detail.place),
       photos: detail.photos.map((photo) => ({ id: photo.id, url: photo.url, position: photo.position })),
-      averageRating: detail.rating.average === null ? null : Math.round(detail.rating.average * 100) / 100,
-      reviewCount: detail.rating.count,
+      ...RatingSummaryDtoMapper.toDetailFields(detail.rating),
     };
   }
 }

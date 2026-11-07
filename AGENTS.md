@@ -136,8 +136,10 @@ iOS client; unknown keys → 400. The response is **204** with no body. Service 
 1. Load the user; throw `UserNotFoundError` (404) if missing.
 2. Capture `email` and `name` **before** deleting (the confirmation email needs a recipient).
 3. Hard delete the `User` row. Everything that belongs to the user is removed by the database:
-   `UserInterest`, `Submission` (as author), `Favorite`, `Review`, `Device` and `Notification` cascade;
-   `Submission.reviewedById` is set to null for submissions the user moderated.
+   `UserInterest`, `Submission` (as author), `Favorite`, `ReviewUsefulVote`, `Device` and `Notification` cascade;
+   `Submission.reviewedById` is set to null for submissions the user moderated. **Reviews are kept anonymized**:
+   `Review.userId` is `ON DELETE SET NULL` and the API shows the author as `{ id: null, name: "Anónimo" }` (the app's
+   `anonymizeOnDelete` rule; #38).
 
 It returns `AccountDeletionResult` `{ email, name }`.
 
@@ -316,7 +318,8 @@ token or missing/soft-deleted user continues anonymously, never 401; a valid one
   runs a parameterized `$queryRaw` in `PrismaPlaceRepository` (bbox prefilter + Haversine, 6371 km) that returns ids,
   then `id IN (...)` is added to the Prisma `where` so pagination/count stay correct. No antimeridian wrap-around.
 - **Detail** (`PlaceDetail` read model from `IPlaceRepository.findDetail`): photos ordered by `position`,
-  `averageRating` (2 decimals, `null` if none) and `reviewCount`, both over PUBLISHED reviews only.
+  `averageRating` (2 decimals, `null` if none), `reviewCount` and `ratingDistribution` (count per star, index 0 = 1
+  star), all over PUBLISHED reviews only (`publishedRatingSummary`, `infrastructure/reviews/repositories/ratingSummary.ts`).
 - **Body**: `cantonId`, `categoryId`, `sourceId?` (uuid|null), `name` (1-191), `description?` (<=5000), `latitude`
   (-90..90), `longitude` (-180..180), `address?` (<=191), `openingHours?`, `targetAudience?` (default `EVERYONE`).
   Lat/lng are validated in Zod and in the `Coordinates` value object; Prisma `Decimal` <-> `number` in the mapper.
@@ -382,7 +385,9 @@ require `jwtAuth` + `requireRole("MODERATOR", "ADMIN")`; `DELETE /:id` requires 
 - **Detail** (`EventDetail` read model): `place: PlaceSummary | null` (`id, name, cantonId, latitude, longitude, address, status`). For non-privileged
   callers the place is `null` when it is not PUBLISHED (`placeId` is still returned); done in `EventService.get` through the same `statuses` option.
 - **Photos**: events have their own gallery (same `Photo` table); `GET /:id` embeds `photos` (ordered by `position`).
-- **Delete** is a plain `event.delete`; notifications and photos cascade at DB level.
+- **Rating**: `GET /:id` adds `averageRating`, `reviewCount` and `ratingDistribution` over the event's PUBLISHED reviews
+  (same as places; see Reviews).
+- **Delete** is a plain `event.delete`; notifications, photos and reviews cascade at DB level.
 
 ## Favorites
 
@@ -401,26 +406,48 @@ require `jwtAuth` + `requireRole("MODERATOR", "ADMIN")`; `DELETE /:id` requires 
 
 ## Reviews
 
-Module `reviews`. `Review { userId, placeId, rating, comment?, status }`, one per user and place
-(`@@unique([userId, placeId])`). Responses are `{ id, placeId, rating, comment, status, createdAt, author: { id, name },
-place: { id, name } }` (`ReviewDetail` read model; only the author's first name is exposed).
+Module `reviews`. A `Review` is about exactly **one Place or one Event** (`placeId` / `eventId`, enforced by the `Review`
+entity, not a CHECK: MySQL error 3823, same as `Photo`), one per user and place/event (`@@unique([userId, placeId])`,
+`@@unique([userId, eventId])`). Fields: `rating` 1-5, `comment?`, `wentWith?` (`familia | amigos | pareja | solo`),
+`spent?` (`nada | menos2500 | entre2500y5000`; both are the app's strings, stored as the `ReviewCompanion` / `ReviewSpend`
+enums and mapped in `PrismaReviewMapper`; `null` = not told), `photos` and `status`. Responses (`ReviewDetail` read model):
+`{ id, placeId, eventId, rating, comment, wentWith, spent, photos: string[], usefulCount, markedUsefulByMe, status,
+createdAt, author: { id, name, initials }, place: { id, name } | null, event: { id, title } | null }`. Only the author's
+first name is exposed; `initials` are first name + first surname. Reviews of deleted accounts are kept with
+`userId = NULL` and shown as `{ id: null, name: "Anónimo", initials: "A" }`.
 
-- `GET /api/v1/places/:placeId/reviews` (`placeReviewsRouter`, `Router({ mergeParams: true })`, mounted **before**
-  `/places`): public with `optionalJwtAuth`, **only PUBLISHED reviews**. 404 `PlaceNotFoundError` if the place is missing
-  or not PUBLISHED, unless MODERATOR/ADMIN. Sort whitelist `createdAt`/`rating`, default `-createdAt`, tie-breaker `id`.
-- `POST /api/v1/places/:placeId/reviews` (`jwtAuth`) `{ rating, comment? }` → 201, created `PENDING`. The place must be
-  PUBLISHED (else 404). Duplicate → 409 `ReviewAlreadyExistsError` (pre-check; a concurrent duplicate hits the unique
-  index, P2002 → 409).
+- `GET /api/v1/places/:placeId/reviews` and `GET /api/v1/events/:eventId/reviews` (`createTargetReviewsRouter(type)`,
+  `Router({ mergeParams: true })`, mounted **before** `/places` / `/events`): public with `optionalJwtAuth`. PUBLISHED
+  reviews **plus the caller's own PENDING review** (the app shows it right after writing; `ReviewListFilters.includePendingOf`).
+  404 `PlaceNotFoundError` / `EventNotFoundError` if the target is missing or not PUBLISHED, unless MODERATOR/ADMIN. Sort
+  whitelist `createdAt`/`rating`/`usefulCount`/`photoCount` (relation counts; ties → newest first, then `id`), default
+  `-createdAt`. Filters: `audience` (`familias` → went with family, `estudiantes` → friends or alone, mirroring the app's
+  mock) and `withPhotos=true`. The response adds `summary: { averageRating, reviewCount, distribution }` over every
+  PUBLISHED review of the target (filters ignored).
+- `POST` on the same paths (`jwtAuth`) `{ rating, comment?, wentWith?, spent?, photos? }` → 201, created `PENDING`. The
+  target must be PUBLISHED (else 404). Duplicate → 409 `ReviewAlreadyExistsError` (pre-check; a concurrent duplicate hits
+  the unique index, P2002 → 409).
+- **Photos**: up to `REVIEW_MAX_PHOTOS` (5) URLs from `POST /uploads`, each one of the author's own uploads
+  (`IUploadService.resolveOwnUploads`, else 422 `InvalidUploadError`), stored canonically in `ReviewPhoto` (`position`
+  = order sent). `ReviewPhoto` keeps the uploads alive for the orphan cleanup and cascades with the review.
 - `GET /api/v1/me/reviews` (in `profileRouter`): the caller's reviews in any status, default `-createdAt`.
-- `PUT /api/v1/reviews/:id` (`jwtAuth`): author only (403 `ForbiddenError` otherwise), full replace (an omitted comment
-  clears it). `Review.edit` sends it back to `PENDING`; its place must still be PUBLISHED (else 404).
+- `PUT /api/v1/reviews/:id` (`jwtAuth`): author only (403 `ForbiddenError` otherwise), full replace: omitted
+  comment/wentWith/spent are cleared and `photos` replaces the gallery (nested `deleteMany` + `create` in one update).
+  `Review.edit` sends it back to `PENDING`; its place/event must still be PUBLISHED (else 404).
 - `DELETE /api/v1/reviews/:id`: author, MODERATOR or ADMIN (403 otherwise) → 204; 404 `ReviewNotFoundError`. The route
   uses `requireRole(...USER_ROLES)` only to load the caller's role from the DB; the service decides owner vs. moderator.
-- `GET /api/v1/reviews` (MODERATOR, ADMIN): queue, `status` defaults to `PENDING`, optional `placeId`, default `createdAt`
-  asc. `PATCH /api/v1/reviews/:id/status` `{ status }` (MODERATOR, ADMIN).
+- `GET /api/v1/reviews` (MODERATOR, ADMIN): queue, `status` defaults to `PENDING`, optional `placeId` / `eventId`, default
+  `createdAt` asc. `PATCH /api/v1/reviews/:id/status` `{ status }` (MODERATOR, ADMIN).
+- **"Útil" votes**: `POST /api/v1/reviews/:id/useful` and `DELETE /api/v1/reviews/:id/useful` (`jwtAuth`), both
+  idempotent and answering 200 with the review (`usefulCount`, `markedUsefulByMe`). `ReviewUsefulVote` has the primary
+  key `(reviewId, userId)`; the vote is a raw `INSERT ... ON DUPLICATE KEY UPDATE` (not Prisma `upsert`, not `INSERT
+  IGNORE`; see Devices). Only PUBLISHED reviews (404 otherwise) and never your own (403). `markedUsefulByMe` is false for
+  anonymous callers. The author's reputation for useful votes is not implemented (there is no reputation model yet).
 - **Rules**: `rating` integer 1-5 and `comment` <= 2000 chars (trimmed, blank → null) are checked in Zod
-  (`validators/reviewBody.ts`) **and** by the `Rating` / `ReviewComment` value objects. `Place.averageRating` /
-  `reviewCount` only count PUBLISHED reviews. Reviews cascade when the user or the place is deleted.
+  (`validators/reviewBody.ts`) **and** by the `Rating` / `ReviewComment` value objects; `wentWith` / `spent` / `photos`
+  by `reviewExperience.valueObject.ts` / `reviewPhotos.valueObject.ts`. Ratings (`averageRating`, `reviewCount`,
+  `ratingDistribution`) only count PUBLISHED reviews. Reviews cascade when the place or event is deleted; votes cascade
+  with the review or the voter.
 
 ## User interests
 
@@ -540,15 +567,17 @@ because its community edition is no longer maintained). Module `uploads` (`src/{
   `Photo.uploadId`). `uploadIdFromUrl` only looks at the path, so a URL with another host/scheme is still recognized
   and is re-written to the canonical form.
 - **Boot**: `server.ts` calls `fileStorage.ensureReady()` (creates the bucket) without blocking startup.
-- **Orphan cleanup**: an `Upload` stays alive while a `Photo` (`uploadId`) or a `SubmissionUpload` row references it.
+- **Orphan cleanup**: an `Upload` stays alive while a `Photo` (`uploadId`), a `SubmissionUpload` or a `ReviewPhoto` row
+  references it.
   `startUploadCleanupJob` (`src/presentation/jobs/`, every 6 h, first run 1 min after boot, timers `unref`ed) calls
   `UploadService.cleanupOrphans`: uploads older than `UPLOAD_ORPHAN_GRACE_HOURS` with no reference are deleted, the row
   first with one conditional `DELETE ... NOT EXISTS` (a reference added meanwhile keeps it), then the object. So a
-  deleted photo, a withdrawn submission, a deleted place/event or a deleted account all release their files.
+  deleted photo, a withdrawn submission, a deleted review, a deleted place/event or a deleted account all release their
+  files (a deleted account keeps its anonymized reviews, and so their photos).
   `Upload.userId` is `SET NULL` on account deletion.
-- **Reviews / verifications / reports** (#38, #39) do not exist yet; when added, reuse
+- **Verifications / reports** (#39) do not exist yet; when added, reuse
   `IUploadService.resolveOwnUploads(userId, urls)` and link the uploads with a join table (like `SubmissionUpload`)
-  and add it to the cleanup's "referenced" checks (`PrismaUploadRepository`).
+  and add it to the cleanup's "referenced" checks (`PrismaUploadRepository`), as reviews do with `ReviewPhoto`.
 - **docker-compose**: the `seaweedfs` service (`chrislusf/seaweedfs`, `weed server -s3`, port 8333, not published) writes
   its S3 identity file at start-up from the same `S3_ACCESS_KEY` / `S3_SECRET_KEY` the API uses, so they must not
   contain quotes or backslashes (`openssl rand -base64 24` is fine). Without that config SeaweedFS's S3 gateway

@@ -18,6 +18,10 @@ const idParams = validateSchema(uuidParamSchema, "params");
 reviewsRouter.get("/", ...moderator, validateSchema(ListReviewQueueQuerySchema, "query"), asyncHandler(reviewController.list.bind(reviewController)));
 reviewsRouter.patch("/:id/status", ...moderator, idParams, validateSchema(ChangeReviewStatusSchema), asyncHandler(reviewController.changeStatus.bind(reviewController)));
 
+// "Útil" votes (any authenticated user, not on their own review; idempotent).
+reviewsRouter.post("/:id/useful", jwtAuth, idParams, asyncHandler(reviewController.markUseful.bind(reviewController)));
+reviewsRouter.delete("/:id/useful", jwtAuth, idParams, asyncHandler(reviewController.unmarkUseful.bind(reviewController)));
+
 // Author edit (ownership is checked by the service).
 reviewsRouter.put("/:id", jwtAuth, idParams, validateSchema(UpdateReviewSchema), asyncHandler(reviewController.update.bind(reviewController)));
 // Author or moderator. `requireRole` with every role loads the caller's role from the database
