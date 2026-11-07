@@ -44,6 +44,12 @@ import { REVIEW_COMMENT_MAX_LENGTH } from "@/domain/reviews/valueObjects/reviewC
 import { PLACE_SORT_FIELDS, MAX_RADIUS_KM } from "@/presentation/http/places/validators/listPlaces";
 import { CONTENT_STATUSES } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { TARGET_AUDIENCES } from "@/domain/places/valueObjects/targetAudience.valueObject";
+import {
+  AUDIENCES,
+  FREE_FOR_GROUPS,
+  MAX_PRICE_PER_PERSON,
+  PRICE_TIERS,
+} from "@/domain/places/valueObjects/planConditions.valueObject";
 import { ChangeUserRoleSchema } from "@/presentation/http/users/validators/changeUserRole";
 import { USER_SORT_FIELDS } from "@/presentation/http/users/validators/listUsers";
 import { CreateSubmissionSchema } from "@/presentation/http/submissions/validators/createSubmission";
@@ -107,6 +113,72 @@ export const paginationParams = [
   { $ref: "#/components/parameters/PageSize" },
   { $ref: "#/components/parameters/Sort" },
 ];
+
+const booleanFlagSchema = { type: "string", enum: ["true", "false"] } as const;
+
+/** Price / audience / accessibility filters shared by `GET /places` and `GET /events` (the app's filters). */
+const planConditionsParams = [
+  {
+    name: "maxPrice",
+    in: "query",
+    description:
+      "Price ceiling: `gratis` (0), `hasta2500` (<= ₡2.500) or `hasta5000` (<= ₡5.000). `hasta5000` also includes plans whose price is unknown (`pricePerPerson: null`).",
+    schema: { $ref: "#/components/schemas/PriceTier" },
+  },
+  {
+    name: "students",
+    in: "query",
+    description: "`true`: only plans aimed at students (`audiences` has `estudiantes`) or free for them (`freeFor` has `estudiantes`). `false` does not filter.",
+    schema: booleanFlagSchema,
+  },
+  {
+    name: "seniors",
+    in: "query",
+    description: "`true`: only plans aimed at senior citizens (`ciudadanosOro`) or free for them. `false` does not filter.",
+    schema: booleanFlagSchema,
+  },
+  {
+    name: "families",
+    in: "query",
+    description: "`true`: only plans whose `audiences` include `familias`. `false` does not filter.",
+    schema: booleanFlagSchema,
+  },
+  {
+    name: "wheelchair",
+    in: "query",
+    description: "`true`: only wheelchair-accessible plans. `false` does not filter.",
+    schema: booleanFlagSchema,
+  },
+];
+
+/** Response properties shared by `Place` and `Event`. */
+const planConditionsProperties = {
+  pricePerPerson: {
+    type: ["integer", "null"],
+    minimum: 0,
+    maximum: MAX_PRICE_PER_PERSON,
+    description: "Colones per person; 0 = free, null = unknown",
+  },
+  priceTier: {
+    oneOf: [{ $ref: "#/components/schemas/PriceTier" }, { type: "null" }],
+    description: "Derived from pricePerPerson (0 → gratis, 1-2500 → hasta2500, 2501-5000 → hasta5000); null when the price is unknown",
+  },
+  freeFor: {
+    type: "array",
+    items: { $ref: "#/components/schemas/FreeForGroup" },
+    description: "Groups that enter free even when pricePerPerson > 0",
+  },
+  audiences: {
+    type: "array",
+    minItems: 1,
+    items: { $ref: "#/components/schemas/Audience" },
+    description: "Who the plan is for. Replaces the single-value targetAudience, which is kept for older clients",
+  },
+  wheelchair: { type: "boolean", description: "Wheelchair accessible" },
+};
+const planConditionsRequired = ["pricePerPerson", "priceTier", "freeFor", "audiences", "wheelchair"];
+
+const priceLimitNote = ` 422 when \`pricePerPerson\` is above ₡${MAX_PRICE_PER_PERSON}.`;
 
 /** `{ data: Item[], page, pageSize, total }` for a list endpoint returning `itemRef`. */
 export const paginated = (itemRef: string) => ({
@@ -887,6 +959,7 @@ const paths: Record<string, Record<string, unknown>> = {
           description: "Substring match on name, description or address",
           schema: { type: "string", maxLength: 100 },
         },
+        ...planConditionsParams,
         {
           name: "minLat",
           in: "query",
@@ -942,7 +1015,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Places"],
       summary: "Create a place (MODERATOR, ADMIN)",
       description:
-        "New places start as PENDING. 422 when the canton, category or source does not exist.",
+        "New places start as PENDING. 422 when the canton, category or source does not exist." + priceLimitNote,
       security: bearer,
       requestBody: jsonBody(CreatePlaceSchema),
       responses: {
@@ -972,7 +1045,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Places"],
       summary: "Replace a place (MODERATOR, ADMIN)",
       description:
-        "Full replace of the editable fields; the status and verifiedAt are kept (use `PATCH /places/{id}/status`). 422 when the canton, category or source does not exist.",
+        "Full replace of the editable fields (omitted price/audience fields go back to their defaults); the status and verifiedAt are kept (use `PATCH /places/{id}/status`). 422 when the canton, category or source does not exist." + priceLimitNote,
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       requestBody: jsonBody(UpdatePlaceSchema),
@@ -1147,6 +1220,7 @@ const paths: Record<string, Record<string, unknown>> = {
           description: "Substring match on title or description",
           schema: { type: "string", maxLength: 100 },
         },
+        ...planConditionsParams,
       ],
       responses: {
         200: {
@@ -1160,7 +1234,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Events"],
       summary: "Create an event (MODERATOR, ADMIN)",
       description:
-        "New events start as PENDING. Datetimes must be ISO 8601 with offset and `endsAt` must not be earlier than `startsAt`. 422 when the place, category or source does not exist.",
+        "New events start as PENDING. Datetimes must be ISO 8601 with offset and `endsAt` must not be earlier than `startsAt`. 422 when the place, category or source does not exist." + priceLimitNote,
       security: bearer,
       requestBody: jsonBody(CreateEventSchema),
       responses: {
@@ -1190,7 +1264,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Events"],
       summary: "Replace an event (MODERATOR, ADMIN)",
       description:
-        "Full replace of the editable fields; the status is kept (use `PATCH /events/{id}/status`). 422 when the place, category or source does not exist.",
+        "Full replace of the editable fields (omitted price/audience fields go back to their defaults); the status is kept (use `PATCH /events/{id}/status`). 422 when the place, category or source does not exist." + priceLimitNote,
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       requestBody: jsonBody(UpdateEventSchema),
@@ -1323,7 +1397,8 @@ const paths: Record<string, Record<string, unknown>> = {
         "Creates a PENDING community suggestion for moderators to review. `type` selects the shape of `data`: " +
         "`PLACE` uses the same fields as `POST /places`, `EVENT` the same fields as `POST /events` (datetimes ISO 8601 " +
         "with offset, `endsAt >= startsAt`), in both cases without `sourceId`. Unknown keys (including `sourceId`, " +
-        "`aiScore`, `aiReason`, `status`) are ignored. Unknown canton, category or place → 422. " +
+        "`aiScore`, `aiReason`, `status`) are ignored. The price/audience fields (`pricePerPerson`, `freeFor`, `audiences`, " +
+        "`wheelchair`) are accepted too; `pricePerPerson` above ₡5.000 → 422. Unknown canton, category or place → 422. " +
         `\`data.photos\` (optional): up to ${SUBMISSION_MAX_PHOTOS} URLs returned by \`POST /uploads\` for the caller's own uploads, in gallery order ` +
         "(anything else, or a repeated photo → 422); on approval they become the Place/Event gallery. " +
         `Rate-limited to ${SUBMISSION_CREATE_RATE_LIMIT.max} requests per ${SUBMISSION_CREATE_RATE_LIMIT.windowMs / 60000} minutes per user (429).`,
@@ -1856,6 +1931,9 @@ const openApiDocument = {
       },
       ContentStatus: { type: "string", enum: [...CONTENT_STATUSES] },
       TargetAudience: { type: "string", enum: [...TARGET_AUDIENCES] },
+      PriceTier: { type: "string", enum: [...PRICE_TIERS] },
+      Audience: { type: "string", enum: [...AUDIENCES] },
+      FreeForGroup: { type: "string", enum: [...FREE_FOR_GROUPS] },
       OpeningHours: toSchema(OpeningHoursSchema),
       PlacePhoto: {
         type: "object",
@@ -1907,6 +1985,7 @@ const openApiDocument = {
             oneOf: [{ $ref: "#/components/schemas/OpeningHours" }, { type: "null" }],
           },
           targetAudience: { $ref: "#/components/schemas/TargetAudience" },
+          ...planConditionsProperties,
           status: { $ref: "#/components/schemas/ContentStatus" },
           verifiedAt: { type: ["string", "null"], format: "date-time" },
           createdAt: { type: "string", format: "date-time" },
@@ -1915,6 +1994,7 @@ const openApiDocument = {
         required: [
           "id", "cantonId", "categoryId", "sourceId", "name", "description", "latitude", "longitude",
           "address", "openingHours", "targetAudience", "status", "verifiedAt", "createdAt", "updatedAt",
+          ...planConditionsRequired,
         ],
       },
       Review: {
@@ -1996,6 +2076,7 @@ const openApiDocument = {
           startsAt: { type: "string", format: "date-time", description: "ISO 8601, UTC" },
           endsAt: { type: ["string", "null"], format: "date-time", description: "ISO 8601, UTC; never earlier than startsAt" },
           targetAudience: { $ref: "#/components/schemas/TargetAudience" },
+          ...planConditionsProperties,
           status: { $ref: "#/components/schemas/ContentStatus" },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
@@ -2003,6 +2084,7 @@ const openApiDocument = {
         required: [
           "id", "placeId", "categoryId", "sourceId", "title", "description", "startsAt", "endsAt",
           "targetAudience", "status", "createdAt", "updatedAt",
+          ...planConditionsRequired,
         ],
       },
       EventDetail: {

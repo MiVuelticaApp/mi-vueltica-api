@@ -5,9 +5,10 @@ import { Coordinates } from "../valueObjects/coordinates.valueObject";
 import { OpeningHours, OpeningHoursValue } from "../valueObjects/openingHours.valueObject";
 import { ContentStatus, parseContentStatus } from "../valueObjects/contentStatus.valueObject";
 import { TargetAudience, parseTargetAudience } from "../valueObjects/targetAudience.valueObject";
+import { PlanConditions, PlanConditionsData, PlanConditionsValue } from "@/domain/places/valueObjects/planConditions.valueObject";
 
 /** Editable fields shared by create and full-replace update (no status). */
-export interface PlaceData {
+export interface PlaceData extends PlanConditionsData {
   cantonId: number;
   categoryId: number;
   sourceId?: string | null;
@@ -21,7 +22,7 @@ export interface PlaceData {
 }
 
 /** `PlaceData` after running every field through its value object. */
-export interface NormalizedPlaceData {
+export interface NormalizedPlaceData extends PlanConditionsValue {
   cantonId: number;
   categoryId: number;
   sourceId: string | null;
@@ -48,6 +49,7 @@ export function normalizePlaceData(data: PlaceData): NormalizedPlaceData {
     address: PlaceAddress.create(data.address).value,
     openingHours: OpeningHours.create(data.openingHours).value,
     targetAudience: parseTargetAudience(data.targetAudience ?? "EVERYONE"),
+    ...PlanConditions.create(data).value,
   };
 }
 
@@ -66,6 +68,7 @@ export class Place {
       address: PlaceAddress.create(props.address),
       openingHours: OpeningHours.create(props.openingHours),
       targetAudience: parseTargetAudience(props.targetAudience),
+      conditions: PlanConditions.create(props),
       status: parseContentStatus(props.status),
       verifiedAt: props.verifiedAt ?? null,
       createdAt: props.createdAt,
@@ -84,6 +87,11 @@ export class Place {
   get address() { return this.props.address.value; }
   get openingHours() { return this.props.openingHours.value; }
   get targetAudience() { return this.props.targetAudience; }
+  get pricePerPerson() { return this.props.conditions.value.pricePerPerson; }
+  get priceTier() { return this.props.conditions.priceTier; }
+  get freeFor() { return this.props.conditions.value.freeFor; }
+  get audiences() { return this.props.conditions.value.audiences; }
+  get wheelchair() { return this.props.conditions.value.wheelchair; }
   get status() { return this.props.status; }
   get verifiedAt() { return this.props.verifiedAt; }
   get createdAt() { return this.props.createdAt; }
@@ -101,6 +109,7 @@ export class Place {
     this.props.address = PlaceAddress.create(normalized.address);
     this.props.openingHours = OpeningHours.create(normalized.openingHours);
     this.props.targetAudience = normalized.targetAudience;
+    this.props.conditions = PlanConditions.create(normalized);
   }
 
   /**
@@ -128,6 +137,7 @@ export interface PlaceProps {
   address: PlaceAddress;
   openingHours: OpeningHours;
   targetAudience: TargetAudience;
+  conditions: PlanConditions;
   status: ContentStatus;
   verifiedAt: Date | null;
   createdAt: Date;
@@ -146,6 +156,10 @@ export interface PlaceConstructorProps {
   address?: string | null;
   openingHours?: unknown;
   targetAudience: TargetAudience;
+  pricePerPerson: number | null;
+  freeFor: PlanConditionsValue["freeFor"];
+  audiences: PlanConditionsValue["audiences"];
+  wheelchair: boolean;
   status: ContentStatus;
   verifiedAt?: Date | null;
   createdAt: Date;

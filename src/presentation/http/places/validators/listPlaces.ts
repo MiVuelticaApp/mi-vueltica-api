@@ -2,6 +2,7 @@ import z from "zod";
 import { createPaginationQuerySchema } from "@/presentation/http/core/validators/pagination";
 import { TARGET_AUDIENCES } from "@/domain/places/valueObjects/targetAudience.valueObject";
 import { contentStatusField } from "./changePlaceStatus";
+import { planConditionsQueryFields } from "./planConditions";
 
 export const PLACE_SORT_FIELDS = ["name", "createdAt", "updatedAt"] as const;
 export const MAX_RADIUS_KM = 500;
@@ -32,6 +33,7 @@ export const ListPlacesQuerySchema = createPaginationQuerySchema(PLACE_SORT_FIEL
     // Only honored for MODERATOR / ADMIN; ignored for everyone else.
     status: contentStatusField.optional(),
     q: z.string().trim().max(100, { message: "La búsqueda no puede exceder 100 caracteres" }).optional(),
+    ...planConditionsQueryFields,
     minLat: coordinate("minLat", 90),
     minLng: coordinate("minLng", 180),
     maxLat: coordinate("maxLat", 90),
