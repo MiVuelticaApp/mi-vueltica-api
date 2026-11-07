@@ -2,19 +2,30 @@ import { Request, Response } from "express";
 import { z } from "zod";
 import { IReviewService } from "@/application/reviews/services/interfaces/IReviewService";
 import { UnauthorizedError } from "@/application/core/errors/UnauthorizedError";
+import { ReviewTarget, ReviewTargetType } from "@/domain/reviews/valueObjects/reviewTarget.valueObject";
 import { getAuthUser } from "@/presentation/http/auth/utils/getAuthUser";
 import { getValidated } from "@/presentation/http/core/middlewares/validateSchema";
 import { toPaginationParams } from "@/presentation/http/core/validators/pagination";
 import { toPaginatedResponse } from "@/presentation/http/core/mappers/Pagination.mapper";
-import { ListReviewQueueQuerySchema, ListReviewsQuerySchema } from "../validators/listReviews";
+import {
+  ListReviewQueueQuerySchema,
+  ListReviewsQuerySchema,
+  ListTargetReviewsQuerySchema,
+} from "../validators/listReviews";
 import { ReviewRequest } from "../requests/ReviewRequest";
 import { ChangeReviewStatusRequest } from "../requests/ChangeReviewStatusRequest";
+import { TargetReviewListResponse } from "../responses/ReviewResponse";
 import ReviewDtoMapper from "../mappers/Review.mapper";
+import RatingSummaryDtoMapper from "../mappers/RatingSummary.mapper";
 
 type ListQuery = z.output<typeof ListReviewsQuerySchema>;
+type TargetListQuery = z.output<typeof ListTargetReviewsQuerySchema>;
 type QueueQuery = z.output<typeof ListReviewQueueQuerySchema>;
-type PlaceParams = { placeId: string };
 type IdParams = { id: string };
+type Handler = (req: Request, res: Response) => Promise<void>;
+
+/** Path param holding the place / event id for each kind of review list. */
+export const REVIEW_TARGET_PARAMS: Record<ReviewTargetType, string> = { PLACE: "placeId", EVENT: "eventId" };
 
 /** MODERATOR / ADMIN (set by `optionalJwtAuth` / `requireRole` from the database). */
 function isPrivileged(req: Request): boolean {
@@ -22,17 +33,43 @@ function isPrivileged(req: Request): boolean {
   return role === "MODERATOR" || role === "ADMIN";
 }
 
+function reviewBody(req: Request): ReviewRequest {
+  const { rating, comment, wentWith, spent, photos }: ReviewRequest = req.body;
+  return { rating, comment, wentWith, spent, photos };
+}
+
 export default class ReviewController {
   constructor(private readonly reviewService: IReviewService) {}
 
-  /** GET /places/:placeId/reviews — public, PUBLISHED reviews only. */
-  async listForPlace(req: Request, res: Response): Promise<void> {
-    const { placeId } = getValidated<PlaceParams>(req, "params");
-    const query = getValidated<ListQuery>(req, "query");
-    const result = await this.reviewService.listForPlace(placeId, toPaginationParams(query), {
-      canSeeUnpublishedPlace: isPrivileged(req),
+  /** List / create handlers of `/places/:placeId/reviews` or `/events/:eventId/reviews`. */
+  target(type: ReviewTargetType): { list: Handler; create: Handler } {
+    const targetOf = (req: Request): ReviewTarget => ({
+      type,
+      id: getValidated<Record<string, string>>(req, "params")[REVIEW_TARGET_PARAMS[type]],
     });
-    res.json(toPaginatedResponse(result, ReviewDtoMapper.toResponse));
+
+    return {
+      // Public: PUBLISHED reviews, plus the caller's own PENDING one, plus the rating summary.
+      list: async (req: Request, res: Response) => {
+        const query = getValidated<TargetListQuery>(req, "query");
+        const { page, summary } = await this.reviewService.listForTarget(targetOf(req), toPaginationParams(query), {
+          viewerId: req.user?.id,
+          canSeeUnpublishedTarget: isPrivileged(req),
+          audience: query.audience,
+          withPhotos: query.withPhotos,
+        });
+        const body: TargetReviewListResponse = {
+          ...toPaginatedResponse(page, ReviewDtoMapper.toResponse),
+          summary: RatingSummaryDtoMapper.toResponse(summary),
+        };
+        res.json(body);
+      },
+      create: async (req: Request, res: Response) => {
+        const { id: userId } = getAuthUser(req);
+        const review = await this.reviewService.create(userId, targetOf(req), reviewBody(req));
+        res.status(201).json(ReviewDtoMapper.toResponse(review));
+      },
+    };
   }
 
   /** GET /me/reviews */
@@ -46,28 +83,19 @@ export default class ReviewController {
   /** GET /reviews — moderation queue. */
   async list(req: Request, res: Response): Promise<void> {
     const query = getValidated<QueueQuery>(req, "query");
-    const result = await this.reviewService.list(toPaginationParams(query), {
-      statuses: [query.status],
-      placeId: query.placeId,
-    });
+    const result = await this.reviewService.list(
+      toPaginationParams(query),
+      { statuses: [query.status], placeId: query.placeId, eventId: query.eventId },
+      req.user?.id,
+    );
     res.json(toPaginatedResponse(result, ReviewDtoMapper.toResponse));
-  }
-
-  /** POST /places/:placeId/reviews */
-  async create(req: Request, res: Response): Promise<void> {
-    const { id: userId } = getAuthUser(req);
-    const { placeId } = getValidated<PlaceParams>(req, "params");
-    const { rating, comment }: ReviewRequest = req.body;
-    const review = await this.reviewService.create(userId, placeId, { rating, comment });
-    res.status(201).json(ReviewDtoMapper.toResponse(review));
   }
 
   /** PUT /reviews/:id — owner only. */
   async update(req: Request, res: Response): Promise<void> {
     const { id: userId } = getAuthUser(req);
     const { id } = getValidated<IdParams>(req, "params");
-    const { rating, comment }: ReviewRequest = req.body;
-    const review = await this.reviewService.update(userId, id, { rating, comment });
+    const review = await this.reviewService.update(userId, id, reviewBody(req));
     res.json(ReviewDtoMapper.toResponse(review));
   }
 
@@ -85,7 +113,23 @@ export default class ReviewController {
   async changeStatus(req: Request, res: Response): Promise<void> {
     const { id } = getValidated<IdParams>(req, "params");
     const { status }: ChangeReviewStatusRequest = req.body;
-    const review = await this.reviewService.changeStatus(id, status);
+    const review = await this.reviewService.changeStatus(id, status, req.user?.id);
+    res.json(ReviewDtoMapper.toResponse(review));
+  }
+
+  /** POST /reviews/:id/useful — idempotent "útil" vote. */
+  async markUseful(req: Request, res: Response): Promise<void> {
+    const { id: userId } = getAuthUser(req);
+    const { id } = getValidated<IdParams>(req, "params");
+    const review = await this.reviewService.markUseful(userId, id);
+    res.json(ReviewDtoMapper.toResponse(review));
+  }
+
+  /** DELETE /reviews/:id/useful — idempotent. */
+  async unmarkUseful(req: Request, res: Response): Promise<void> {
+    const { id: userId } = getAuthUser(req);
+    const { id } = getValidated<IdParams>(req, "params");
+    const review = await this.reviewService.unmarkUseful(userId, id);
     res.json(ReviewDtoMapper.toResponse(review));
   }
 }
