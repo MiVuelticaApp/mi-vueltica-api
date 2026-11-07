@@ -3,6 +3,7 @@ import { createPaginationQuerySchema } from "@/presentation/http/core/validators
 import { TARGET_AUDIENCES } from "@/domain/places/valueObjects/targetAudience.valueObject";
 import { contentStatusField } from "@/presentation/http/places/validators/changePlaceStatus";
 import { dateTimeField } from "./createEvent";
+import { planConditionsQueryFields } from "@/presentation/http/places/validators/planConditions";
 
 export const EVENT_SORT_FIELDS = ["startsAt", "createdAt", "title"] as const;
 
@@ -29,6 +30,7 @@ export const ListEventsQuerySchema = createPaginationQuerySchema(EVENT_SORT_FIEL
     // Only honored for MODERATOR / ADMIN; ignored for everyone else.
     status: contentStatusField.optional(),
     q: z.string().trim().max(100, { message: "La búsqueda no puede exceder 100 caracteres" }).optional(),
+    ...planConditionsQueryFields,
   })
   .refine((query) => !query.from || !query.to || query.from.getTime() <= query.to.getTime(), {
     path: ["to"],

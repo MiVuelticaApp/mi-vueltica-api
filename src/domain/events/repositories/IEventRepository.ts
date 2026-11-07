@@ -1,10 +1,12 @@
 import { Event, NormalizedEventData } from "@/domain/events/entities/Event";
 import { EventDetail } from "@/domain/events/entities/EventDetail";
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
+import { PlanConditionsFilters } from "@/domain/places/valueObjects/planConditions.valueObject";
 import { TargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
 import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
 
-export interface EventListFilters {
+/** Price/audience/accessibility filters come from `PlanConditionsFilters`. */
+export interface EventListFilters extends PlanConditionsFilters {
   /**
    * Overlap lower bound: events still running at/after this instant, i.e.
    * `endsAt >= from` or (no `endsAt` and `startsAt >= from`).
