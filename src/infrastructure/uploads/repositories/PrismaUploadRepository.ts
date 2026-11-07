@@ -7,7 +7,11 @@ import DatabaseInsertError from "@/infrastructure/core/errors/DatabaseInsertErro
 import { PrismaUploadMapper } from "../mappers/PrismaUploadMapper";
 
 /** Neither a Photo nor a Submission references the upload. */
-const UNREFERENCED: Prisma.UploadWhereInput = { photos: { none: {} }, submissions: { none: {} } };
+const UNREFERENCED: Prisma.UploadWhereInput = {
+  photos: { none: {} },
+  submissions: { none: {} },
+  reviewPhotos: { none: {} },
+};
 
 export default class PrismaUploadRepository implements IUploadRepository {
   private readonly client: Prisma.TransactionClient;
@@ -69,6 +73,7 @@ export default class PrismaUploadRepository implements IUploadRepository {
         WHERE id = ${id}
           AND NOT EXISTS (SELECT 1 FROM Photo WHERE uploadId = ${id})
           AND NOT EXISTS (SELECT 1 FROM SubmissionUpload WHERE uploadId = ${id})
+          AND NOT EXISTS (SELECT 1 FROM ReviewPhoto WHERE uploadId = ${id})
       `;
       return count > 0;
     } catch (error) {
