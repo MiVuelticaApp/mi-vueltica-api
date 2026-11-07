@@ -1,6 +1,7 @@
 import { Event } from "@/domain/events/entities/Event";
 import { EventDetail } from "@/domain/events/entities/EventDetail";
 import { EventDetailResponse, EventResponse } from "../responses/EventResponse";
+import RatingSummaryDtoMapper from "@/presentation/http/reviews/mappers/RatingSummary.mapper";
 
 export default class EventDtoMapper {
   static toResponse(event: Event): EventResponse {
@@ -40,6 +41,7 @@ export default class EventDtoMapper {
           }
         : null,
       photos: detail.photos.map((photo) => ({ id: photo.id, url: photo.url, position: photo.position })),
+      ...RatingSummaryDtoMapper.toDetailFields(detail.rating),
     };
   }
 }

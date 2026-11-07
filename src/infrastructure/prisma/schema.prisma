@@ -66,6 +66,21 @@ enum Platform {
   IOS
 }
 
+/// Who the reviewer went with (app values: familia, amigos, pareja, solo).
+enum ReviewCompanion {
+  FAMILY
+  FRIENDS
+  PARTNER
+  SOLO
+}
+
+/// How much the reviewer spent (app values: nada, menos2500, entre2500y5000).
+enum ReviewSpend {
+  NOTHING
+  UNDER_2500
+  FROM_2500_TO_5000
+}
+
 /// ===============================
 /// USERS
 /// ===============================
@@ -79,17 +94,18 @@ model User {
   ssoProvider SsoProvider
   ssoSubject  String // stable user id returned by Google / Apple
   ageRange    AgeRange?
-  role        UserRole  @default(USER)
+  role        UserRole    @default(USER)
   deletedAt   DateTime? // "Delete account" (App Store requirement)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   interests           UserInterest[]
-  submissions         Submission[]   @relation("SubmissionAuthor")
-  reviewedSubmissions Submission[]   @relation("SubmissionReviewer")
+  submissions         Submission[]       @relation("SubmissionAuthor")
+  reviewedSubmissions Submission[]       @relation("SubmissionReviewer")
   favorites           Favorite[]
   reviews             Review[]
+  reviewUsefulVotes   ReviewUsefulVote[]
   devices             Device[]
   notifications       Notification[]
   uploads             Upload[]
@@ -121,8 +137,8 @@ model UserInterest {
 /// ===============================
 
 model Province {
-  id      Int    @id // official INEC code
-  name    String @unique
+  id      Int      @id // official INEC code
+  name    String   @unique
   cantons Canton[]
 }
 
@@ -230,6 +246,7 @@ model Event {
   source        Source?        @relation(fields: [sourceId], references: [id])
   notifications Notification[]
   photos        Photo[]
+  reviews       Review[]
 
   @@index([startsAt, status])
 }
@@ -259,7 +276,7 @@ model Photo {
 /// ===============================
 
 /// A file stored in the object storage under `objectKey` and served through GET /api/v1/files/:id.
-/// It is kept while a Photo or a Submission references it; unreferenced uploads older than
+/// It is kept while a Photo, a Submission or a Review references it; unreferenced uploads older than
 /// the grace period are removed by the cleanup job (object first, then the row).
 model Upload {
   id          String   @id @default(uuid())
@@ -271,9 +288,10 @@ model Upload {
   height      Int
   createdAt   DateTime @default(now())
 
-  user        User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
-  photos      Photo[]
-  submissions SubmissionUpload[]
+  user         User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  photos       Photo[]
+  submissions  SubmissionUpload[]
+  reviewPhotos ReviewPhoto[]
 
   @@index([createdAt])
 }
@@ -328,20 +346,60 @@ model Favorite {
   @@id([userId, placeId])
 }
 
+/// A rating of exactly one Place or one Event (enforced by the application, like Photo: MySQL 8
+/// rejects a CHECK on columns with FK referential actions). `userId` becomes NULL when the author
+/// deletes their account: the review is kept and shown as "Anónimo".
 model Review {
-  id      String        @id @default(uuid())
-  userId  String
-  placeId String
-  rating  Int // 1 to 5, validate in the API
-  comment String?       @db.Text
-  status  ContentStatus @default(PENDING)
+  id       String           @id @default(uuid())
+  userId   String?
+  placeId  String?
+  eventId  String?
+  rating   Int // 1 to 5, validate in the API
+  comment  String?          @db.Text
+  wentWith ReviewCompanion?
+  spent    ReviewSpend?
+  status   ContentStatus    @default(PENDING)
 
   createdAt DateTime @default(now())
 
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  user        User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  place       Place?             @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  event       Event?             @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  photos      ReviewPhoto[]
+  usefulVotes ReviewUsefulVote[]
 
   @@unique([userId, placeId]) // one review per user per place
+  @@unique([userId, eventId]) // one review per user per event
+  @@index([placeId, status])
+  @@index([eventId, status])
+}
+
+/// Photos attached by the author of a review (their own uploads). Keeps the uploads alive
+/// until the review is deleted.
+model ReviewPhoto {
+  reviewId String
+  uploadId String
+  url      String @db.VarChar(2048)
+  position Int
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  upload Upload @relation(fields: [uploadId], references: [id], onDelete: Restrict)
+
+  @@id([reviewId, uploadId])
+  @@index([uploadId])
+}
+
+/// "Útil" vote: one per user and review.
+model ReviewUsefulVote {
+  reviewId  String
+  userId    String
+  createdAt DateTime @default(now())
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([reviewId, userId])
+  @@index([userId])
 }
 
 /// ===============================

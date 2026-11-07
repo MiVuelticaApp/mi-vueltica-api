@@ -140,7 +140,6 @@ export const sourceService = new SourceService(sourceRepository);
 export const placeService = new PlaceService(placeRepository, categoryRepository, sourceRepository);
 export const eventService = new EventService(eventRepository, placeRepository, categoryRepository, sourceRepository);
 export const favoriteService = new FavoriteService(favoriteRepository, placeRepository);
-export const reviewService: IReviewService = new ReviewService(reviewRepository, placeRepository);
 export const deviceService = new DeviceService(deviceRepository);
 export const notificationService = new NotificationService(notificationRepository);
 export const uploadService: IUploadService = new UploadService(
@@ -154,6 +153,7 @@ export const uploadService: IUploadService = new UploadService(
     orphanGraceMs: ENV.UPLOAD_ORPHAN_GRACE_HOURS * 60 * 60 * 1000,
   },
 );
+export const reviewService: IReviewService = new ReviewService(reviewRepository, placeRepository, eventRepository, uploadService);
 export const photoService: IPhotoService = new PhotoService(photoRepository, photoGalleryUOW, placeRepository, eventRepository, uploadService);
 export const submissionService = new SubmissionService(submissionRepository, placeRepository, categoryRepository, submissionApprovalUOW, uploadService);
 export const userInterestService = new UserInterestService(userRepository, userInterestRepository, categoryRepository);

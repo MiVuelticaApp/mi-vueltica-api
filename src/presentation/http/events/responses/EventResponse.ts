@@ -1,3 +1,4 @@
+import { RatingFieldsResponse } from "@/presentation/http/reviews/responses/RatingSummaryResponse";
 import { TargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
 import { Audience, FreeForGroup, PriceTier } from "@/domain/places/valueObjects/planConditions.valueObject";
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
@@ -42,7 +43,7 @@ export interface EventPhotoResponse {
   position: number;
 }
 
-export interface EventDetailResponse extends EventResponse {
+export interface EventDetailResponse extends EventResponse, RatingFieldsResponse {
   /** Null when the event has no place or the caller may not see it (not PUBLISHED). */
   place: PlaceSummaryResponse | null;
   /** The event's own gallery, ordered by `position` ascending. */

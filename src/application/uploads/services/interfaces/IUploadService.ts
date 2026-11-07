@@ -42,7 +42,7 @@ export interface IUploadService {
   /** Throws `FileNotFoundError` (404). */
   openFile(uploadId: string): Promise<Readable>;
   /**
-   * Deletes uploads that no Photo or Submission references and are older than the grace period:
+   * Deletes uploads that no Photo, Submission or Review references and are older than the grace period:
    * the row first (conditionally), then the object. Returns how many were removed.
    */
   cleanupOrphans(now?: Date): Promise<number>;

@@ -1,5 +1,8 @@
 import { ReviewDetail } from "@/domain/reviews/entities/ReviewDetail";
-import { ReviewResponse } from "../responses/ReviewResponse";
+import { ReviewAuthorResponse, ReviewResponse } from "../responses/ReviewResponse";
+
+/** Shown for reviews whose author deleted their account. */
+export const ANONYMOUS_AUTHOR: ReviewAuthorResponse = { id: null, name: "Anónimo", initials: "A" };
 
 export default class ReviewDtoMapper {
   static toResponse(detail: ReviewDetail): ReviewResponse {
@@ -7,12 +10,21 @@ export default class ReviewDtoMapper {
     return {
       id: review.id,
       placeId: review.placeId,
+      eventId: review.eventId,
       rating: review.rating,
       comment: review.comment,
+      wentWith: review.wentWith,
+      spent: review.spent,
+      photos: [...detail.photos],
+      usefulCount: detail.usefulCount,
+      markedUsefulByMe: detail.markedUsefulByMe,
       status: review.status,
       createdAt: review.createdAt.toISOString(),
-      author: { id: detail.author.id, name: detail.author.name },
-      place: { id: detail.place.id, name: detail.place.name },
+      author: detail.author
+        ? { id: detail.author.id, name: detail.author.name, initials: detail.author.initials }
+        : { ...ANONYMOUS_AUTHOR },
+      place: detail.place ? { id: detail.place.id, name: detail.place.name } : null,
+      event: detail.event ? { id: detail.event.id, title: detail.event.title } : null,
     };
   }
 }
