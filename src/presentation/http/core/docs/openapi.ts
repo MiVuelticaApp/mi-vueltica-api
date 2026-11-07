@@ -41,6 +41,8 @@ import { ChangeReviewStatusSchema } from "@/presentation/http/reviews/validators
 import { REVIEW_SORT_FIELDS } from "@/presentation/http/reviews/validators/listReviews";
 import { MAX_RATING, MIN_RATING } from "@/domain/reviews/valueObjects/rating.valueObject";
 import { REVIEW_COMMENT_MAX_LENGTH } from "@/domain/reviews/valueObjects/reviewComment.valueObject";
+import { REVIEW_AUDIENCES, SPENT_TIERS, WENT_WITH_VALUES } from "@/domain/reviews/valueObjects/reviewExperience.valueObject";
+import { REVIEW_MAX_PHOTOS } from "@/domain/reviews/valueObjects/reviewPhotos.valueObject";
 import { PLACE_SORT_FIELDS, MAX_RADIUS_KM } from "@/presentation/http/places/validators/listPlaces";
 import { CONTENT_STATUSES } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { TARGET_AUDIENCES } from "@/domain/places/valueObjects/targetAudience.valueObject";
@@ -252,6 +254,15 @@ const galleryPaths = (kind: "place" | "event") => {
   };
 };
 
+/** PUBLISHED reviews per star. */
+const ratingDistributionSchema = {
+  type: "array",
+  minItems: MAX_RATING,
+  maxItems: MAX_RATING,
+  items: { type: "integer", minimum: 0 },
+  description: "Number of PUBLISHED reviews per star: index 0 = 1 star ... index 4 = 5 stars",
+};
+
 /** Page, pageSize and the reviews `sort` whitelist; `defaultSort` is only documented. */
 const reviewListParams = (defaultSort: string) => [
   { $ref: "#/components/parameters/Page" },
@@ -263,6 +274,86 @@ const reviewListParams = (defaultSort: string) => [
     schema: { type: "string", enum: REVIEW_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
   },
 ];
+
+/** GET / POST of the reviews of a Place or Event (`/places/{placeId}/reviews`, `/events/{eventId}/reviews`). */
+const reviewTargetPaths = (kind: "place" | "event") => {
+  const param = kind === "place" ? "PlaceId" : "EventId";
+  const noun = kind === "place" ? "place" : "event";
+  return {
+    [`/${kind}s/{${kind}Id}/reviews`]: {
+      get: {
+        tags: ["Reviews"],
+        summary: `List a${kind === "event" ? "n" : ""} ${noun}'s reviews`,
+        description:
+          `Public (optional bearer token). PUBLISHED reviews, plus the caller's own PENDING review (so the author sees it ` +
+          `right after writing it; check its \`status\`). 404 if the ${noun} does not exist or is not PUBLISHED, unless ` +
+          "the caller is MODERATOR / ADMIN. Default order is `createdAt` descending (newest first); `-usefulCount` is " +
+          "\"most useful\" and `-photoCount` puts reviews with photos first (ties: newest first). `summary` covers every " +
+          "PUBLISHED review and ignores the filters. Authenticated callers get `markedUsefulByMe`.",
+        security: optionalBearer,
+        parameters: [
+          { $ref: `#/components/parameters/${param}` },
+          ...reviewListParams("-createdAt"),
+          {
+            name: "audience",
+            in: "query",
+            description: "`familias`: reviewers who went with family. `estudiantes`: reviewers who went with friends or alone.",
+            schema: { type: "string", enum: [...REVIEW_AUDIENCES] },
+          },
+          {
+            name: "withPhotos",
+            in: "query",
+            description: "`true`: only reviews with at least one photo.",
+            schema: { type: "string", enum: ["true", "false"] },
+          },
+        ],
+        responses: {
+          200: {
+            description: "Page of reviews and the rating summary",
+            content: {
+              "application/json": {
+                schema: {
+                  allOf: [
+                    paginated("Review"),
+                    {
+                      type: "object",
+                      properties: { summary: { $ref: "#/components/schemas/RatingSummary" } },
+                      required: ["summary"],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          400: responseRef("BadRequest"),
+          404: responseRef("NotFound"),
+        },
+      },
+      post: {
+        tags: ["Reviews"],
+        summary: `Review a${kind === "event" ? "n" : ""} ${noun}`,
+        description:
+          `\`rating\` is an integer from ${MIN_RATING} to ${MAX_RATING}; \`comment\` is optional (max ${REVIEW_COMMENT_MAX_LENGTH} characters, ` +
+          `blank is stored as null). \`wentWith\` (${WENT_WITH_VALUES.join(", ")}) and \`spent\` (${SPENT_TIERS.join(", ")}) are ` +
+          `optional. \`photos\` holds up to ${REVIEW_MAX_PHOTOS} URLs returned by \`POST /uploads\`, each one of the caller's own ` +
+          "uploads (422 otherwise). The review is created PENDING and only becomes public (and counts in the rating) once a " +
+          `moderator publishes it. One review per user and ${noun} (409 if the caller already reviewed it: edit it with ` +
+          `\`PUT /reviews/{id}\`). 404 unless the ${noun} exists and is PUBLISHED.`,
+        security: bearer,
+        parameters: [{ $ref: `#/components/parameters/${param}` }],
+        requestBody: jsonBody(CreateReviewSchema),
+        responses: {
+          201: jsonResponse("Created review", "Review"),
+          400: responseRef("BadRequest"),
+          401: responseRef("Unauthorized"),
+          404: responseRef("NotFound"),
+          409: responseRef("Conflict"),
+          422: responseRef("UnprocessableEntity"),
+        },
+      },
+    },
+  };
+};
 
 const paths: Record<string, Record<string, unknown>> = {
   "/auth/google": {
@@ -1103,41 +1194,7 @@ const paths: Record<string, Record<string, unknown>> = {
       },
     },
   },
-  "/places/{placeId}/reviews": {
-    get: {
-      tags: ["Reviews"],
-      summary: "List a place's reviews",
-      description:
-        "Public (optional bearer token). Only PUBLISHED reviews. 404 if the place does not exist or is not PUBLISHED, " +
-        "unless the caller is MODERATOR / ADMIN. Default order is `createdAt` descending (newest first).",
-      security: optionalBearer,
-      parameters: [{ $ref: "#/components/parameters/PlaceId" }, ...reviewListParams("-createdAt")],
-      responses: {
-        200: { description: "Page of reviews", content: { "application/json": { schema: paginated("Review") } } },
-        400: responseRef("BadRequest"),
-        404: responseRef("NotFound"),
-      },
-    },
-    post: {
-      tags: ["Reviews"],
-      summary: "Review a place",
-      description:
-        `\`rating\` is an integer from ${MIN_RATING} to ${MAX_RATING}; \`comment\` is optional (max ${REVIEW_COMMENT_MAX_LENGTH} characters, ` +
-        "blank is stored as null). The review is created PENDING and only becomes public once a moderator publishes it. " +
-        "One review per user and place (409 if the caller already reviewed it: edit it with `PUT /reviews/{id}`). " +
-        "404 unless the place exists and is PUBLISHED.",
-      security: bearer,
-      parameters: [{ $ref: "#/components/parameters/PlaceId" }],
-      requestBody: jsonBody(CreateReviewSchema),
-      responses: {
-        201: jsonResponse("Created review", "Review"),
-        400: responseRef("BadRequest"),
-        401: responseRef("Unauthorized"),
-        404: responseRef("NotFound"),
-        409: responseRef("Conflict"),
-      },
-    },
-  },
+  ...reviewTargetPaths("place"),
   "/places/{id}/status": {
     patch: {
       tags: ["Places"],
@@ -1251,7 +1308,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Events"],
       summary: "Get an event",
       description:
-        "Public (optional bearer token). Includes a summary of the event's place and the event's photos ordered by position. A non-PUBLISHED event is 404 unless the caller is MODERATOR / ADMIN; for other callers `place` is null when the linked place is not PUBLISHED.",
+        "Public (optional bearer token). Includes a summary of the event's place, the event's photos ordered by position and the rating summary over PUBLISHED reviews (`averageRating`, `reviewCount`, `ratingDistribution`). A non-PUBLISHED event is 404 unless the caller is MODERATOR / ADMIN; for other callers `place` is null when the linked place is not PUBLISHED.",
       security: optionalBearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       responses: {
@@ -1553,11 +1610,12 @@ const paths: Record<string, Record<string, unknown>> = {
   },
   ...galleryPaths("place"),
   ...galleryPaths("event"),
+  ...reviewTargetPaths("event"),
   "/reviews": {
     get: {
       tags: ["Reviews"],
       summary: "Review moderation queue (MODERATOR, ADMIN)",
-      description: "Defaults to PENDING reviews, oldest first. Optional `placeId` filter.",
+      description: "Defaults to PENDING reviews, oldest first. Optional `placeId` / `eventId` filters.",
       security: bearer,
       parameters: [
         ...reviewListParams("createdAt"),
@@ -1568,6 +1626,7 @@ const paths: Record<string, Record<string, unknown>> = {
           schema: { type: "string", enum: [...CONTENT_STATUSES], default: "PENDING" },
         },
         { name: "placeId", in: "query", schema: { type: "string", format: "uuid" } },
+        { name: "eventId", in: "query", schema: { type: "string", format: "uuid" } },
       ],
       responses: {
         200: { description: "Page of reviews", content: { "application/json": { schema: paginated("Review") } } },
@@ -1582,9 +1641,10 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Reviews"],
       summary: "Edit my review",
       description:
-        "Author only (403 otherwise). Full replace of `rating` and `comment` (an omitted comment clears it). " +
-        "The review goes back to PENDING until a moderator publishes it again. 404 if the review does not exist " +
-        "or its place is no longer PUBLISHED.",
+        "Author only (403 otherwise). Full replace of `rating`, `comment`, `wentWith`, `spent` and `photos` (an omitted " +
+        "field is cleared; send the current photo URLs to keep them). The review goes back to PENDING until a moderator " +
+        "publishes it again. 404 if the review does not exist or its place / event is no longer PUBLISHED; 422 if a photo " +
+        "is not one of the caller's uploads.",
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       requestBody: jsonBody(UpdateReviewSchema),
@@ -1594,6 +1654,7 @@ const paths: Record<string, Record<string, unknown>> = {
         401: responseRef("Unauthorized"),
         403: responseRef("Forbidden"),
         404: responseRef("NotFound"),
+        422: responseRef("UnprocessableEntity"),
       },
     },
     delete: {
@@ -1611,11 +1672,45 @@ const paths: Record<string, Record<string, unknown>> = {
       },
     },
   },
+  "/reviews/{id}/useful": {
+    post: {
+      tags: ["Reviews"],
+      summary: "Mark a review as useful",
+      description:
+        "\"Útil\" vote: one per user and review, idempotent (repeating it changes nothing). Only PUBLISHED reviews (404 " +
+        "otherwise); 403 on the caller's own review. Returns the review with the updated `usefulCount` and " +
+        "`markedUsefulByMe`.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        200: jsonResponse("Review", "Review"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+      },
+    },
+    delete: {
+      tags: ["Reviews"],
+      summary: "Remove my useful vote",
+      description: "Idempotent (200 whether or not the caller had voted). Only PUBLISHED reviews (404 otherwise).",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        200: jsonResponse("Review", "Review"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        404: responseRef("NotFound"),
+      },
+    },
+  },
   "/reviews/{id}/status": {
     patch: {
       tags: ["Reviews"],
       summary: "Change a review's status (MODERATOR, ADMIN)",
-      description: "PUBLISHED makes the review public and counts it in the place's `averageRating` / `reviewCount`.",
+      description:
+        "PUBLISHED makes the review public and counts it in the place's / event's `averageRating`, `reviewCount` and " +
+        "`ratingDistribution`.",
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       requestBody: jsonBody(ChangeReviewStatusSchema),
@@ -2001,24 +2096,59 @@ const openApiDocument = {
         type: "object",
         properties: {
           id: { type: "string", format: "uuid" },
-          placeId: { type: "string", format: "uuid" },
+          placeId: { type: ["string", "null"], format: "uuid", description: "Set for place reviews" },
+          eventId: { type: ["string", "null"], format: "uuid", description: "Set for event reviews" },
           rating: { type: "integer", minimum: MIN_RATING, maximum: MAX_RATING },
           comment: { type: ["string", "null"], maxLength: REVIEW_COMMENT_MAX_LENGTH },
+          wentWith: { type: ["string", "null"], enum: [...WENT_WITH_VALUES, null], description: "Null when not told" },
+          spent: { type: ["string", "null"], enum: [...SPENT_TIERS, null], description: "Null when not told" },
+          photos: {
+            type: "array",
+            maxItems: REVIEW_MAX_PHOTOS,
+            items: { type: "string", format: "uri" },
+            description: "Photo URLs in the order the author attached them",
+          },
+          usefulCount: { type: "integer", minimum: 0, description: "Number of \"útil\" votes" },
+          markedUsefulByMe: { type: "boolean", description: "Whether the caller voted it useful (false when anonymous)" },
           status: { type: "string", enum: [...CONTENT_STATUSES] },
           createdAt: { type: "string", format: "date-time" },
           author: {
             type: "object",
-            description: "Only the author's first name is exposed",
-            properties: { id: { type: "string", format: "uuid" }, name: { type: "string" } },
-            required: ["id", "name"],
+            description:
+              "Only the author's first name and initials are exposed. When the author deleted their account the review " +
+              "is kept as `{ id: null, name: \"Anónimo\", initials: \"A\" }`.",
+            properties: {
+              id: { type: ["string", "null"], format: "uuid" },
+              name: { type: "string" },
+              initials: { type: "string", description: "First letters of the first name and first surname" },
+            },
+            required: ["id", "name", "initials"],
           },
           place: {
-            type: "object",
+            type: ["object", "null"],
             properties: { id: { type: "string", format: "uuid" }, name: { type: "string" } },
             required: ["id", "name"],
           },
+          event: {
+            type: ["object", "null"],
+            properties: { id: { type: "string", format: "uuid" }, title: { type: "string" } },
+            required: ["id", "title"],
+          },
         },
-        required: ["id", "placeId", "rating", "comment", "status", "createdAt", "author", "place"],
+        required: [
+          "id", "placeId", "eventId", "rating", "comment", "wentWith", "spent", "photos", "usefulCount",
+          "markedUsefulByMe", "status", "createdAt", "author", "place", "event",
+        ],
+      },
+      RatingSummary: {
+        type: "object",
+        description: "Over PUBLISHED reviews only",
+        properties: {
+          averageRating: { type: ["number", "null"], minimum: 1, maximum: 5, description: "Rounded to 2 decimals; null when there are none" },
+          reviewCount: { type: "integer", minimum: 0 },
+          distribution: ratingDistributionSchema,
+        },
+        required: ["averageRating", "reviewCount", "distribution"],
       },
       FavoritePlace: {
         type: "object",
@@ -2042,12 +2172,13 @@ const openApiDocument = {
                 description: "Mean of PUBLISHED reviews rounded to 2 decimals; null when there are none",
               },
               reviewCount: { type: "integer", minimum: 0, description: "Number of PUBLISHED reviews" },
+              ratingDistribution: ratingDistributionSchema,
               isFavorite: {
                 type: "boolean",
                 description: "Only present for authenticated callers: whether the caller favorited this place",
               },
             },
-            required: ["photos", "averageRating", "reviewCount"],
+            required: ["photos", "averageRating", "reviewCount", "ratingDistribution"],
           },
         ],
       },
@@ -2102,8 +2233,16 @@ const openApiDocument = {
                 items: { $ref: "#/components/schemas/PlacePhoto" },
                 description: "The event's own gallery, ordered by position",
               },
+              averageRating: {
+                type: ["number", "null"],
+                minimum: 1,
+                maximum: 5,
+                description: "Mean of PUBLISHED reviews rounded to 2 decimals; null when there are none",
+              },
+              reviewCount: { type: "integer", minimum: 0, description: "Number of PUBLISHED reviews" },
+              ratingDistribution: ratingDistributionSchema,
             },
-            required: ["place", "photos"],
+            required: ["place", "photos", "averageRating", "reviewCount", "ratingDistribution"],
           },
         ],
       },

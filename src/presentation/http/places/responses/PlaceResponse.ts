@@ -42,6 +42,8 @@ export interface PlaceDetailResponse extends PlaceResponse {
   averageRating: number | null;
   /** Number of PUBLISHED reviews. */
   reviewCount: number;
+  /** PUBLISHED reviews per star: index 0 = 1 star ... index 4 = 5 stars. */
+  ratingDistribution: number[];
   /** Whether the authenticated caller favorited this place. Omitted for anonymous callers. */
   isFavorite?: boolean;
 }
