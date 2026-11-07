@@ -8,6 +8,8 @@ import cantonsRouter from "@/presentation/http/geography/routes/cantons.routes";
 import sourcesRouter from "@/presentation/http/sources/routes/sources.routes";
 import placesRouter from "@/presentation/http/places/routes/places.routes";
 import placeFavoriteRouter from "@/presentation/http/favorites/routes/placeFavorite.routes";
+import placeReviewsRouter from "@/presentation/http/reviews/routes/placeReviews.routes";
+import reviewsRouter from "@/presentation/http/reviews/routes/reviews.routes";
 import eventsRouter from "@/presentation/http/events/routes/events.routes";
 import usersRouter from "@/presentation/http/users/routes/users.routes";
 import mySubmissionsRouter from "@/presentation/http/submissions/routes/mySubmissions.routes";
@@ -35,14 +37,16 @@ router.use("/provinces/:provinceId/cantons", provinceCantonsRouter);
 router.use("/provinces", provincesRouter);
 router.use("/cantons", cantonsRouter);
 router.use("/sources", sourcesRouter);
-// Before /places so the favorite sub-resource is never shadowed.
+// Before /places so the favorite, photos and reviews sub-resources are never shadowed.
 router.use("/places/:placeId/favorite", placeFavoriteRouter);
 router.use("/places/:placeId/photos", placePhotosRouter);
+router.use("/places/:placeId/reviews", placeReviewsRouter);
 router.use("/places", placesRouter);
 // Before /events so the photos sub-resource is never shadowed.
 router.use("/events/:eventId/photos", eventPhotosRouter);
 router.use("/events", eventsRouter);
 router.use("/photos", photosRouter);
+router.use("/reviews", reviewsRouter);
 router.use("/uploads", uploadsRouter);
 router.use("/files", filesRouter);
 router.use("/users", usersRouter);
