@@ -373,6 +373,29 @@ require `jwtAuth` + `requireRole("MODERATOR", "ADMIN")`; `DELETE /:id` requires 
 - **isFavorite**: `PlaceController.get` calls `IFavoriteService.isFavorite(userId, placeId)` when `req.user` is set and
   adds `isFavorite` to the detail response; anonymous callers do not get the field.
 
+## Reviews
+
+Module `reviews`. `Review { userId, placeId, rating, comment?, status }`, one per user and place
+(`@@unique([userId, placeId])`). Responses are `{ id, placeId, rating, comment, status, createdAt, author: { id, name },
+place: { id, name } }` (`ReviewDetail` read model; only the author's first name is exposed).
+
+- `GET /api/v1/places/:placeId/reviews` (`placeReviewsRouter`, `Router({ mergeParams: true })`, mounted **before**
+  `/places`): public with `optionalJwtAuth`, **only PUBLISHED reviews**. 404 `PlaceNotFoundError` if the place is missing
+  or not PUBLISHED, unless MODERATOR/ADMIN. Sort whitelist `createdAt`/`rating`, default `-createdAt`, tie-breaker `id`.
+- `POST /api/v1/places/:placeId/reviews` (`jwtAuth`) `{ rating, comment? }` → 201, created `PENDING`. The place must be
+  PUBLISHED (else 404). Duplicate → 409 `ReviewAlreadyExistsError` (pre-check; a concurrent duplicate hits the unique
+  index, P2002 → 409).
+- `GET /api/v1/me/reviews` (in `profileRouter`): the caller's reviews in any status, default `-createdAt`.
+- `PUT /api/v1/reviews/:id` (`jwtAuth`): author only (403 `ForbiddenError` otherwise), full replace (an omitted comment
+  clears it). `Review.edit` sends it back to `PENDING`; its place must still be PUBLISHED (else 404).
+- `DELETE /api/v1/reviews/:id`: author, MODERATOR or ADMIN (403 otherwise) → 204; 404 `ReviewNotFoundError`. The route
+  uses `requireRole(...USER_ROLES)` only to load the caller's role from the DB; the service decides owner vs. moderator.
+- `GET /api/v1/reviews` (MODERATOR, ADMIN): queue, `status` defaults to `PENDING`, optional `placeId`, default `createdAt`
+  asc. `PATCH /api/v1/reviews/:id/status` `{ status }` (MODERATOR, ADMIN).
+- **Rules**: `rating` integer 1-5 and `comment` <= 2000 chars (trimmed, blank → null) are checked in Zod
+  (`validators/reviewBody.ts`) **and** by the `Rating` / `ReviewComment` value objects. `Place.averageRating` /
+  `reviewCount` only count PUBLISHED reviews. Reviews cascade when the user or the place is deleted.
+
 ## User interests
 
 `GET /api/v1/me/interests` and `PUT /api/v1/me/interests` (under `profileRouter`, so `jwtAuth`) return
