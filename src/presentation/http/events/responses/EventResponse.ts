@@ -1,4 +1,5 @@
 import { TargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
+import { Audience, FreeForGroup, PriceTier } from "@/domain/places/valueObjects/planConditions.valueObject";
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
 
 /** Datetimes are always ISO 8601 in UTC (`toISOString()`). */
@@ -12,6 +13,14 @@ export interface EventResponse {
   startsAt: string;
   endsAt: string | null;
   targetAudience: TargetAudience;
+  /** Colones per person; 0 = free, null = unknown. */
+  pricePerPerson: number | null;
+  /** Derived from `pricePerPerson`; null when the price is unknown (the app shows it as `hasta5000`). */
+  priceTier: PriceTier | null;
+  /** Groups that enter free even when `pricePerPerson > 0`. */
+  freeFor: FreeForGroup[];
+  audiences: Audience[];
+  wheelchair: boolean;
   status: ContentStatus;
   createdAt: string;
   updatedAt: string;

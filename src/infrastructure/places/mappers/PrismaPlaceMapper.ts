@@ -1,4 +1,5 @@
 import { Place } from "@/domain/places/entities/Place";
+import { planConditionsFromColumns } from "@/infrastructure/core/repositories/planConditions";
 import { Place as PrismaPlace, Prisma } from "@/infrastructure/prisma/generated/prisma/client";
 
 export class PrismaPlaceMapper {
@@ -16,6 +17,7 @@ export class PrismaPlaceMapper {
       // The domain value object re-validates and types the stored JSON.
       openingHours: row.openingHours,
       targetAudience: row.targetAudience,
+      ...planConditionsFromColumns(row),
       status: row.status,
       verifiedAt: row.verifiedAt,
       createdAt: row.createdAt,

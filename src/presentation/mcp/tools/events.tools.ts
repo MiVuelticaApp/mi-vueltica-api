@@ -14,6 +14,7 @@ import {
 import { EventListFilters } from "@/domain/events/repositories/IEventRepository";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/domain/core/pagination/Pagination";
 import { toPaginatedResponse } from "@/presentation/http/core/mappers/Pagination.mapper";
+import { planConditionsInput, planConditionsOutput } from "../utils/planConditions";
 import { toolError, toolErrorMessage, toolOk } from "../utils/toolResult";
 
 const eventOutput = {
@@ -26,6 +27,7 @@ const eventOutput = {
   startsAt: z.string(),
   endsAt: z.string().nullable(),
   targetAudience: z.enum(TARGET_AUDIENCES),
+  ...planConditionsOutput,
   status: z.enum(CONTENT_STATUSES),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -119,6 +121,7 @@ const createEventInput = {
   targetAudience: eventTargetAudienceField
     .default("EVERYONE")
     .describe("Público objetivo: EVERYONE (por defecto), CHILDREN, ADULTS o SENIORS."),
+  ...planConditionsInput,
 };
 
 export function registerEventTools(server: McpServer, eventService: IEventService): void {

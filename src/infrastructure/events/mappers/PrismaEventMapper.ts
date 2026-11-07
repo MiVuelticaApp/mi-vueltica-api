@@ -1,5 +1,6 @@
 import { Event } from "@/domain/events/entities/Event";
 import { PlaceSummary } from "@/domain/events/entities/EventDetail";
+import { planConditionsFromColumns } from "@/infrastructure/core/repositories/planConditions";
 import { Event as PrismaEvent, Place as PrismaPlace } from "@/infrastructure/prisma/generated/prisma/client";
 
 export class PrismaEventMapper {
@@ -14,6 +15,7 @@ export class PrismaEventMapper {
       startsAt: row.startsAt,
       endsAt: row.endsAt,
       targetAudience: row.targetAudience,
+      ...planConditionsFromColumns(row),
       status: row.status,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
