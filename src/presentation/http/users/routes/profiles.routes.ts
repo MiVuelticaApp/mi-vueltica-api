@@ -3,10 +3,11 @@ import { Router } from "express";
 import { UpdateUserSchema } from "../validators/updateUser";
 import { DeleteAccountSchema } from "../validators/deleteAccount";
 import { UpdateInterestsSchema } from "../validators/updateInterests";
-import { myProfileController, myInterestsController, favoriteController } from "@/dependencyInjection/container";
+import { myProfileController, myInterestsController, favoriteController, reviewController } from "@/dependencyInjection/container";
 import asyncHandler from "@/presentation/http/core/handlers/asyncHandler";
 import jwtAuth from "@/presentation/http/auth/middlewares/jwtAuth";
 import { ListFavoritesQuerySchema } from "@/presentation/http/favorites/validators/listFavorites";
+import { ListReviewsQuerySchema } from "@/presentation/http/reviews/validators/listReviews";
 import rateLimit from "@/presentation/http/core/middlewares/rateLimit";
 
 const profileRouter = Router();
@@ -17,6 +18,7 @@ profileRouter.get("/", asyncHandler(myProfileController.me.bind(myProfileControl
 profileRouter.get("/interests", asyncHandler(myInterestsController.list.bind(myInterestsController)));
 profileRouter.put("/interests", validateSchema(UpdateInterestsSchema), asyncHandler(myInterestsController.replace.bind(myInterestsController)));
 profileRouter.get("/favorites", validateSchema(ListFavoritesQuerySchema, "query"), asyncHandler(favoriteController.list.bind(favoriteController)));
+profileRouter.get("/reviews", validateSchema(ListReviewsQuerySchema, "query"), asyncHandler(reviewController.listMine.bind(reviewController)));
 // Destructive: tighter limiter than /auth/qa (5 per 15 min per IP). The optional
 // appleAuthorizationCode body field is accepted but consumed by the Apple account
 // closure follow-up (#43); it is unused here.
