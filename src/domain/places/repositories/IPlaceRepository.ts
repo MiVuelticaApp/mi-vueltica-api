@@ -5,22 +5,12 @@ import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueO
 import { PlanConditionsFilters } from "@/domain/places/valueObjects/planConditions.valueObject";
 import { TargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
 import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
+import { BoundingBox, GeoFilters, RadiusFilter } from "@/domain/core/geo/GeoFilters";
 
-export interface BoundingBox {
-  minLat: number;
-  minLng: number;
-  maxLat: number;
-  maxLng: number;
-}
+export type { BoundingBox, RadiusFilter };
 
-export interface RadiusFilter {
-  lat: number;
-  lng: number;
-  radiusKm: number;
-}
-
-/** Price/audience/accessibility filters come from `PlanConditionsFilters`. */
-export interface PlaceListFilters extends PlanConditionsFilters {
+/** Price/audience/accessibility filters come from `PlanConditionsFilters`; `bbox` / `radius` from `GeoFilters`. */
+export interface PlaceListFilters extends PlanConditionsFilters, GeoFilters {
   cantonId?: number;
   provinceId?: number;
   categoryId?: number;
@@ -29,10 +19,6 @@ export interface PlaceListFilters extends PlanConditionsFilters {
   statuses?: ContentStatus[];
   /** Substring match on name, description or address. */
   search?: string;
-  /** Mutually exclusive with `radius`. */
-  bbox?: BoundingBox;
-  /** Mutually exclusive with `bbox`. */
-  radius?: RadiusFilter;
 }
 
 export interface IPlaceRepository {
