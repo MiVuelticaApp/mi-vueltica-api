@@ -78,6 +78,12 @@ import { PrismaPhotoGalleryUnitOfWork } from "@/infrastructure/photos/unitsOfWor
 import { PhotoService } from "@/application/photos/services/implementations/PhotoService";
 import { IPhotoService } from "@/application/photos/services/interfaces/IPhotoService";
 import PhotoController from "@/presentation/http/photos/controllers/Photo.controller";
+import { PrismaCommunityUnitOfWork } from "@/infrastructure/community/unitsOfWork/PrismaCommunityUnitOfWork";
+import PrismaVerificationRepository from "@/infrastructure/community/repositories/PrismaVerificationRepository";
+import PrismaReportRepository from "@/infrastructure/community/repositories/PrismaReportRepository";
+import { CommunityService } from "@/application/community/services/implementations/CommunityService";
+import { ICommunityService } from "@/application/community/services/interfaces/ICommunityService";
+import CommunityController from "@/presentation/http/community/controllers/Community.controller";
 import { createMcpServerFactory } from "@/presentation/mcp/server/createMcpServer";
 
 // ==================== INFRASTRUCTURE ====================
@@ -154,6 +160,12 @@ export const uploadService: IUploadService = new UploadService(
   },
 );
 export const reviewService: IReviewService = new ReviewService(reviewRepository, placeRepository, eventRepository, uploadService);
+export const communityService: ICommunityService = new CommunityService(
+  new PrismaCommunityUnitOfWork(),
+  new PrismaVerificationRepository(),
+  new PrismaReportRepository(),
+  uploadService,
+);
 export const photoService: IPhotoService = new PhotoService(photoRepository, photoGalleryUOW, placeRepository, eventRepository, uploadService);
 export const submissionService = new SubmissionService(submissionRepository, placeRepository, categoryRepository, submissionApprovalUOW, uploadService);
 export const userInterestService = new UserInterestService(userRepository, userInterestRepository, categoryRepository);
@@ -194,10 +206,11 @@ export const categoryController = new CategoryController(categoryService);
 export const provinceController = new ProvinceController(provinceService);
 export const cantonController = new CantonController(cantonService);
 export const sourceController = new SourceController(sourceService);
-export const placeController = new PlaceController(placeService, favoriteService);
-export const eventController = new EventController(eventService);
+export const placeController = new PlaceController(placeService, favoriteService, communityService);
+export const eventController = new EventController(eventService, communityService);
 export const favoriteController = new FavoriteController(favoriteService);
 export const reviewController = new ReviewController(reviewService);
+export const communityController = new CommunityController(communityService);
 export const mySubmissionsController = new MySubmissionsController(submissionService);
 export const myDevicesController = new MyDevicesController(deviceService);
 export const myNotificationsController = new MyNotificationsController(notificationService);

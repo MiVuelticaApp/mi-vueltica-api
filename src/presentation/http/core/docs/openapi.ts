@@ -43,6 +43,11 @@ import { MAX_RATING, MIN_RATING } from "@/domain/reviews/valueObjects/rating.val
 import { REVIEW_COMMENT_MAX_LENGTH } from "@/domain/reviews/valueObjects/reviewComment.valueObject";
 import { REVIEW_AUDIENCES, SPENT_TIERS, WENT_WITH_VALUES } from "@/domain/reviews/valueObjects/reviewExperience.valueObject";
 import { REVIEW_MAX_PHOTOS } from "@/domain/reviews/valueObjects/reviewPhotos.valueObject";
+import { VerifySchema, ReportSchema, ReportDecisionSchema } from "@/presentation/http/community/validators/community";
+import { REPORT_RATE_LIMIT, VERIFICATION_RATE_LIMIT } from "@/presentation/http/community/communityLimits";
+import { REPORT_REASONS } from "@/domain/community/valueObjects/reportReason.valueObject";
+import { REPORTS_TO_HIDE, NEEDS_REVIEW_HOURS } from "@/domain/community/rules/reportRules";
+import { VERIFICATIONS_TO_UPDATE } from "@/domain/community/rules/verificationRules";
 import { PLACE_SORT_FIELDS, MAX_RADIUS_KM } from "@/presentation/http/places/validators/listPlaces";
 import { CONTENT_STATUSES } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { TARGET_AUDIENCES } from "@/domain/places/valueObjects/targetAudience.valueObject";
@@ -276,6 +281,97 @@ const reviewListParams = (defaultSort: string) => [
 ];
 
 /** GET / POST of the reviews of a Place or Event (`/places/{placeId}/reviews`, `/events/{eventId}/reviews`). */
+/** Optional guest identity for verifications and reports (signed-in callers are identified by the token). */
+const deviceIdHeader = {
+  name: "X-Device-Id",
+  in: "header",
+  required: false,
+  description:
+    "Guests only (no bearer token): a stable id of the device, 8-128 characters of letters, digits, `.`, `_`, `:` " +
+    "or `-`. Verifications and reports are deduplicated per device. Ignored when a valid bearer token is sent.",
+  schema: { type: "string", pattern: "^[A-Za-z0-9._:-]{8,128}$" },
+};
+
+const perMinutes = (limit: { windowMs: number; max: number }) => `${limit.max} / ${limit.windowMs / 60000} min`;
+
+/** Verifications, reports and the report decision of a Place or Event (`/places/{placeId}/...`, `/events/{eventId}/...`). */
+const communityPaths = (kind: "place" | "event") => {
+  const param = { $ref: `#/components/parameters/${kind === "place" ? "PlaceId" : "EventId"}` };
+  const noun = kind;
+  return {
+    [`/${kind}s/{${kind}Id}/verifications`]: {
+      post: {
+        tags: ["Community"],
+        summary: `Verify a${kind === "event" ? "n" : ""} ${noun} ("¿Sigue siendo gratis?")`,
+        description:
+          `Signed-in users (bearer token) or guests (\`X-Device-Id\`; 400 with neither). One counted verification per ` +
+          `person and ${noun}: a newer answer replaces the previous one. ${VERIFICATIONS_TO_UPDATE} matching answers update the ` +
+          `listing: \`stillHappening: "no"\` hides it ("Ya no existe"), \`pricePaid: "mas5000"\` hides it ("Cuesta más de ₡5.000") ` +
+          "and any other `pricePaid` sets the price to that tier (kept if it already is in it, else the tier's maximum). " +
+          "Hiding makes it ARCHIVED with `hiddenReason`; its author still sees it. Price answers only count from signed-in " +
+          "users (the app's \"level 2\" rule; the API has no reputation yet). `photo` is a URL from `POST /uploads` " +
+          `(signed-in users only, 401 for guests; 422 if not the caller's own upload). 404 unless the ${noun} is PUBLISHED. ` +
+          `Rate limit: ${perMinutes(VERIFICATION_RATE_LIMIT)} per user or IP. \`queued\` is always false and \`points\` always 0.`,
+        security: optionalBearer,
+        parameters: [param, deviceIdHeader],
+        requestBody: jsonBody(VerifySchema),
+        responses: {
+          200: jsonResponse("Verification applied", "VerifyResult"),
+          400: responseRef("BadRequest"),
+          401: responseRef("Unauthorized"),
+          404: responseRef("NotFound"),
+          422: responseRef("UnprocessableEntity"),
+          429: { description: "Too many requests" },
+        },
+      },
+    },
+    [`/${kind}s/{${kind}Id}/reports`]: {
+      post: {
+        tags: ["Community"],
+        summary: `Report a${kind === "event" ? "n" : ""} ${noun}`,
+        description:
+          `Signed-in users or guests (\`X-Device-Id\`). The reporter is stored but never shown. One report per person and ` +
+          `${noun}: a second one is 409 (also after a moderator's decision). ${REPORTS_TO_HIDE} unresolved reports with the same ` +
+          `reason hide the ${noun} ("En revisión por reportes") until a moderator decides; after ${NEEDS_REVIEW_HOURS} h without ` +
+          "a decision it is flagged `needsReview` in `GET /reports`. `photo`: as in verifications. 404 unless the " +
+          `${noun} is PUBLISHED. Rate limit: ${perMinutes(REPORT_RATE_LIMIT)} per user or IP.`,
+        security: optionalBearer,
+        parameters: [param, deviceIdHeader],
+        requestBody: jsonBody(ReportSchema),
+        responses: {
+          201: jsonResponse("Report created", "CreatedReport"),
+          400: responseRef("BadRequest"),
+          401: responseRef("Unauthorized"),
+          404: responseRef("NotFound"),
+          409: responseRef("Conflict"),
+          422: responseRef("UnprocessableEntity"),
+          429: { description: "Too many requests" },
+        },
+      },
+    },
+    [`/${kind}s/{${kind}Id}/reports/decision`]: {
+      post: {
+        tags: ["Community"],
+        summary: `Decide on a reported ${noun} (MODERATOR, ADMIN)`,
+        description:
+          "`keep`: PUBLISHED again (clears `hiddenReason`). `hide`: ARCHIVED with \"Ocultada por moderación\". Both resolve " +
+          `the ${noun}'s pending reports. 409 when it has none; 404 when it does not exist.`,
+        security: bearer,
+        parameters: [param],
+        requestBody: jsonBody(ReportDecisionSchema),
+        responses: {
+          200: jsonResponse("Decision applied", "ReportDecisionResult"),
+          400: responseRef("BadRequest"),
+          401: responseRef("Unauthorized"),
+          403: responseRef("Forbidden"),
+          404: responseRef("NotFound"),
+          409: responseRef("Conflict"),
+        },
+      },
+    },
+  };
+};
+
 const reviewTargetPaths = (kind: "place" | "event") => {
   const param = kind === "place" ? "PlaceId" : "EventId";
   const noun = kind === "place" ? "place" : "event";
@@ -1123,9 +1219,9 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Places"],
       summary: "Get a place",
       description:
-        "Public (optional bearer token). Includes photos ordered by position and the rating summary over PUBLISHED reviews. A non-PUBLISHED place is 404 unless the caller is MODERATOR / ADMIN. Authenticated callers also get `isFavorite`.",
+        "Public (optional bearer token). Includes photos ordered by position, the rating summary over PUBLISHED reviews and the verification summary (`myVerifiedToday` uses the token or `X-Device-Id`). A non-PUBLISHED place is 404 unless the caller is MODERATOR / ADMIN or its author (whose submission created it; they see it with `hiddenReason`). Authenticated callers also get `isFavorite` and `isMine`.",
       security: optionalBearer,
-      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      parameters: [{ $ref: "#/components/parameters/UuidId" }, deviceIdHeader],
       responses: {
         200: jsonResponse("Place", "PlaceDetail"),
         400: responseRef("BadRequest"),
@@ -1308,9 +1404,9 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Events"],
       summary: "Get an event",
       description:
-        "Public (optional bearer token). Includes a summary of the event's place, the event's photos ordered by position and the rating summary over PUBLISHED reviews (`averageRating`, `reviewCount`, `ratingDistribution`). A non-PUBLISHED event is 404 unless the caller is MODERATOR / ADMIN; for other callers `place` is null when the linked place is not PUBLISHED.",
+        "Public (optional bearer token). Includes a summary of the event's place, the event's photos ordered by position and the rating summary over PUBLISHED reviews (`averageRating`, `reviewCount`, `ratingDistribution`). It also has the verification summary (`myVerifiedToday` uses the token or `X-Device-Id`). A non-PUBLISHED event is 404 unless the caller is MODERATOR / ADMIN or its author (they see it with `hiddenReason`); for other callers `place` is null when the linked place is not PUBLISHED. Authenticated callers also get `isMine`.",
       security: optionalBearer,
-      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      parameters: [{ $ref: "#/components/parameters/UuidId" }, deviceIdHeader],
       responses: {
         200: jsonResponse("Event", "EventDetail"),
         400: responseRef("BadRequest"),
@@ -1611,6 +1707,26 @@ const paths: Record<string, Record<string, unknown>> = {
   ...galleryPaths("place"),
   ...galleryPaths("event"),
   ...reviewTargetPaths("event"),
+  ...communityPaths("place"),
+  ...communityPaths("event"),
+  "/reports": {
+    get: {
+      tags: ["Community"],
+      summary: "Reported plans (MODERATOR, ADMIN)",
+      description:
+        "Places and events with unresolved reports, one item each with every unresolved report (the reporter is never " +
+        `shown). Order: \`needsReview\` first (hidden by reports for more than ${NEEDS_REVIEW_HOURS} h), then the ones hidden ` +
+        "by reports, then by oldest report. Decide with `POST /places/{placeId}/reports/decision` (or the event one).",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/Page" }, { $ref: "#/components/parameters/PageSize" }],
+      responses: {
+        200: { description: "Page of reported plans", content: { "application/json": { schema: paginated("ReportQueueItem") } } },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+      },
+    },
+  },
   "/reviews": {
     get: {
       tags: ["Reviews"],
@@ -1861,6 +1977,7 @@ const openApiDocument = {
     { name: "Uploads" },
     { name: "Favorites" },
     { name: "Reviews" },
+    { name: "Community", description: "Verifications (\"¿Sigue siendo gratis?\"), reports and their moderation" },
     { name: "Devices" },
     { name: "Notifications" },
     { name: "Users" },
@@ -2082,13 +2199,21 @@ const openApiDocument = {
           targetAudience: { $ref: "#/components/schemas/TargetAudience" },
           ...planConditionsProperties,
           status: { $ref: "#/components/schemas/ContentStatus" },
-          verifiedAt: { type: ["string", "null"], format: "date-time" },
+          hiddenReason: {
+            type: ["string", "null"],
+            description: "Why it is hidden (ARCHIVED by verifications, reports or moderation); null otherwise",
+          },
+          verifiedAt: {
+            type: ["string", "null"],
+            format: "date-time",
+            description: "When a moderator published it or the community last confirmed it (`si`)",
+          },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
         },
         required: [
           "id", "cantonId", "categoryId", "sourceId", "name", "description", "latitude", "longitude",
-          "address", "openingHours", "targetAudience", "status", "verifiedAt", "createdAt", "updatedAt",
+          "address", "openingHours", "targetAudience", "status", "hiddenReason", "verifiedAt", "createdAt", "updatedAt",
           ...planConditionsRequired,
         ],
       },
@@ -2177,8 +2302,21 @@ const openApiDocument = {
                 type: "boolean",
                 description: "Only present for authenticated callers: whether the caller favorited this place",
               },
+              lastVerifiedAt: { type: ["string", "null"], format: "date-time", description: "Latest verification; null if never verified" },
+              verificationCount: { type: "integer", minimum: 0, description: "People who verified it (one per person)" },
+              myVerifiedToday: {
+                type: "boolean",
+                description: "Whether the caller (token, or guest `X-Device-Id`) verified it today, Costa Rica time",
+              },
+              isMine: {
+                type: "boolean",
+                description: "Only present for authenticated callers: whether the caller is the author (their submission created it)",
+              },
             },
-            required: ["photos", "averageRating", "reviewCount", "ratingDistribution"],
+            required: [
+              "photos", "averageRating", "reviewCount", "ratingDistribution", "lastVerifiedAt", "verificationCount",
+              "myVerifiedToday",
+            ],
           },
         ],
       },
@@ -2209,12 +2347,16 @@ const openApiDocument = {
           targetAudience: { $ref: "#/components/schemas/TargetAudience" },
           ...planConditionsProperties,
           status: { $ref: "#/components/schemas/ContentStatus" },
+          hiddenReason: {
+            type: ["string", "null"],
+            description: "Why it is hidden (ARCHIVED by verifications, reports or moderation); null otherwise",
+          },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
         },
         required: [
           "id", "placeId", "categoryId", "sourceId", "title", "description", "startsAt", "endsAt",
-          "targetAudience", "status", "createdAt", "updatedAt",
+          "targetAudience", "status", "hiddenReason", "createdAt", "updatedAt",
           ...planConditionsRequired,
         ],
       },
@@ -2241,10 +2383,100 @@ const openApiDocument = {
               },
               reviewCount: { type: "integer", minimum: 0, description: "Number of PUBLISHED reviews" },
               ratingDistribution: ratingDistributionSchema,
+              lastVerifiedAt: { type: ["string", "null"], format: "date-time", description: "Latest verification; null if never verified" },
+              verificationCount: { type: "integer", minimum: 0, description: "People who verified it (one per person)" },
+              myVerifiedToday: {
+                type: "boolean",
+                description: "Whether the caller (token, or guest `X-Device-Id`) verified it today, Costa Rica time",
+              },
+              isMine: {
+                type: "boolean",
+                description: "Only present for authenticated callers: whether the caller is the author (their submission created it)",
+              },
             },
-            required: ["place", "photos", "averageRating", "reviewCount", "ratingDistribution"],
+            required: [
+              "place", "photos", "averageRating", "reviewCount", "ratingDistribution", "lastVerifiedAt",
+              "verificationCount", "myVerifiedToday",
+            ],
           },
         ],
+      },
+      VerifyResult: {
+        type: "object",
+        description: "Same shape as the app's `VerifyResult`",
+        properties: {
+          queued: { type: "boolean", description: "Always false: the server applies verifications immediately" },
+          points: { type: "integer", description: "Reputation points earned; always 0 (no reputation model yet)" },
+          hidden: { type: "boolean", description: "This verification hid the plan" },
+        },
+        required: ["queued", "points", "hidden"],
+      },
+      Report: {
+        type: "object",
+        description: "The reporter is never included",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          placeId: { type: ["string", "null"], format: "uuid" },
+          eventId: { type: ["string", "null"], format: "uuid" },
+          reason: { type: "string", enum: [...REPORT_REASONS] },
+          details: { type: ["string", "null"] },
+          photo: { type: ["string", "null"], format: "uri" },
+          createdAt: { type: "string", format: "date-time" },
+        },
+        required: ["id", "placeId", "eventId", "reason", "details", "photo", "createdAt"],
+      },
+      CreatedReport: {
+        allOf: [
+          { $ref: "#/components/schemas/Report" },
+          {
+            type: "object",
+            properties: { hidden: { type: "boolean", description: "This report hid the plan" } },
+            required: ["hidden"],
+          },
+        ],
+      },
+      ReportQueueItem: {
+        type: "object",
+        properties: {
+          type: { type: "string", enum: ["PLACE", "EVENT"] },
+          placeId: { type: ["string", "null"], format: "uuid" },
+          eventId: { type: ["string", "null"], format: "uuid" },
+          title: { type: "string", description: "Place name or event title" },
+          status: { $ref: "#/components/schemas/ContentStatus" },
+          hiddenReason: { type: ["string", "null"] },
+          reportedAt: {
+            type: ["string", "null"],
+            format: "date-time",
+            description: "When reports hid it (null when not hidden by reports)",
+          },
+          needsReview: { type: "boolean", description: `Hidden by reports for more than ${NEEDS_REVIEW_HOURS} h without a decision` },
+          reportCount: { type: "integer", minimum: 1 },
+          topReason: { type: ["string", "null"], enum: [...REPORT_REASONS, null] },
+          reasons: {
+            type: "object",
+            description: "Unresolved reports per reason",
+            additionalProperties: { type: "integer", minimum: 1 },
+          },
+          firstReportAt: { type: "string", format: "date-time" },
+          lastReportAt: { type: "string", format: "date-time" },
+          reports: { type: "array", items: { $ref: "#/components/schemas/Report" }, description: "Newest first" },
+        },
+        required: [
+          "type", "placeId", "eventId", "title", "status", "hiddenReason", "reportedAt", "needsReview", "reportCount",
+          "topReason", "reasons", "firstReportAt", "lastReportAt", "reports",
+        ],
+      },
+      ReportDecisionResult: {
+        type: "object",
+        properties: {
+          placeId: { type: ["string", "null"], format: "uuid" },
+          eventId: { type: ["string", "null"], format: "uuid" },
+          decision: { type: "string", enum: ["keep", "hide"] },
+          status: { $ref: "#/components/schemas/ContentStatus" },
+          hiddenReason: { type: ["string", "null"] },
+          resolvedReports: { type: "integer", minimum: 1 },
+        },
+        required: ["placeId", "eventId", "decision", "status", "hiddenReason", "resolvedReports"],
       },
       Submission: {
         type: "object",

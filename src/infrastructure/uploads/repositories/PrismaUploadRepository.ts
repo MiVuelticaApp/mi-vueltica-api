@@ -11,6 +11,8 @@ const UNREFERENCED: Prisma.UploadWhereInput = {
   photos: { none: {} },
   submissions: { none: {} },
   reviewPhotos: { none: {} },
+  verifications: { none: {} },
+  reports: { none: {} },
 };
 
 export default class PrismaUploadRepository implements IUploadRepository {
@@ -74,6 +76,8 @@ export default class PrismaUploadRepository implements IUploadRepository {
           AND NOT EXISTS (SELECT 1 FROM Photo WHERE uploadId = ${id})
           AND NOT EXISTS (SELECT 1 FROM SubmissionUpload WHERE uploadId = ${id})
           AND NOT EXISTS (SELECT 1 FROM ReviewPhoto WHERE uploadId = ${id})
+          AND NOT EXISTS (SELECT 1 FROM Verification WHERE uploadId = ${id})
+          AND NOT EXISTS (SELECT 1 FROM Report WHERE uploadId = ${id})
       `;
       return count > 0;
     } catch (error) {
