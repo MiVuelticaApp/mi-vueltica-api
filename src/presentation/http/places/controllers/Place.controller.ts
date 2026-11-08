@@ -6,6 +6,7 @@ import { PlaceListFilters } from "@/domain/places/repositories/IPlaceRepository"
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { getValidated } from "@/presentation/http/core/middlewares/validateSchema";
 import { toPaginationParams } from "@/presentation/http/core/validators/pagination";
+import { toGeoFilters } from "@/presentation/http/core/validators/geo";
 import { toPaginatedResponse } from "@/presentation/http/core/mappers/Pagination.mapper";
 import { ListPlacesQuerySchema } from "../validators/listPlaces";
 import { CreatePlaceRequest } from "../requests/CreatePlaceRequest";
@@ -50,13 +51,8 @@ export default class PlaceController {
       seniors: query.seniors,
       families: query.families,
       wheelchair: query.wheelchair,
+      ...toGeoFilters(query),
     };
-
-    if (query.minLat !== undefined) {
-      filters.bbox = { minLat: query.minLat, minLng: query.minLng!, maxLat: query.maxLat!, maxLng: query.maxLng! };
-    } else if (query.lat !== undefined) {
-      filters.radius = { lat: query.lat, lng: query.lng!, radiusKm: query.radiusKm! };
-    }
 
     const result = await this.placeService.list(toPaginationParams(query), filters);
     res.json(toPaginatedResponse(result, PlaceDtoMapper.toResponse));
@@ -72,7 +68,7 @@ export default class PlaceController {
     const response = PlaceDtoMapper.toDetailResponse(detail, verification);
     // `isFavorite` and `isMine` are only present for authenticated callers.
     if (req.user) {
-      response.isFavorite = await this.favoriteService.isFavorite(req.user.id, id);
+      response.isFavorite = await this.favoriteService.isFavorite(req.user.id, { type: "PLACE", id });
       response.isMine = detail.place.isAuthoredBy(req.user.id);
     }
     res.json(response);
