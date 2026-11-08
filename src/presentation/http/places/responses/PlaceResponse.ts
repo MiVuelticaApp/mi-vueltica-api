@@ -1,3 +1,4 @@
+import { VerificationFieldsResponse } from "@/presentation/http/community/responses/CommunityResponses";
 import { OpeningHoursValue } from "@/domain/places/valueObjects/openingHours.valueObject";
 import { TargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
 import { Audience, FreeForGroup, PriceTier } from "@/domain/places/valueObjects/planConditions.valueObject";
@@ -24,6 +25,8 @@ export interface PlaceResponse {
   audiences: Audience[];
   wheelchair: boolean;
   status: ContentStatus;
+  /** Why the plan is hidden (ARCHIVED by verifications, reports or moderation); null otherwise. */
+  hiddenReason: string | null;
   verifiedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -35,7 +38,7 @@ export interface PlacePhotoResponse {
   position: number;
 }
 
-export interface PlaceDetailResponse extends PlaceResponse {
+export interface PlaceDetailResponse extends PlaceResponse, VerificationFieldsResponse {
   /** Ordered by `position` ascending. */
   photos: PlacePhotoResponse[];
   /** Mean of PUBLISHED reviews rounded to 2 decimals; null when there are none. */
@@ -46,4 +49,6 @@ export interface PlaceDetailResponse extends PlaceResponse {
   ratingDistribution: number[];
   /** Whether the authenticated caller favorited this place. Omitted for anonymous callers. */
   isFavorite?: boolean;
+  /** Whether the authenticated caller is the author (their submission created it). Omitted for anonymous callers. */
+  isMine?: boolean;
 }

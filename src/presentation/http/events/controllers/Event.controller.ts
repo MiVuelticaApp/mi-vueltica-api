@@ -10,6 +10,8 @@ import { ListEventsQuerySchema } from "../validators/listEvents";
 import { CreateEventRequest } from "../requests/CreateEventRequest";
 import { UpdateEventRequest } from "../requests/UpdateEventRequest";
 import { ChangeEventStatusRequest } from "../requests/ChangeEventStatusRequest";
+import { ICommunityService } from "@/application/community/services/interfaces/ICommunityService";
+import { optionalPerson } from "@/presentation/http/community/utils/person";
 import EventDtoMapper from "../mappers/Event.mapper";
 
 type ListQuery = z.output<typeof ListEventsQuerySchema>;
@@ -24,7 +26,10 @@ function canSeeUnpublished(req: Request): boolean {
 }
 
 export default class EventController {
-  constructor(private readonly eventService: IEventService) {}
+  constructor(
+    private readonly eventService: IEventService,
+    private readonly communityService: ICommunityService,
+  ) {}
 
   async list(req: Request, res: Response): Promise<void> {
     const query = getValidated<ListQuery>(req, "query");
@@ -55,8 +60,13 @@ export default class EventController {
     const { id } = getValidated<IdParams>(req, "params");
     const detail = await this.eventService.get(id, {
       statuses: canSeeUnpublished(req) ? undefined : PUBLIC_STATUSES,
+      viewerId: req.user?.id,
     });
-    res.json(EventDtoMapper.toDetailResponse(detail));
+    const verification = await this.communityService.verificationSummary({ type: "EVENT", id }, optionalPerson(req));
+    const response = EventDtoMapper.toDetailResponse(detail, verification);
+    // `isMine` is only present for authenticated callers.
+    if (req.user) response.isMine = detail.event.isAuthoredBy(req.user.id);
+    res.json(response);
   }
 
   async create(req: Request, res: Response): Promise<void> {

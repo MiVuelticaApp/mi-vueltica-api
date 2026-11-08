@@ -5,6 +5,7 @@ import { Coordinates } from "../valueObjects/coordinates.valueObject";
 import { OpeningHours, OpeningHoursValue } from "../valueObjects/openingHours.valueObject";
 import { ContentStatus, parseContentStatus } from "../valueObjects/contentStatus.valueObject";
 import { TargetAudience, parseTargetAudience } from "../valueObjects/targetAudience.valueObject";
+import { PlanCommunity, PlanCommunityProps } from "@/domain/community/valueObjects/planCommunity.valueObject";
 import { PlanConditions, PlanConditionsData, PlanConditionsValue } from "@/domain/places/valueObjects/planConditions.valueObject";
 
 /** Editable fields shared by create and full-replace update (no status). */
@@ -71,6 +72,7 @@ export class Place {
       conditions: PlanConditions.create(props),
       status: parseContentStatus(props.status),
       verifiedAt: props.verifiedAt ?? null,
+      community: PlanCommunity.create(props),
       createdAt: props.createdAt,
       updatedAt: props.updatedAt,
     };
@@ -94,6 +96,13 @@ export class Place {
   get wheelchair() { return this.props.conditions.value.wheelchair; }
   get status() { return this.props.status; }
   get verifiedAt() { return this.props.verifiedAt; }
+  get authorId() { return this.props.community.authorId; }
+  get hiddenReason() { return this.props.community.hiddenReason; }
+  get reportedAt() { return this.props.community.reportedAt; }
+
+  isAuthoredBy(userId: string): boolean {
+    return this.props.community.isAuthoredBy(userId);
+  }
   get createdAt() { return this.props.createdAt; }
   get updatedAt() { return this.props.updatedAt; }
 
@@ -115,7 +124,7 @@ export class Place {
   /**
    * Moves the place to `status`. Transitioning to PUBLISHED stamps `verifiedAt = now`;
    * a place that is already PUBLISHED keeps its existing `verifiedAt`.
-   * Any other status leaves `verifiedAt` untouched.
+   * Any other status leaves `verifiedAt` untouched. Leaving ARCHIVED clears `hiddenReason` / `reportedAt`.
    */
   changeStatus(status: ContentStatus, now: Date) {
     const next = parseContentStatus(status);
@@ -123,6 +132,7 @@ export class Place {
       this.props.verifiedAt = now;
     }
     this.props.status = next;
+    this.props.community = this.props.community.afterStatusChange(next);
   }
 }
 
@@ -140,11 +150,12 @@ export interface PlaceProps {
   conditions: PlanConditions;
   status: ContentStatus;
   verifiedAt: Date | null;
+  community: PlanCommunity;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface PlaceConstructorProps {
+export interface PlaceConstructorProps extends PlanCommunityProps {
   id: string;
   cantonId: number;
   categoryId: number;

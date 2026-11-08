@@ -12,6 +12,8 @@ import { CreatePlaceRequest } from "../requests/CreatePlaceRequest";
 import { UpdatePlaceRequest } from "../requests/UpdatePlaceRequest";
 import { ChangePlaceStatusRequest } from "../requests/ChangePlaceStatusRequest";
 import PlaceDtoMapper from "../mappers/Place.mapper";
+import { ICommunityService } from "@/application/community/services/interfaces/ICommunityService";
+import { optionalPerson } from "@/presentation/http/community/utils/person";
 
 type ListQuery = z.output<typeof ListPlacesQuerySchema>;
 type IdParams = { id: string };
@@ -28,6 +30,7 @@ export default class PlaceController {
   constructor(
     private readonly placeService: IPlaceService,
     private readonly favoriteService: IFavoriteService,
+    private readonly communityService: ICommunityService,
   ) {}
 
   async list(req: Request, res: Response): Promise<void> {
@@ -63,10 +66,15 @@ export default class PlaceController {
     const { id } = getValidated<IdParams>(req, "params");
     const detail = await this.placeService.get(id, {
       statuses: canSeeUnpublished(req) ? undefined : PUBLIC_STATUSES,
+      viewerId: req.user?.id,
     });
-    const response = PlaceDtoMapper.toDetailResponse(detail);
-    // `isFavorite` is only present for authenticated callers.
-    if (req.user) response.isFavorite = await this.favoriteService.isFavorite(req.user.id, id);
+    const verification = await this.communityService.verificationSummary({ type: "PLACE", id }, optionalPerson(req));
+    const response = PlaceDtoMapper.toDetailResponse(detail, verification);
+    // `isFavorite` and `isMine` are only present for authenticated callers.
+    if (req.user) {
+      response.isFavorite = await this.favoriteService.isFavorite(req.user.id, id);
+      response.isMine = detail.place.isAuthoredBy(req.user.id);
+    }
     res.json(response);
   }
 

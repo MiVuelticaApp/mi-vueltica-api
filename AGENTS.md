@@ -139,7 +139,8 @@ iOS client; unknown keys → 400. The response is **204** with no body. Service 
    `UserInterest`, `Submission` (as author), `Favorite`, `ReviewUsefulVote`, `Device` and `Notification` cascade;
    `Submission.reviewedById` is set to null for submissions the user moderated. **Reviews are kept anonymized**:
    `Review.userId` is `ON DELETE SET NULL` and the API shows the author as `{ id: null, name: "Anónimo" }` (the app's
-   `anonymizeOnDelete` rule; #38).
+   `anonymizeOnDelete` rule; #38). Likewise `Place.authorId` / `Event.authorId` and `Verification.userId` /
+   `Report.userId` are `SET NULL` (the plans, verifications and reports stay; #39).
 
 It returns `AccountDeletionResult` `{ email, name }`.
 
@@ -310,8 +311,9 @@ token or missing/soft-deleted user continues anonymously, never 401; a valid one
 
 - **Visibility**: the controller treats MODERATOR/ADMIN as privileged and passes the service a plain
   `statuses?: ContentStatus[]`. Anonymous/regular users: list forced to `PUBLISHED` (`status` query ignored) and
-  `GET /:id` of a non-PUBLISHED place is 404 `PlaceNotFoundError`. Privileged: optional `status` filter (all statuses
-  when omitted) and `GET /:id` returns any status.
+  `GET /:id` of a non-PUBLISHED place is 404 `PlaceNotFoundError`, **except for its author** (`viewerId` option;
+  see "Verifications & reports"). Privileged: optional `status` filter (all statuses when omitted) and `GET /:id`
+  returns any status.
 - **List filters** (all optional): `cantonId`, `provinceId` (via canton), `categoryId`, `targetAudience`, `status`
   (privileged only), `q` (substring on name/description/address, max 100). Geo: bbox `minLat,minLng,maxLat,maxLng`
   (all four, min <= max) **or** radius `lat,lng,radiusKm` (all three, 0 < radiusKm <= 500); mixing them is 400. Radius
@@ -332,6 +334,8 @@ token or missing/soft-deleted user continues anonymously, never 401; a valid one
 - **verifiedAt**: `Place.changeStatus(status, now)` sets `verifiedAt = now` whenever the place transitions to
   `PUBLISHED` (an already-PUBLISHED place keeps its `verifiedAt`); other statuses leave it untouched.
 - **isFavorite**: `GET /:id` adds `isFavorite: boolean` when the caller is authenticated (see Favorites) and omits it for anonymous callers; the list endpoint is unchanged.
+- **Community fields**: every response has `hiddenReason`; `GET /:id` adds `lastVerifiedAt`, `verificationCount`,
+  `myVerifiedToday` and, for authenticated callers, `isMine` (see "Verifications & reports").
 - **Photos**: `GET /:id` embeds the gallery (`photos`, ordered by `position`); managed through the Photos endpoints.
 - **Delete** is a plain `place.delete`: photos, favorites and reviews cascade at DB level and events keep existing with
   `placeId = null` (SET NULL). Category/source deletes still return 409 while any place references them.
@@ -387,7 +391,8 @@ require `jwtAuth` + `requireRole("MODERATOR", "ADMIN")`; `DELETE /:id` requires 
 - **Photos**: events have their own gallery (same `Photo` table); `GET /:id` embeds `photos` (ordered by `position`).
 - **Rating**: `GET /:id` adds `averageRating`, `reviewCount` and `ratingDistribution` over the event's PUBLISHED reviews
   (same as places; see Reviews).
-- **Delete** is a plain `event.delete`; notifications, photos and reviews cascade at DB level.
+- **Community fields**: same as places (`hiddenReason`, verification summary, `isMine`, author visibility).
+- **Delete** is a plain `event.delete`; notifications, photos, reviews, verifications and reports cascade at DB level.
 
 ## Favorites
 
@@ -448,6 +453,52 @@ first name is exposed; `initials` are first name + first surname. Reviews of del
   by `reviewExperience.valueObject.ts` / `reviewPhotos.valueObject.ts`. Ratings (`averageRating`, `reviewCount`,
   `ratingDistribution`) only count PUBLISHED reviews. Reviews cascade when the place or event is deleted; votes cascade
   with the review or the voter.
+
+## Verifications & reports (community)
+
+Module `community` (#39): screens 09 / 09b of the app, the community's way to keep prices honest. Values are the app's
+strings (`StillHappening`, `PricePaid`, `ReportReason` in mi-vueltica-app), stored as uppercase enums and mapped in
+`infrastructure/community/mappers/communityEnums.ts`. The rules are ports of the app's `src/domain/rules.ts`
+(`domain/community/rules/`).
+
+- **Who**: signed-in users (`optionalJwtAuth`, `PersonKey.forUser` → `user:<id>`) or guests with the `X-Device-Id` header
+  (8-128 chars `[A-Za-z0-9._:-]`, `device:<id>`); neither → 400 (`presentation/http/community/utils/person.ts`). The
+  `personKey` is stored, never shown. Guests cannot attach a `photo` (401: uploads need an account); a user's photo must be
+  their own upload (422). Rate limits per user or IP: verifications 30 / 15 min, reports 10 / 15 min (`communityLimits.ts`).
+  A guest can mint device ids, so these limits are the only brake on fake guest reports.
+- **Verify** `POST /places/:placeId/verifications` (and `/events/:eventId/verifications`) `{ stillHappening: si|no|nose,
+  pricePaid?: gratis|menos2500|entre2500y5000|mas5000, scheduleCorrect?, correctedTime? (<=100), photo? }` → 200
+  `{ queued: false, points: 0, hidden }` (no reputation model yet, so no points). One row per person and plan
+  (`@@unique([placeId, personKey])` / `[eventId, personKey]`): a newer answer replaces the previous one. `si` sets
+  `Place.verifiedAt = now`. **Outcome** (`outcomeOfVerifications`) over the rows with `consumedAt IS NULL`: 3 × `no` →
+  hide "Ya no existe"; 3 × `mas5000` → hide "Cuesta más de ₡5.000"; 3 × another tier → `pricePerPerson` = current price if
+  already in that tier, else the tier's max (0 / 2500 / 5000, `priceForTier`). The rows that produced an outcome get
+  `consumedAt` (like the app clearing them) but still count in `verificationCount`. **Price answers only count from
+  signed-in users** (the app's "level 2" rule, `countsPrice`; guests' prices are stored and ignored). Level-4 double
+  weight is not implemented.
+- **Report** `POST /places/:placeId/reports` (and events) `{ reason: cerro|noGratis|masDe5000|horario|inapropiado|spam|otro,
+  details? (<=1000), photo? }` → 201 (`Report` + `hidden`, never the reporter). One per person and plan, also after a
+  decision: a second one → 409 `ReportAlreadyExistsError`. 3 unresolved reports with the same reason (`reportsHide`) hide
+  the plan "En revisión por reportes" with `reportedAt = now`.
+- **Moderation** (MODERATOR, ADMIN): `GET /reports` — one item per plan with unresolved reports, ordered `needsReview`
+  (hidden by reports > 72 h, `needsReview`) first, then hidden ones, then oldest report (raw grouped SQL in
+  `PrismaReportRepository.queue`). `POST /places/:placeId/reports/decision` (and events) `{ decision: keep|hide }`:
+  `keep` → PUBLISHED and clears `hiddenReason` / `reportedAt`; `hide` → ARCHIVED "Ocultada por moderación"; both set
+  `resolvedAt` on the pending reports. No pending reports → 409 `NoPendingReportsError`.
+- **Only PUBLISHED plans** can be verified or reported (404 otherwise). Every write runs in
+  `PrismaCommunityUnitOfWork` after `SELECT ... FOR UPDATE` on the Place/Event row (`PrismaPlanStateRepository.lock`),
+  so concurrent answers are applied one at a time and an outcome is never missed or applied twice (tested with
+  `innodb_snapshot_isolation=ON`).
+- **Hidden = ARCHIVED + `hiddenReason`** (Place/Event columns, exposed in every place/event response). Public lists only
+  show PUBLISHED, so hidden plans disappear (favorites and notifications follow, as they filter on PUBLISHED). Their
+  **author** still gets `GET /places/:id` / `GET /events/:id` (`viewerId` option in `PlaceService.get` / `EventService.get`)
+  with the reason. `authorId` is set when a submission is approved (the submitter; null for team content and for plans
+  created before #39). Leaving ARCHIVED by any route (e.g. `PATCH /:id/status` to PUBLISHED) clears `hiddenReason` and
+  `reportedAt` (`PlanCommunity.afterStatusChange`).
+- **Detail** (`GET /places/:id`, `GET /events/:id`): `lastVerifiedAt` (latest verification), `verificationCount` (people
+  who verified), `myVerifiedToday` (the caller by token or `X-Device-Id` verified it since 00:00 Costa Rica time, UTC-6;
+  a malformed header is ignored here) and `isMine` for authenticated callers.
+- Verifications and reports cascade with their Place/Event; their `userId` is `SET NULL` on account deletion.
 
 ## User interests
 
@@ -521,7 +572,7 @@ expected to use this same API as regular authenticated clients (discovering it t
   stored in the JSON column as ISO strings. Unknown canton/category/place → 422 (on create and again on approve).
 - **Approve** runs in one transaction (`ISubmissionApprovalUnitOfWork` / `PrismaSubmissionApprovalUnitOfWork`, same
   pattern as user deletion): lock the submission row (`findForUpdate`, `SELECT ... FOR UPDATE`), check `PENDING`,
-  re-check references, create the Place/Event (repositories insert as `PENDING`), publish it through the entity
+  re-check references, create the Place/Event (repositories insert as `PENDING`, with `authorId` = the submitter), publish it through the entity
   (`place.changeStatus("PUBLISHED", now)` sets `verifiedAt`) with `sourceId = COMMUNITY_SOURCE_ID` (falls back to
   `null` with a warning if an admin deleted that source), then `markReviewed`. The row lock is required: MariaDB 11's
   `innodb_snapshot_isolation` makes a concurrent conditional `UPDATE` fail with "Record has changed since last read"
@@ -567,17 +618,17 @@ because its community edition is no longer maintained). Module `uploads` (`src/{
   `Photo.uploadId`). `uploadIdFromUrl` only looks at the path, so a URL with another host/scheme is still recognized
   and is re-written to the canonical form.
 - **Boot**: `server.ts` calls `fileStorage.ensureReady()` (creates the bucket) without blocking startup.
-- **Orphan cleanup**: an `Upload` stays alive while a `Photo` (`uploadId`), a `SubmissionUpload` or a `ReviewPhoto` row
-  references it.
+- **Orphan cleanup**: an `Upload` stays alive while a `Photo` (`uploadId`), a `SubmissionUpload`, a `ReviewPhoto`, a
+  `Verification` or a `Report` row references it.
   `startUploadCleanupJob` (`src/presentation/jobs/`, every 6 h, first run 1 min after boot, timers `unref`ed) calls
   `UploadService.cleanupOrphans`: uploads older than `UPLOAD_ORPHAN_GRACE_HOURS` with no reference are deleted, the row
   first with one conditional `DELETE ... NOT EXISTS` (a reference added meanwhile keeps it), then the object. So a
   deleted photo, a withdrawn submission, a deleted review, a deleted place/event or a deleted account all release their
   files (a deleted account keeps its anonymized reviews, and so their photos).
   `Upload.userId` is `SET NULL` on account deletion.
-- **Verifications / reports** (#39) do not exist yet; when added, reuse
-  `IUploadService.resolveOwnUploads(userId, urls)` and link the uploads with a join table (like `SubmissionUpload`)
-  and add it to the cleanup's "referenced" checks (`PrismaUploadRepository`), as reviews do with `ReviewPhoto`.
+- **New features with photos**: reuse `IUploadService.resolveOwnUploads(userId, urls)`, link the uploads (a join table
+  like `SubmissionUpload`, or an `uploadId` column like `Verification` / `Report`) and add them to the cleanup's
+  "referenced" checks (`PrismaUploadRepository`: both `UNREFERENCED` and the `NOT EXISTS` in `deleteIfOrphan`).
 - **docker-compose**: the `seaweedfs` service (`chrislusf/seaweedfs`, `weed server -s3`, port 8333, not published) writes
   its S3 identity file at start-up from the same `S3_ACCESS_KEY` / `S3_SECRET_KEY` the API uses, so they must not
   contain quotes or backslashes (`openssl rand -base64 24` is fine). Without that config SeaweedFS's S3 gateway

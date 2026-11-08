@@ -3,6 +3,7 @@ import { EventDescription } from "../valueObjects/eventDescription.valueObject";
 import { EventSchedule } from "../valueObjects/eventSchedule.valueObject";
 import { ContentStatus, parseContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { TargetAudience, parseTargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
+import { PlanCommunity, PlanCommunityProps } from "@/domain/community/valueObjects/planCommunity.valueObject";
 import { PlanConditions, PlanConditionsData, PlanConditionsValue } from "@/domain/places/valueObjects/planConditions.valueObject";
 
 /** Editable fields shared by create and full-replace update (no status). */
@@ -60,6 +61,7 @@ export class Event {
       targetAudience: parseTargetAudience(props.targetAudience),
       conditions: PlanConditions.create(props),
       status: parseContentStatus(props.status),
+      community: PlanCommunity.create(props),
       createdAt: props.createdAt,
       updatedAt: props.updatedAt,
     };
@@ -80,6 +82,13 @@ export class Event {
   get audiences() { return this.props.conditions.value.audiences; }
   get wheelchair() { return this.props.conditions.value.wheelchair; }
   get status() { return this.props.status; }
+  get authorId() { return this.props.community.authorId; }
+  get hiddenReason() { return this.props.community.hiddenReason; }
+  get reportedAt() { return this.props.community.reportedAt; }
+
+  isAuthoredBy(userId: string): boolean {
+    return this.props.community.isAuthoredBy(userId);
+  }
   get createdAt() { return this.props.createdAt; }
   get updatedAt() { return this.props.updatedAt; }
 
@@ -96,8 +105,11 @@ export class Event {
     this.props.conditions = PlanConditions.create(normalized);
   }
 
+  /** Leaving ARCHIVED clears `hiddenReason` / `reportedAt`. */
   changeStatus(status: ContentStatus) {
-    this.props.status = parseContentStatus(status);
+    const next = parseContentStatus(status);
+    this.props.status = next;
+    this.props.community = this.props.community.afterStatusChange(next);
   }
 }
 
@@ -112,11 +124,12 @@ export interface EventProps {
   targetAudience: TargetAudience;
   conditions: PlanConditions;
   status: ContentStatus;
+  community: PlanCommunity;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface EventConstructorProps {
+export interface EventConstructorProps extends PlanCommunityProps {
   id: string;
   placeId?: string | null;
   categoryId: number;

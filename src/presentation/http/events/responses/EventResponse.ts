@@ -1,3 +1,4 @@
+import { VerificationFieldsResponse } from "@/presentation/http/community/responses/CommunityResponses";
 import { RatingFieldsResponse } from "@/presentation/http/reviews/responses/RatingSummaryResponse";
 import { TargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
 import { Audience, FreeForGroup, PriceTier } from "@/domain/places/valueObjects/planConditions.valueObject";
@@ -23,6 +24,8 @@ export interface EventResponse {
   audiences: Audience[];
   wheelchair: boolean;
   status: ContentStatus;
+  /** Why the plan is hidden (ARCHIVED by verifications, reports or moderation); null otherwise. */
+  hiddenReason: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -43,9 +46,11 @@ export interface EventPhotoResponse {
   position: number;
 }
 
-export interface EventDetailResponse extends EventResponse, RatingFieldsResponse {
+export interface EventDetailResponse extends EventResponse, RatingFieldsResponse, VerificationFieldsResponse {
   /** Null when the event has no place or the caller may not see it (not PUBLISHED). */
   place: PlaceSummaryResponse | null;
   /** The event's own gallery, ordered by `position` ascending. */
   photos: EventPhotoResponse[];
+  /** Whether the authenticated caller is the author (their submission created it). Omitted for anonymous callers. */
+  isMine?: boolean;
 }

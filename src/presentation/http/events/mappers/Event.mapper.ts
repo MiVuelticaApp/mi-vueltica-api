@@ -1,3 +1,5 @@
+import { VerificationSummary } from "@/domain/community/entities/Verification";
+import CommunityDtoMapper from "@/presentation/http/community/mappers/Community.mapper";
 import { Event } from "@/domain/events/entities/Event";
 import { EventDetail } from "@/domain/events/entities/EventDetail";
 import { EventDetailResponse, EventResponse } from "../responses/EventResponse";
@@ -21,12 +23,13 @@ export default class EventDtoMapper {
       audiences: [...event.audiences],
       wheelchair: event.wheelchair,
       status: event.status,
+      hiddenReason: event.hiddenReason,
       createdAt: event.createdAt.toISOString(),
       updatedAt: event.updatedAt.toISOString(),
     };
   }
 
-  static toDetailResponse(detail: EventDetail): EventDetailResponse {
+  static toDetailResponse(detail: EventDetail, verification: VerificationSummary): EventDetailResponse {
     return {
       ...EventDtoMapper.toResponse(detail.event),
       place: detail.place
@@ -42,6 +45,7 @@ export default class EventDtoMapper {
         : null,
       photos: detail.photos.map((photo) => ({ id: photo.id, url: photo.url, position: photo.position })),
       ...RatingSummaryDtoMapper.toDetailFields(detail.rating),
+      ...CommunityDtoMapper.toVerificationFields(verification),
     };
   }
 }

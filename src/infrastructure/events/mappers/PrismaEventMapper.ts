@@ -17,6 +17,9 @@ export class PrismaEventMapper {
       targetAudience: row.targetAudience,
       ...planConditionsFromColumns(row),
       status: row.status,
+      authorId: row.authorId,
+      hiddenReason: row.hiddenReason,
+      reportedAt: row.reportedAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

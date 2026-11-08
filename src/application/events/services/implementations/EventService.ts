@@ -28,7 +28,8 @@ export class EventService implements IEventService {
     const detail = await this.eventRepository.findDetail(id);
     if (!detail) throw new EventNotFoundError();
     const { statuses } = options;
-    if (statuses && !statuses.includes(detail.event.status)) {
+    const isAuthor = options.viewerId !== undefined && detail.event.isAuthoredBy(options.viewerId);
+    if (statuses && !statuses.includes(detail.event.status) && !isAuthor) {
       throw new EventNotFoundError();
     }
     // Do not leak a place that the caller is not allowed to see.
