@@ -7,7 +7,7 @@ import provinceCantonsRouter from "@/presentation/http/geography/routes/province
 import cantonsRouter from "@/presentation/http/geography/routes/cantons.routes";
 import sourcesRouter from "@/presentation/http/sources/routes/sources.routes";
 import placesRouter from "@/presentation/http/places/routes/places.routes";
-import placeFavoriteRouter from "@/presentation/http/favorites/routes/placeFavorite.routes";
+import { eventFavoriteRouter, placeFavoriteRouter } from "@/presentation/http/favorites/routes/targetFavorite.routes";
 import { eventReviewsRouter, placeReviewsRouter } from "@/presentation/http/reviews/routes/targetReviews.routes";
 import reviewsRouter from "@/presentation/http/reviews/routes/reviews.routes";
 import eventsRouter from "@/presentation/http/events/routes/events.routes";
@@ -44,7 +44,8 @@ router.use("/places/:placeId/photos", placePhotosRouter);
 router.use("/places/:placeId/reviews", placeReviewsRouter);
 router.use("/places/:placeId", placeCommunityRouter);
 router.use("/places", placesRouter);
-// Before /events so the photos and reviews sub-resources are never shadowed.
+// Before /events so the favorite, photos and reviews sub-resources are never shadowed.
+router.use("/events/:eventId/favorite", eventFavoriteRouter);
 router.use("/events/:eventId/photos", eventPhotosRouter);
 router.use("/events/:eventId/reviews", eventReviewsRouter);
 router.use("/events/:eventId", eventCommunityRouter);
