@@ -108,14 +108,15 @@ export class SubmissionService implements ISubmissionService {
         const { photos: _photos, ...data } = payload.data;
         // Repositories always insert as PENDING; publishing goes through the entity so
         // `verifiedAt` is set exactly as in PATCH /places/:id/status.
-        const place = await placeRepository.create({ ...data, sourceId });
+        // The submitter becomes the author: they keep seeing the place (and why) if it is ever hidden.
+        const place = await placeRepository.create({ ...data, sourceId }, { authorId: submission.userId });
         place.changeStatus("PUBLISHED", now);
         await placeRepository.update(place);
         created = { type: "PLACE", id: place.id };
       } else {
         const { photos: _photos, ...data } = payload.data;
         const eventRepository = ctx.getEventRepository();
-        const event = await eventRepository.create({ ...data, sourceId });
+        const event = await eventRepository.create({ ...data, sourceId }, { authorId: submission.userId });
         event.changeStatus("PUBLISHED");
         await eventRepository.update(event);
         created = { type: "EVENT", id: event.id };

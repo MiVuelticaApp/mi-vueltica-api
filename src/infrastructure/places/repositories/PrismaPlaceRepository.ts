@@ -1,3 +1,4 @@
+import { CreatePlanOptions } from "@/domain/community/valueObjects/planCommunity.valueObject";
 import { Place, NormalizedPlaceData } from "@/domain/places/entities/Place";
 import { PlaceDetail } from "@/domain/places/entities/PlaceDetail";
 import {
@@ -83,7 +84,7 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
     }
   }
 
-  async create(data: NormalizedPlaceData): Promise<Place> {
+  async create(data: NormalizedPlaceData, options: CreatePlanOptions = {}): Promise<Place> {
     try {
       const row = await this.client.place.create({
         data: {
@@ -98,6 +99,7 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
           openingHours: PrismaPlaceMapper.openingHoursToPersistence(data.openingHours),
           targetAudience: data.targetAudience,
           ...planConditionsToColumns(data),
+          authorId: options.authorId ?? null,
           status: "PENDING",
         },
       });
@@ -126,6 +128,8 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
           ...planConditionsToColumns(place),
           status: place.status,
           verifiedAt: place.verifiedAt,
+          hiddenReason: place.hiddenReason,
+          reportedAt: place.reportedAt,
         },
       });
     } catch (error) {

@@ -74,6 +74,32 @@ enum ReviewCompanion {
   SOLO
 }
 
+/// "¿Sigue siendo gratis?" answer (app values: si, no, nose).
+enum StillHappening {
+  YES
+  NO
+  DONT_KNOW
+}
+
+/// Price the verifier paid (app values: gratis, menos2500, entre2500y5000, mas5000).
+enum PricePaid {
+  FREE
+  UNDER_2500
+  FROM_2500_TO_5000
+  OVER_5000
+}
+
+/// Why a plan was reported (app values: cerro, noGratis, masDe5000, horario, inapropiado, spam, otro).
+enum ReportReason {
+  CLOSED
+  NOT_FREE
+  OVER_5000
+  SCHEDULE
+  INAPPROPRIATE
+  SPAM
+  OTHER
+}
+
 /// How much the reviewer spent (app values: nada, menos2500, entre2500y5000).
 enum ReviewSpend {
   NOTHING
@@ -106,6 +132,10 @@ model User {
   favorites           Favorite[]
   reviews             Review[]
   reviewUsefulVotes   ReviewUsefulVote[]
+  authoredPlaces      Place[]            @relation("PlaceAuthor")
+  authoredEvents      Event[]            @relation("EventAuthor")
+  verifications       Verification[]
+  reports             Report[]
   devices             Device[]
   notifications       Notification[]
   uploads             Upload[]
@@ -185,6 +215,13 @@ model Place {
   status         ContentStatus  @default(PENDING)
   verifiedAt     DateTime?
 
+  // Community (#39). `authorId`: the user whose submission created it (NULL for team content or a
+  // deleted account). A plan hidden by verifications/reports/moderation is ARCHIVED with `hiddenReason`;
+  // `reportedAt` is set while it is hidden waiting for a moderator's decision on its reports.
+  authorId     String?
+  hiddenReason String?   @db.VarChar(191)
+  reportedAt   DateTime?
+
   // Price and audience (issue #36). `pricePerPerson` is in colones, 0 = free, NULL = unknown;
   // values above 5000 are rejected by the domain. `targetAudience` is kept for older clients.
   pricePerPerson       Int?
@@ -199,13 +236,16 @@ model Place {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  canton    Canton     @relation(fields: [cantonId], references: [id])
-  category  Category   @relation(fields: [categoryId], references: [id])
-  source    Source?    @relation(fields: [sourceId], references: [id])
-  events    Event[]
-  photos    Photo[]
-  favorites Favorite[]
-  reviews   Review[]
+  canton        Canton         @relation(fields: [cantonId], references: [id])
+  category      Category       @relation(fields: [categoryId], references: [id])
+  source        Source?        @relation(fields: [sourceId], references: [id])
+  author        User?          @relation("PlaceAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  events        Event[]
+  photos        Photo[]
+  favorites     Favorite[]
+  reviews       Review[]
+  verifications Verification[]
+  reports       Report[]
 
   @@index([cantonId, status])
   @@index([categoryId])
@@ -227,6 +267,11 @@ model Event {
   targetAudience TargetAudience @default(EVERYONE)
   status         ContentStatus  @default(PENDING)
 
+  // Community (#39), same as Place.
+  authorId     String?
+  hiddenReason String?   @db.VarChar(191)
+  reportedAt   DateTime?
+
   // Price and audience (issue #36). `pricePerPerson` is in colones, 0 = free, NULL = unknown;
   // values above 5000 are rejected by the domain. `targetAudience` is kept for older clients.
   pricePerPerson       Int?
@@ -244,9 +289,12 @@ model Event {
   place         Place?         @relation(fields: [placeId], references: [id], onDelete: SetNull)
   category      Category       @relation(fields: [categoryId], references: [id])
   source        Source?        @relation(fields: [sourceId], references: [id])
+  author        User?          @relation("EventAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   notifications Notification[]
   photos        Photo[]
   reviews       Review[]
+  verifications Verification[]
+  reports       Report[]
 
   @@index([startsAt, status])
 }
@@ -276,7 +324,7 @@ model Photo {
 /// ===============================
 
 /// A file stored in the object storage under `objectKey` and served through GET /api/v1/files/:id.
-/// It is kept while a Photo, a Submission or a Review references it; unreferenced uploads older than
+/// It is kept while a Photo, a Submission, a Review, a Verification or a Report references it; unreferenced uploads older than
 /// the grace period are removed by the cleanup job (object first, then the row).
 model Upload {
   id          String   @id @default(uuid())
@@ -288,10 +336,12 @@ model Upload {
   height      Int
   createdAt   DateTime @default(now())
 
-  user         User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
-  photos       Photo[]
-  submissions  SubmissionUpload[]
-  reviewPhotos ReviewPhoto[]
+  user          User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  photos        Photo[]
+  submissions   SubmissionUpload[]
+  reviewPhotos  ReviewPhoto[]
+  verifications Verification[]
+  reports       Report[]
 
   @@index([createdAt])
 }
@@ -386,6 +436,64 @@ model ReviewPhoto {
   upload Upload @relation(fields: [uploadId], references: [id], onDelete: Restrict)
 
   @@id([reviewId, uploadId])
+  @@index([uploadId])
+}
+
+/// "¿Sigue siendo gratis?" answer about exactly one Place or one Event (enforced by the application).
+/// One per person and plan (`personKey` = "user:<id>" or "device:<id>" for guests): a newer answer
+/// replaces the previous one. Rows with `consumedAt` already produced an outcome (price update or
+/// hiding) and no longer count towards the next one, but still count as verifications.
+model Verification {
+  id              String         @id @default(uuid())
+  placeId         String?
+  eventId         String?
+  userId          String?
+  personKey       String         @db.VarChar(160)
+  stillHappening  StillHappening
+  pricePaid       PricePaid?
+  scheduleCorrect Boolean?
+  correctedTime   String?        @db.VarChar(100)
+  uploadId        String?
+  photoUrl        String?        @db.VarChar(2048)
+  consumedAt      DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  place  Place?  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  event  Event?  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  upload Upload? @relation(fields: [uploadId], references: [id], onDelete: Restrict)
+
+  @@unique([placeId, personKey])
+  @@unique([eventId, personKey])
+  @@index([userId])
+  @@index([uploadId])
+}
+
+/// Report about exactly one Place or one Event. One per person and plan (409 on a second one).
+/// The reporter is stored but never shown. `resolvedAt` is set by the moderator's decision.
+model Report {
+  id         String       @id @default(uuid())
+  placeId    String?
+  eventId    String?
+  userId     String?
+  personKey  String       @db.VarChar(160)
+  reason     ReportReason
+  details    String?      @db.Text
+  uploadId   String?
+  photoUrl   String?      @db.VarChar(2048)
+  resolvedAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  place  Place?  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  event  Event?  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  upload Upload? @relation(fields: [uploadId], references: [id], onDelete: Restrict)
+
+  @@unique([placeId, personKey])
+  @@unique([eventId, personKey])
+  @@index([resolvedAt, createdAt])
+  @@index([userId])
   @@index([uploadId])
 }
 

@@ -1,3 +1,4 @@
+import { CreatePlanOptions } from "@/domain/community/valueObjects/planCommunity.valueObject";
 import { Event, NormalizedEventData } from "@/domain/events/entities/Event";
 import { EventDetail } from "@/domain/events/entities/EventDetail";
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
@@ -30,7 +31,8 @@ export interface IEventRepository {
   find(id: string): Promise<Event | null>;
   findDetail(id: string): Promise<EventDetail | null>;
   /** New events are always created as PENDING. */
-  create(data: NormalizedEventData): Promise<Event>;
+  /** Inserts as PENDING. `options.authorId`: the submitter, when created from a community submission. */
+  create(data: NormalizedEventData, options?: CreatePlanOptions): Promise<Event>;
   update(event: Event): Promise<void>;
   delete(id: string): Promise<void>;
 }

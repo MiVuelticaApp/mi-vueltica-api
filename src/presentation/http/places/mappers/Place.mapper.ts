@@ -1,3 +1,5 @@
+import { VerificationSummary } from "@/domain/community/entities/Verification";
+import CommunityDtoMapper from "@/presentation/http/community/mappers/Community.mapper";
 import { Place } from "@/domain/places/entities/Place";
 import { PlaceDetail } from "@/domain/places/entities/PlaceDetail";
 import { PlaceDetailResponse, PlaceResponse } from "../responses/PlaceResponse";
@@ -23,17 +25,19 @@ export default class PlaceDtoMapper {
       audiences: [...place.audiences],
       wheelchair: place.wheelchair,
       status: place.status,
+      hiddenReason: place.hiddenReason,
       verifiedAt: place.verifiedAt ? place.verifiedAt.toISOString() : null,
       createdAt: place.createdAt.toISOString(),
       updatedAt: place.updatedAt.toISOString(),
     };
   }
 
-  static toDetailResponse(detail: PlaceDetail): PlaceDetailResponse {
+  static toDetailResponse(detail: PlaceDetail, verification: VerificationSummary): PlaceDetailResponse {
     return {
       ...PlaceDtoMapper.toResponse(detail.place),
       photos: detail.photos.map((photo) => ({ id: photo.id, url: photo.url, position: photo.position })),
       ...RatingSummaryDtoMapper.toDetailFields(detail.rating),
+      ...CommunityDtoMapper.toVerificationFields(verification),
     };
   }
 }

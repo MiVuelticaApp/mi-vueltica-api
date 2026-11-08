@@ -12,6 +12,8 @@ export interface EventVisibilityOptions {
    * when its status is not in the list. `undefined` means every status.
    */
   statuses?: ContentStatus[];
+  /** The caller's user id: the author of a plan always sees it, whatever its status (e.g. hidden, with the reason). */
+  viewerId?: string;
 }
 
 export interface IEventService {

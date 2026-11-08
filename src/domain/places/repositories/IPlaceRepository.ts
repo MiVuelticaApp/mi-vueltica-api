@@ -1,3 +1,4 @@
+import { CreatePlanOptions } from "@/domain/community/valueObjects/planCommunity.valueObject";
 import { Place, NormalizedPlaceData } from "@/domain/places/entities/Place";
 import { PlaceDetail } from "@/domain/places/entities/PlaceDetail";
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
@@ -39,7 +40,8 @@ export interface IPlaceRepository {
   find(id: string): Promise<Place | null>;
   findDetail(id: string): Promise<PlaceDetail | null>;
   /** New places are always created as PENDING. */
-  create(data: NormalizedPlaceData): Promise<Place>;
+  /** Inserts as PENDING. `options.authorId`: the submitter, when created from a community submission. */
+  create(data: NormalizedPlaceData, options?: CreatePlanOptions): Promise<Place>;
   update(place: Place): Promise<void>;
   delete(id: string): Promise<void>;
   /**
