@@ -16,9 +16,7 @@ import { planConditionsToColumns, planConditionsWhere } from "@/infrastructure/c
 import { PrismaPlaceMapper } from "../mappers/PrismaPlaceMapper";
 import { publishedRatingSummary } from "@/infrastructure/reviews/repositories/ratingSummary";
 import { PrismaPhotoMapper } from "@/infrastructure/photos/mappers/PrismaPhotoMapper";
-
-const KM_PER_DEGREE = 111.32;
-const EARTH_RADIUS_KM = 6371;
+import { withinRadiusSql } from "@/infrastructure/core/repositories/geo";
 
 export default class PrismaPlaceRepository implements IPlaceRepository {
 
@@ -189,27 +187,12 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
   /**
    * Ids of places within `radiusKm` of the center. The enclosing bounding box narrows the
    * candidates through the (latitude, longitude) index; the Haversine distance then removes
-   * the corners of the box. Fully parameterized (tagged template), never string-built.
+   * the corners of the box. Fully parameterized, never string-built (`withinRadiusSql`).
    */
-  private async findIdsWithinRadius({ lat, lng, radiusKm }: RadiusFilter): Promise<string[]> {
-    const deltaLat = radiusKm / KM_PER_DEGREE;
-    const minLat = Math.max(-90, lat - deltaLat);
-    const maxLat = Math.min(90, lat + deltaLat);
-    // Near the poles a degree of longitude shrinks to nothing: drop the longitude bounds there.
-    const cosLat = Math.cos((lat * Math.PI) / 180);
-    const deltaLng = cosLat < 1e-6 ? 360 : radiusKm / (KM_PER_DEGREE * cosLat);
-    const minLng = deltaLng >= 180 ? -180 : lng - deltaLng;
-    const maxLng = deltaLng >= 180 ? 180 : lng + deltaLng;
-
-    const rows = await this.client.$queryRaw<{ id: string }[]>`
-      SELECT id FROM Place
-      WHERE latitude BETWEEN ${minLat} AND ${maxLat}
-        AND longitude BETWEEN ${minLng} AND ${maxLng}
-        AND ${EARTH_RADIUS_KM} * ACOS(LEAST(1, GREATEST(-1,
-              COS(RADIANS(${lat})) * COS(RADIANS(latitude)) * COS(RADIANS(longitude) - RADIANS(${lng}))
-              + SIN(RADIANS(${lat})) * SIN(RADIANS(latitude))
-            ))) <= ${radiusKm}
-    `;
+  private async findIdsWithinRadius(radius: RadiusFilter): Promise<string[]> {
+    const rows = await this.client.$queryRaw<{ id: string }[]>(
+      Prisma.sql`SELECT id FROM Place WHERE ${withinRadiusSql("latitude", "longitude", radius)}`,
+    );
     return rows.map((row) => row.id);
   }
 }
