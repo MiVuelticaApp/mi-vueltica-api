@@ -6,6 +6,7 @@ import {
   CreateEventBaseSchema,
   endsAtNotBeforeStartsAt,
   endsAtNotBeforeStartsAtError,
+  eventLocationRule,
 } from "@/presentation/http/events/validators/createEvent";
 
 // A suggestion's `data` is exactly the Place/Event create body minus `sourceId`: the submitter
@@ -27,7 +28,8 @@ export const PlaceSubmissionDataSchema = CreatePlaceSchema.omit({ sourceId: true
 
 export const EventSubmissionDataSchema = CreateEventBaseSchema.omit({ sourceId: true })
   .extend({ photos: SubmissionPhotosSchema })
-  .refine(endsAtNotBeforeStartsAt, endsAtNotBeforeStartsAtError);
+  .refine(endsAtNotBeforeStartsAt, endsAtNotBeforeStartsAtError)
+  .superRefine(eventLocationRule);
 
 /** `type` decides which schema validates `data` (rendered as `oneOf` in the OpenAPI document). */
 export const CreateSubmissionSchema = z.discriminatedUnion(
