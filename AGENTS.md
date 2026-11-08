@@ -1,5 +1,24 @@
 # AGENTS.md
 
+## ⚠️ Pending deploy actions (read first)
+
+Operational notes that must be handled before the next production deploy. **If you are an agent working in this
+repo, tell the user about every item below that is still open, whatever the task is**, and before you merge to
+`main`, deploy, run `prisma migrate deploy` against production or change anything under `prisma/migrations`, make
+sure the user has confirmed each step. Remove an item (in its own commit) only after the user confirms it is done
+in production.
+
+- **`20261110120000_add_event_location_and_event_favorites` (#37) rewrites the `Favorite` primary key.** It runs on
+  its own at container start (`prisma migrate deploy` in the Dockerfile CMD). If it fails, the API does not start and
+  Prisma blocks later deploys (P3009, as in #46). It was tested on MySQL 8.4 and MariaDB 11 with existing rows, but
+  not on the production database. Before deploying it:
+  1. Confirm the production engine and version (`SELECT VERSION();`); it must be MySQL 8.x.
+  2. Back up the `Favorite` table (`mysqldump <db> Favorite > favorite-backup.sql`).
+  3. If possible, run `prisma migrate deploy` first on a copy of the production database.
+  There is no automatic rollback: MySQL commits each DDL statement, so a failure halfway leaves the earlier steps
+  applied. Check what ran, finish or undo it by hand, then `npx prisma migrate resolve --applied|--rolled-back <name>`
+  (see "Database"). The header of the migration explains each step.
+
 ## Architecture
 
 DDL / Clean Architecture with 4 layers. Dependency direction: **domain → application → infrastructure → presentation**.
@@ -35,7 +54,10 @@ MariaDB (not MySQL, not MongoDB). Uses `@prisma/adapter-mariadb`. Connection con
 columns used by a foreign key with `ON DELETE CASCADE`, MySQL error 3823). Test hand-written SQL on `mysql:8.4` as
 well as MariaDB, and remember MySQL commits each DDL statement, so a failed migration leaves the earlier statements
 applied: check what ran, then mark it with `npx prisma migrate resolve --applied <name>` (or `--rolled-back`
-after undoing it by hand).
+after undoing it by hand). **Never edit a migration file after it has run anywhere** (not even a comment): Prisma
+stores its checksum and reports it as modified. Put notes in AGENTS.md or in a new migration instead. When a
+migration changes an existing table with data (primary keys, NOT NULL columns), add an entry to "Pending deploy
+actions" at the top of this file.
 
 The connection parameters (host, user, password, database, port) are parsed from `DATABASE_URL`, which is
 also what the Prisma CLI reads (`prisma.config.ts`).
