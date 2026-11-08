@@ -11,6 +11,10 @@ export interface CreateEventRequest extends PlanConditionsData {
   description?: string | null;
   startsAt: Date;
   endsAt?: Date | null;
+  /** Own location, only when `placeId` is absent; `latitude` and `longitude` go together. */
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
   /** Defaults to EVERYONE. */
   targetAudience?: TargetAudience;
 }
