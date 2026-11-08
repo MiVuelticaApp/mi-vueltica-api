@@ -112,7 +112,11 @@ export const photoGalleryUOW = new PrismaPhotoGalleryUnitOfWork();
 
 // providers
 export const idGenerator = new UuidIDGenerator();
-export const googleOAuthProvider = new GoogleOAuthProvider();
+export const googleOAuthProvider = new GoogleOAuthProvider([
+  ENV.GOOGLE_IOS_CLIENT_ID,
+  ENV.GOOGLE_ANDROID_CLIENT_ID,
+  ENV.GOOGLE_WEB_CLIENT_ID,
+]);
 export const appleOAuthProvider = new AppleOAuthProvider(
   ENV.APPLE_TEAM_ID,
   ENV.APPLE_KEY_ID,
