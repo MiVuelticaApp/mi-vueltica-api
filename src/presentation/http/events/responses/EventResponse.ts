@@ -14,6 +14,15 @@ export interface EventResponse {
   description: string | null;
   startsAt: string;
   endsAt: string | null;
+  /**
+   * Where the event is on the map: the place's point when `placeId` is set, otherwise the event's own
+   * location; all three null when it has neither. Write them only for events without a place.
+   */
+  latitude: number | null;
+  longitude: number | null;
+  address: string | null;
+  /** Null when the event has no place or the caller may not see it (not PUBLISHED). */
+  place: PlaceSummaryResponse | null;
   targetAudience: TargetAudience;
   /** Colones per person; 0 = free, null = unknown. */
   pricePerPerson: number | null;
@@ -47,10 +56,10 @@ export interface EventPhotoResponse {
 }
 
 export interface EventDetailResponse extends EventResponse, RatingFieldsResponse, VerificationFieldsResponse {
-  /** Null when the event has no place or the caller may not see it (not PUBLISHED). */
-  place: PlaceSummaryResponse | null;
   /** The event's own gallery, ordered by `position` ascending. */
   photos: EventPhotoResponse[];
+  /** Whether the authenticated caller saved it. Omitted for anonymous callers. */
+  isFavorite?: boolean;
   /** Whether the authenticated caller is the author (their submission created it). Omitted for anonymous callers. */
   isMine?: boolean;
 }
