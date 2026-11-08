@@ -22,7 +22,6 @@ export default class AuthController {
 
   async googleLogin(req: Request, res: Response): Promise<void> {
     try {
-      console.log(req.body);
       const { token } = req.body;
       if (!token) {
         res.status(400).json({ message: "Token de Google es requerido" });
