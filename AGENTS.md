@@ -1,6 +1,6 @@
 # AGENTS.md
 
-## ⚠️ Pending deploy actions (read first)
+## Pending deploy actions (read first)
 
 Operational notes that must be handled before the next production deploy. **If you are an agent working in this
 repo, tell the user about every item below that is still open, whatever the task is**, and before you merge to
