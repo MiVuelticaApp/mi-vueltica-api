@@ -1,22 +1,43 @@
+import { OAuth2Client } from "google-auth-library";
 import { IOAuthProvider, OAuthUserPayload } from "@/domain/auth/providers/IOAuthProvider";
-import { googleClient } from "../config/googleOAuthClient";
 import InfrastructureError from "@/infrastructure/core/errors/InfrastructureError";
 
-export default class GoogleOAuthProvider implements IOAuthProvider {
-  async getUserInfo(accessToken: string): Promise<OAuthUserPayload> {
-    const ticket = await googleClient.verifyIdToken({
-      idToken: accessToken,
-      audience: [process.env.GOOGLE_IOS_CLIENT_ID!, process.env.GOOGLE_ANDROID_CLIENT_ID!]
-    });
+/** The part of `OAuth2Client` this provider uses (a fake can be passed in tests). */
+type GoogleIdTokenVerifier = Pick<OAuth2Client, "verifyIdToken">;
 
-    const payload = ticket.getPayload()
+export default class GoogleOAuthProvider implements IOAuthProvider {
+  private readonly audiences: string[];
+
+  /**
+   * `audiences`: the OAuth client ids whose id tokens are accepted (iOS, Android and web; empty values
+   * are ignored). The web one is needed because on Android `@react-native-google-signin` only returns
+   * an id token when `webClientId` is set, and that token's `aud` is the web client id (#35).
+   */
+  constructor(
+    audiences: Array<string | undefined>,
+    private readonly client: GoogleIdTokenVerifier = new OAuth2Client(),
+  ) {
+    this.audiences = audiences.filter((audience): audience is string => !!audience && audience.trim().length > 0);
+    if (this.audiences.length === 0) {
+      console.warn("GoogleOAuthProvider: no GOOGLE_*_CLIENT_ID is set; every Google login will be rejected.");
+    }
+  }
+
+  async getUserInfo(accessToken: string): Promise<OAuthUserPayload> {
+    // Fail closed: without a configured client id no token can be trusted.
+    if (this.audiences.length === 0) {
+      throw new InfrastructureError("Google login is not configured (no GOOGLE_*_CLIENT_ID)");
+    }
+
+    const ticket = await this.client.verifyIdToken({ idToken: accessToken, audience: this.audiences });
+    const payload = ticket.getPayload();
 
     if (!payload) {
-      throw new InfrastructureError('Invalid Google token payload')
+      throw new InfrastructureError("Invalid Google token payload");
     }
 
     if (!payload.email_verified) {
-      throw new InfrastructureError('Google email not verified')
+      throw new InfrastructureError("Google email not verified");
     }
 
     return {
@@ -24,8 +45,8 @@ export default class GoogleOAuthProvider implements IOAuthProvider {
       email: payload.email!,
       name: payload.name,
       picture: payload.picture,
-      email_verified: payload.email_verified
-    }
+      email_verified: payload.email_verified,
+    };
   }
 
   /**
