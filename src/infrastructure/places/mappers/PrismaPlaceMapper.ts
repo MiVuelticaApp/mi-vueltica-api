@@ -20,6 +20,9 @@ export class PrismaPlaceMapper {
       ...planConditionsFromColumns(row),
       status: row.status,
       verifiedAt: row.verifiedAt,
+      authorId: row.authorId,
+      hiddenReason: row.hiddenReason,
+      reportedAt: row.reportedAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

@@ -11,6 +11,7 @@ import placeFavoriteRouter from "@/presentation/http/favorites/routes/placeFavor
 import { eventReviewsRouter, placeReviewsRouter } from "@/presentation/http/reviews/routes/targetReviews.routes";
 import reviewsRouter from "@/presentation/http/reviews/routes/reviews.routes";
 import eventsRouter from "@/presentation/http/events/routes/events.routes";
+import { eventCommunityRouter, placeCommunityRouter, reportsRouter } from "@/presentation/http/community/routes/community.routes";
 import usersRouter from "@/presentation/http/users/routes/users.routes";
 import mySubmissionsRouter from "@/presentation/http/submissions/routes/mySubmissions.routes";
 import myDevicesRouter from "@/presentation/http/devices/routes/myDevices.routes";
@@ -41,13 +42,16 @@ router.use("/sources", sourcesRouter);
 router.use("/places/:placeId/favorite", placeFavoriteRouter);
 router.use("/places/:placeId/photos", placePhotosRouter);
 router.use("/places/:placeId/reviews", placeReviewsRouter);
+router.use("/places/:placeId", placeCommunityRouter);
 router.use("/places", placesRouter);
 // Before /events so the photos and reviews sub-resources are never shadowed.
 router.use("/events/:eventId/photos", eventPhotosRouter);
 router.use("/events/:eventId/reviews", eventReviewsRouter);
+router.use("/events/:eventId", eventCommunityRouter);
 router.use("/events", eventsRouter);
 router.use("/photos", photosRouter);
 router.use("/reviews", reviewsRouter);
+router.use("/reports", reportsRouter);
 router.use("/uploads", uploadsRouter);
 router.use("/files", filesRouter);
 router.use("/users", usersRouter);

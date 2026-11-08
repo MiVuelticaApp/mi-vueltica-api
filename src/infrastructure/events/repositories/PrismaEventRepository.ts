@@ -1,3 +1,4 @@
+import { CreatePlanOptions } from "@/domain/community/valueObjects/planCommunity.valueObject";
 import { Event, NormalizedEventData } from "@/domain/events/entities/Event";
 import { EventDetail } from "@/domain/events/entities/EventDetail";
 import { IEventRepository, EventListFilters } from "@/domain/events/repositories/IEventRepository";
@@ -77,7 +78,7 @@ export default class PrismaEventRepository implements IEventRepository {
     }
   }
 
-  async create(data: NormalizedEventData): Promise<Event> {
+  async create(data: NormalizedEventData, options: CreatePlanOptions = {}): Promise<Event> {
     try {
       const row = await this.client.event.create({
         data: {
@@ -90,6 +91,7 @@ export default class PrismaEventRepository implements IEventRepository {
           endsAt: data.endsAt,
           targetAudience: data.targetAudience,
           ...planConditionsToColumns(data),
+          authorId: options.authorId ?? null,
           status: "PENDING",
         },
       });
@@ -115,6 +117,8 @@ export default class PrismaEventRepository implements IEventRepository {
           targetAudience: event.targetAudience,
           ...planConditionsToColumns(event),
           status: event.status,
+          hiddenReason: event.hiddenReason,
+          reportedAt: event.reportedAt,
         },
       });
     } catch (error) {
