@@ -450,7 +450,8 @@ model Review {
 
   createdAt DateTime @default(now())
 
-  user        User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // Deleting an account deletes its reviews (the app's rule; their photos are released to the orphan cleanup).
+  user        User?              @relation(fields: [userId], references: [id], onDelete: Cascade)
   place       Place?             @relation(fields: [placeId], references: [id], onDelete: Cascade)
   event       Event?             @relation(fields: [eventId], references: [id], onDelete: Cascade)
   photos      ReviewPhoto[]

@@ -2328,8 +2328,8 @@ const openApiDocument = {
           author: {
             type: "object",
             description:
-              "Only the author's first name and initials are exposed. When the author deleted their account the review " +
-              "is kept as `{ id: null, name: \"Anónimo\", initials: \"A\" }`.",
+              "Only the author's first name and initials are exposed. Reviews are deleted with their author's account; " +
+              "a review without an author would be shown as `{ id: null, name: \"Anónimo\", initials: \"A\" }`.",
             properties: {
               id: { type: ["string", "null"], format: "uuid" },
               name: { type: "string" },
