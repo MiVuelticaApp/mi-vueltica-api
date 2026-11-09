@@ -8,6 +8,7 @@ import { ISubmissionRepository, SubmissionSortField } from "@/domain/submissions
 import { ISubmissionApprovalUnitOfWork } from "@/domain/submissions/unitsOfWork/SubmissionApprovalUnitOfWork";
 import { IPlaceRepository } from "@/domain/places/repositories/IPlaceRepository";
 import { ICategoryRepository } from "@/domain/categories/repositories/ICategoryRepository";
+import { ICantonRepository } from "@/domain/geography/repositories/ICantonRepository";
 import { ISourceRepository } from "@/domain/sources/repositories/ISourceRepository";
 import { COMMUNITY_SOURCE_ID } from "@/domain/sources/communitySource";
 import { PhotoOwner } from "@/domain/photos/valueObjects/photoOwner.valueObject";
@@ -30,6 +31,7 @@ export class SubmissionService implements ISubmissionService {
   constructor(
     private readonly submissionRepository: ISubmissionRepository,
     private readonly placeRepository: IPlaceRepository,
+    private readonly cantonRepository: ICantonRepository,
     private readonly categoryRepository: ICategoryRepository,
     private readonly approvalUOW: ISubmissionApprovalUnitOfWork,
     private readonly uploadService: IUploadService,
@@ -40,6 +42,7 @@ export class SubmissionService implements ISubmissionService {
     const payload = normalizeSubmissionPayload(input);
     await ensureSubmissionReferencesExist(payload, {
       placeRepository: this.placeRepository,
+      cantonRepository: this.cantonRepository,
       categoryRepository: this.categoryRepository,
     });
     // Every photo must be one of the author's own uploads (422); stored in canonical form and
@@ -94,8 +97,10 @@ export class SubmissionService implements ISubmissionService {
       if (!submission) throw new SubmissionNotFoundError();
       if (!submission.isPending()) throw new SubmissionNotPendingError();
 
+      // Re-checked inside the transaction: a referenced row may have been deleted since creation.
       await ensureSubmissionReferencesExist(submission.payload, {
         placeRepository,
+        cantonRepository: ctx.getCantonRepository(),
         categoryRepository: ctx.getCategoryRepository(),
       });
 

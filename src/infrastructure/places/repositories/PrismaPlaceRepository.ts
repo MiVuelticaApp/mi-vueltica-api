@@ -147,15 +147,6 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
     }
   }
 
-  async cantonExists(id: number): Promise<boolean> {
-    try {
-      return (await this.client.canton.count({ where: { id } })) > 0;
-    } catch (error) {
-      console.error("Error checking canton:", error);
-      throw new DatabaseError("Could not check canton", error);
-    }
-  }
-
   private async buildWhere(filters: PlaceListFilters): Promise<Prisma.PlaceWhereInput> {
     const where: Prisma.PlaceWhereInput = {};
 

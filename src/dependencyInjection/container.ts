@@ -143,7 +143,7 @@ export const categoryService = new CategoryService(categoryRepository);
 export const provinceService = new ProvinceService(provinceRepository);
 export const cantonService = new CantonService(cantonRepository, provinceRepository);
 export const sourceService = new SourceService(sourceRepository);
-export const placeService = new PlaceService(placeRepository, categoryRepository, sourceRepository);
+export const placeService = new PlaceService(placeRepository, cantonRepository, categoryRepository, sourceRepository);
 export const eventService = new EventService(eventRepository, placeRepository, categoryRepository, sourceRepository);
 export const favoriteService = new FavoriteService(favoriteRepository, placeRepository);
 export const deviceService = new DeviceService(deviceRepository);
@@ -167,7 +167,7 @@ export const communityService: ICommunityService = new CommunityService(
   uploadService,
 );
 export const photoService: IPhotoService = new PhotoService(photoRepository, photoGalleryUOW, placeRepository, eventRepository, uploadService);
-export const submissionService = new SubmissionService(submissionRepository, placeRepository, categoryRepository, submissionApprovalUOW, uploadService);
+export const submissionService = new SubmissionService(submissionRepository, placeRepository, cantonRepository, categoryRepository, submissionApprovalUOW, uploadService);
 export const userInterestService = new UserInterestService(userRepository, userInterestRepository, categoryRepository);
 export const oAuthService = new OAuthService(userService, googleOAuthProvider, appleOAuthProvider, idGenerator);
 

@@ -2,6 +2,7 @@ import { Place, PlaceData, normalizePlaceData } from "@/domain/places/entities/P
 import { PlaceDetail } from "@/domain/places/entities/PlaceDetail";
 import { IPlaceRepository, PlaceListFilters } from "@/domain/places/repositories/IPlaceRepository";
 import { ICategoryRepository } from "@/domain/categories/repositories/ICategoryRepository";
+import { ICantonRepository } from "@/domain/geography/repositories/ICantonRepository";
 import { ISourceRepository } from "@/domain/sources/repositories/ISourceRepository";
 import { ContentStatus, parseContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
@@ -14,6 +15,7 @@ import { InvalidSourceError } from "../../errors/InvalidSourceError";
 export class PlaceService implements IPlaceService {
   constructor(
     private readonly placeRepository: IPlaceRepository,
+    private readonly cantonRepository: ICantonRepository,
     private readonly categoryRepository: ICategoryRepository,
     private readonly sourceRepository: ISourceRepository,
   ) {}
@@ -67,7 +69,7 @@ export class PlaceService implements IPlaceService {
   }
 
   private async ensureReferencesExist(data: Pick<PlaceData, "cantonId" | "categoryId" | "sourceId">): Promise<void> {
-    if (!(await this.placeRepository.cantonExists(data.cantonId))) throw new InvalidCantonError();
+    if (!(await this.cantonRepository.find(data.cantonId))) throw new InvalidCantonError();
     if (!(await this.categoryRepository.find(data.categoryId))) throw new InvalidCategoryError();
     if (data.sourceId && !(await this.sourceRepository.find(data.sourceId))) throw new InvalidSourceError();
   }
