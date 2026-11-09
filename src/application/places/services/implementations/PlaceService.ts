@@ -1,5 +1,6 @@
 import { Place, PlaceData, normalizePlaceData } from "@/domain/places/entities/Place";
 import { PlaceDetail } from "@/domain/places/entities/PlaceDetail";
+import { PlaceCard } from "@/domain/places/entities/PlaceCard";
 import { IPlaceRepository, PlaceListFilters } from "@/domain/places/repositories/IPlaceRepository";
 import { ICategoryRepository } from "@/domain/categories/repositories/ICategoryRepository";
 import { ISourceRepository } from "@/domain/sources/repositories/ISourceRepository";
@@ -18,7 +19,7 @@ export class PlaceService implements IPlaceService {
     private readonly sourceRepository: ISourceRepository,
   ) {}
 
-  async list(params: PaginationParams, filters?: PlaceListFilters): Promise<PaginatedResult<Place>> {
+  async list(params: PaginationParams, filters?: PlaceListFilters): Promise<PaginatedResult<PlaceCard>> {
     return this.placeRepository.list(params, filters);
   }
 

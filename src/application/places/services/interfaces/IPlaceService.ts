@@ -1,5 +1,6 @@
 import { Place, PlaceData } from "@/domain/places/entities/Place";
 import { PlaceDetail } from "@/domain/places/entities/PlaceDetail";
+import { PlaceCard } from "@/domain/places/entities/PlaceCard";
 import { PlaceListFilters } from "@/domain/places/repositories/IPlaceRepository";
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
@@ -14,7 +15,7 @@ export interface PlaceVisibilityOptions {
 }
 
 export interface IPlaceService {
-  list(params: PaginationParams, filters?: PlaceListFilters): Promise<PaginatedResult<Place>>;
+  list(params: PaginationParams, filters?: PlaceListFilters): Promise<PaginatedResult<PlaceCard>>;
   /** Throws `PlaceNotFoundError` when missing or hidden by `options.statuses`. */
   get(id: string, options?: PlaceVisibilityOptions): Promise<PlaceDetail>;
   create(data: PlaceInput): Promise<Place>;
