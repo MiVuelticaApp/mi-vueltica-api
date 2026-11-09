@@ -27,6 +27,8 @@ export interface PlaceResponse {
   status: ContentStatus;
   /** Why the plan is hidden (ARCHIVED by verifications, reports or moderation); null otherwise. */
   hiddenReason: string | null;
+  /** Who contributed it: "Ana M." (first name + surname initial), "Anónimo" for a community plan without a known author, null for team content. */
+  authorName: string | null;
   verifiedAt: string | null;
   createdAt: string;
   updatedAt: string;
