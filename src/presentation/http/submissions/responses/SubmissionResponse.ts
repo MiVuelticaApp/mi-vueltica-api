@@ -10,7 +10,6 @@ export interface SubmissionResponse {
   /** The suggested Place/Event fields (event dates as ISO 8601 UTC strings). */
   data: Record<string, unknown>;
   status: ContentStatus;
-  reviewedById: string | null;
   reviewedAt: string | null;
   /** Rejection code (`REJECTION_REASONS`); null unless rejected, and for rejections from before #40. */
   rejectionReason: RejectionReason | null;
@@ -25,6 +24,8 @@ export interface SubmissionResponse {
 
 /** Moderators additionally see the AI pre-screening fields. */
 export interface ModerationSubmissionResponse extends SubmissionResponse {
+  /** Who reviewed it. Only moderators see it: the author is not told which moderator decided. */
+  reviewedById: string | null;
   aiScore: number | null;
   aiReason: string | null;
 }
