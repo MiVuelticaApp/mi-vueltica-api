@@ -32,6 +32,7 @@ const placeOutput = z.object({
   openingHours: z.record(z.string(), z.unknown()).nullable(),
   targetAudience: z.enum(TARGET_AUDIENCES),
   ...planConditionsOutput,
+  authorName: z.string().nullable(),
   status: contentStatus,
   verifiedAt: z.string().nullable(),
   createdAt: z.string(),

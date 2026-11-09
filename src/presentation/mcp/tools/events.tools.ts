@@ -43,6 +43,7 @@ const eventOutput = {
     .nullable(),
   targetAudience: z.enum(TARGET_AUDIENCES),
   ...planConditionsOutput,
+  authorName: z.string().nullable(),
   status: z.enum(CONTENT_STATUSES),
   createdAt: z.string(),
   updatedAt: z.string(),

@@ -28,6 +28,7 @@ export default class EventDtoMapper {
       wheelchair: event.wheelchair,
       status: event.status,
       hiddenReason: event.hiddenReason,
+      authorName: event.authorName,
       createdAt: event.createdAt.toISOString(),
       updatedAt: event.updatedAt.toISOString(),
     };
