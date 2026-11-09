@@ -44,9 +44,4 @@ export interface IPlaceRepository {
   create(data: NormalizedPlaceData, options?: CreatePlanOptions): Promise<Place>;
   update(place: Place): Promise<void>;
   delete(id: string): Promise<void>;
-  /**
-   * Whether a canton with this id exists. There is no geography module yet, so this
-   * lives here; it can move to a geography repository later.
-   */
-  cantonExists(id: number): Promise<boolean>;
 }
