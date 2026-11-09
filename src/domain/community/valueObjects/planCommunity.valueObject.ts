@@ -9,6 +9,8 @@ export interface CreatePlanOptions {
 
 export interface PlanCommunityProps {
   authorId?: string | null;
+  /** Public display name of the author, already resolved by `planAuthorName` (read-only, set when loaded). */
+  authorName?: string | null;
   hiddenReason?: string | null;
   reportedAt?: Date | null;
 }
@@ -21,6 +23,7 @@ export interface PlanCommunityProps {
 export class PlanCommunity {
   private constructor(
     readonly authorId: string | null,
+    readonly authorName: string | null,
     readonly hiddenReason: string | null,
     readonly reportedAt: Date | null,
   ) {}
@@ -29,6 +32,7 @@ export class PlanCommunity {
     const reason = props.hiddenReason?.trim() || null;
     return new PlanCommunity(
       props.authorId ?? null,
+      props.authorName ?? null,
       reason ? reason.slice(0, HIDDEN_REASON_MAX_LENGTH) : null,
       props.reportedAt ?? null,
     );
@@ -40,6 +44,6 @@ export class PlanCommunity {
 
   /** Leaving ARCHIVED (e.g. a moderator publishes it again) clears the reason and the report flag. */
   afterStatusChange(next: ContentStatus): PlanCommunity {
-    return next === "ARCHIVED" ? this : new PlanCommunity(this.authorId, null, null);
+    return next === "ARCHIVED" ? this : new PlanCommunity(this.authorId, this.authorName, null, null);
   }
 }
