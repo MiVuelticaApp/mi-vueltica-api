@@ -4,7 +4,6 @@ export class ProvinceAlreadyExistsError extends ApplicationError {
   constructor(message?: string) {
     super(message || "Ya existe una provincia con ese código o nombre");
     this.name = "ProvinceAlreadyExistsError";
-    this.stack = new Error().stack;
     this.statusCode = 409;
     this.status = 'fail';
     this.isOperational = true;

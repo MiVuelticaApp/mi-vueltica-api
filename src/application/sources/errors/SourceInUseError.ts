@@ -4,7 +4,6 @@ export class SourceInUseError extends ApplicationError {
   constructor(message?: string) {
     super(message || "No se puede eliminar la fuente porque está en uso por lugares o eventos");
     this.name = "SourceInUseError";
-    this.stack = new Error().stack;
     this.statusCode = 409;
     this.status = 'fail';
     this.isOperational = true;

@@ -26,7 +26,10 @@ export default class MySubmissionsController {
   async list(req: Request, res: Response): Promise<void> {
     const { id: userId } = getAuthUser(req);
     const query = getValidated<ListQuery>(req, "query");
-    const result = await this.submissionService.listMine(userId, toPaginationParams(query));
+    const result = await this.submissionService.listMine(userId, toPaginationParams(query), {
+      status: query.status,
+      type: query.type,
+    });
     res.json(toPaginatedResponse(result, SubmissionDtoMapper.toResponse));
   }
 
@@ -34,6 +37,14 @@ export default class MySubmissionsController {
     const { id: userId } = getAuthUser(req);
     const { id } = getValidated<IdParams>(req, "params");
     const submission = await this.submissionService.getMine(userId, id);
+    res.json(SubmissionDtoMapper.toResponse(submission));
+  }
+
+  async update(req: Request, res: Response): Promise<void> {
+    const { id: userId } = getAuthUser(req);
+    const { id } = getValidated<IdParams>(req, "params");
+    const body: CreateSubmissionRequest = req.body;
+    const submission = await this.submissionService.updateMine(userId, id, body);
     res.json(SubmissionDtoMapper.toResponse(submission));
   }
 

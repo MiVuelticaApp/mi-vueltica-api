@@ -1,4 +1,5 @@
-import { Submission } from "@/domain/submissions/entities/Submission";
+import { Submission, SubmissionCreated } from "@/domain/submissions/entities/Submission";
+import { rejectionReasonFromDb } from "./submissionEnums";
 import {
   SubmissionEventData,
   SubmissionPayload,
@@ -21,8 +22,27 @@ export class PrismaSubmissionMapper {
       reviewedById: row.reviewedById,
       reviewedAt: row.reviewedAt,
       reviewNote: row.reviewNote,
+      rejectionReason: rejectionReasonFromDb(row.rejectionReason),
+      created: PrismaSubmissionMapper.createdFromColumns(row),
       createdAt: row.createdAt,
     });
+  }
+
+  /** At most one of the two columns is set (the application writes exactly one on approval). */
+  static createdFromColumns(row: Pick<PrismaSubmission, "id" | "createdPlaceId" | "createdEventId">): SubmissionCreated | null {
+    if (row.createdPlaceId && row.createdEventId) {
+      throw new Error(`Submission ${row.id} must reference at most one created place or event`);
+    }
+    if (row.createdPlaceId) return { type: "PLACE", id: row.createdPlaceId };
+    if (row.createdEventId) return { type: "EVENT", id: row.createdEventId };
+    return null;
+  }
+
+  static createdToColumns(created: SubmissionCreated | null): { createdPlaceId: string | null; createdEventId: string | null } {
+    return {
+      createdPlaceId: created?.type === "PLACE" ? created.id : null,
+      createdEventId: created?.type === "EVENT" ? created.id : null,
+    };
   }
 
   /** JSON column → typed payload. Event dates are stored as ISO strings. */

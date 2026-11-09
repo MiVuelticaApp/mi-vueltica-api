@@ -60,6 +60,7 @@ import {
 import { ChangeUserRoleSchema } from "@/presentation/http/users/validators/changeUserRole";
 import { USER_SORT_FIELDS } from "@/presentation/http/users/validators/listUsers";
 import { CreateSubmissionSchema } from "@/presentation/http/submissions/validators/createSubmission";
+import { REJECTION_REASONS, REJECTION_REASON_LABELS } from "@/domain/submissions/valueObjects/rejectionReason.valueObject";
 import { RejectSubmissionSchema } from "@/presentation/http/submissions/validators/rejectSubmission";
 import { SUBMISSION_SORT_FIELDS } from "@/presentation/http/submissions/validators/listSubmissions";
 import { SUBMISSION_CREATE_RATE_LIMIT } from "@/presentation/http/submissions/submissionLimits";
@@ -122,6 +123,65 @@ export const paginationParams = [
 ];
 
 const booleanFlagSchema = { type: "string", enum: ["true", "false"] } as const;
+
+/** `authorName` of Place and Event (#40). */
+const authorNameSchema = {
+  type: ["string", "null"],
+  description:
+    'Who contributed it: "Ana M." (first name + first surname initial), "Anónimo" for a community plan whose author is ' +
+    "unknown (deleted account, or approved before authors were recorded), null for team content",
+};
+
+/** `reason` codes of `POST /submissions/{id}/reject` with the text the author sees (#40). */
+const rejectionReasonList = Object.entries(REJECTION_REASON_LABELS)
+  .map(([code, label]) => `\`${code}\` (${label})`)
+  .join(", ");
+
+/** Bounding box or radius filters shared by `GET /places` and `GET /events` (`what` names the point matched). */
+const geoParams = (what: string) => [
+  {
+    name: "minLat",
+    in: "query",
+    description: `Bounding box south edge, matched against ${what}. \`minLat\`, \`minLng\`, \`maxLat\` and \`maxLng\` must be sent together (min <= max). Mutually exclusive with the radius filter.`,
+    schema: { type: "number", minimum: -90, maximum: 90 },
+  },
+  {
+    name: "minLng",
+    in: "query",
+    description: "Bounding box west edge (see `minLat`)",
+    schema: { type: "number", minimum: -180, maximum: 180 },
+  },
+  {
+    name: "maxLat",
+    in: "query",
+    description: "Bounding box north edge (see `minLat`)",
+    schema: { type: "number", minimum: -90, maximum: 90 },
+  },
+  {
+    name: "maxLng",
+    in: "query",
+    description: "Bounding box east edge (see `minLat`)",
+    schema: { type: "number", minimum: -180, maximum: 180 },
+  },
+  {
+    name: "lat",
+    in: "query",
+    description: `Radius search center latitude, matched against ${what}. \`lat\`, \`lng\` and \`radiusKm\` must be sent together. Mutually exclusive with the bounding box filter.`,
+    schema: { type: "number", minimum: -90, maximum: 90 },
+  },
+  {
+    name: "lng",
+    in: "query",
+    description: "Radius search center longitude (see `lat`)",
+    schema: { type: "number", minimum: -180, maximum: 180 },
+  },
+  {
+    name: "radiusKm",
+    in: "query",
+    description: "Radius in kilometers (see `lat`), Haversine distance",
+    schema: { type: "number", exclusiveMinimum: 0, maximum: MAX_RADIUS_KM },
+  },
+];
 
 /** Price / audience / accessibility filters shared by `GET /places` and `GET /events` (the app's filters). */
 const planConditionsParams = [
@@ -260,6 +320,25 @@ const galleryPaths = (kind: "place" | "event") => {
 };
 
 /** PUBLISHED reviews per star. */
+/** Card stats of list items (PlaceCard / EventCard). Same rating rules as the detail, without the distribution. */
+const planStatsSchema = {
+  type: "object",
+  properties: {
+    averageRating: {
+      type: ["number", "null"],
+      minimum: 1,
+      maximum: 5,
+      description: "Mean of PUBLISHED reviews rounded to 2 decimals; null when there are none",
+    },
+    reviewCount: { type: "integer", minimum: 0, description: "Number of PUBLISHED reviews" },
+    coverPhotoUrl: {
+      type: ["string", "null"],
+      description: "First photo of the gallery (lowest position), for the card's thumbnail; null without photos",
+    },
+  },
+  required: ["averageRating", "reviewCount", "coverPhotoUrl"],
+};
+
 const ratingDistributionSchema = {
   type: "array",
   minItems: MAX_RATING,
@@ -366,6 +445,40 @@ const communityPaths = (kind: "place" | "event") => {
           403: responseRef("Forbidden"),
           404: responseRef("NotFound"),
           409: responseRef("Conflict"),
+        },
+      },
+    },
+  };
+};
+
+/** PUT / DELETE of a favorite (`/places/{placeId}/favorite`, `/events/{eventId}/favorite`). */
+const favoriteTargetPaths = (kind: "place" | "event") => {
+  const param = { $ref: `#/components/parameters/${kind === "place" ? "PlaceId" : "EventId"}` };
+  return {
+    [`/${kind}s/{${kind}Id}/favorite`]: {
+      put: {
+        tags: ["Favorites"],
+        summary: `Save a ${kind}`,
+        description: `Idempotent: saving an already saved ${kind} is a no-op (204) that keeps the original \`createdAt\` (also under concurrent calls). 404 unless the ${kind} exists and is PUBLISHED.`,
+        security: bearer,
+        parameters: [param],
+        responses: {
+          204: { description: `The ${kind} is saved` },
+          400: responseRef("BadRequest"),
+          401: responseRef("Unauthorized"),
+          404: responseRef("NotFound"),
+        },
+      },
+      delete: {
+        tags: ["Favorites"],
+        summary: `Unsave a ${kind}`,
+        description: `Idempotent: 204 whether or not the favorite existed, and regardless of the ${kind}'s status or existence (never 404).`,
+        security: bearer,
+        parameters: [param],
+        responses: {
+          204: { description: `The ${kind} is not saved` },
+          400: responseRef("BadRequest"),
+          401: responseRef("Unauthorized"),
         },
       },
     },
@@ -591,9 +704,9 @@ const paths: Record<string, Record<string, unknown>> = {
   "/me/favorites": {
     get: {
       tags: ["Favorites"],
-      summary: "List my favorite places",
+      summary: "List my saved places and events",
       description:
-        "Only favorites whose place is currently PUBLISHED are listed and counted: an unpublished place disappears from the list (the favorite is kept) and reappears when it is published again. Default order is `createdAt` descending (most recently favorited first).",
+        "Places and events in one list (`type` tells which). Only favorites whose place or event is currently PUBLISHED are listed and counted: an unpublished one disappears from the list (the favorite is kept) and reappears when it is published again. Past events stay listed. Default order is `createdAt` descending (most recently saved first).",
       security: bearer,
       parameters: [
         { $ref: "#/components/parameters/Page" },
@@ -604,11 +717,17 @@ const paths: Record<string, Record<string, unknown>> = {
           description: "Field to sort by: `field` ascending, `-field` descending. Default: `-createdAt`.",
           schema: { type: "string", enum: FAVORITE_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
         },
+        {
+          name: "type",
+          in: "query",
+          description: "Only places (`PLACE`) or only events (`EVENT`); both when omitted",
+          schema: { type: "string", enum: ["PLACE", "EVENT"] },
+        },
       ],
       responses: {
         200: {
-          description: "Page of favorite places",
-          content: { "application/json": { schema: paginated("FavoritePlace") } },
+          description: "Page of saved places and events",
+          content: { "application/json": { schema: paginated("Favorite") } },
         },
         400: responseRef("BadRequest"),
         401: responseRef("Unauthorized"),
@@ -1147,53 +1266,12 @@ const paths: Record<string, Record<string, unknown>> = {
           schema: { type: "string", maxLength: 100 },
         },
         ...planConditionsParams,
-        {
-          name: "minLat",
-          in: "query",
-          description: "Bounding box south edge. `minLat`, `minLng`, `maxLat` and `maxLng` must be sent together (min <= max). Mutually exclusive with the radius filter.",
-          schema: { type: "number", minimum: -90, maximum: 90 },
-        },
-        {
-          name: "minLng",
-          in: "query",
-          description: "Bounding box west edge (see `minLat`)",
-          schema: { type: "number", minimum: -180, maximum: 180 },
-        },
-        {
-          name: "maxLat",
-          in: "query",
-          description: "Bounding box north edge (see `minLat`)",
-          schema: { type: "number", minimum: -90, maximum: 90 },
-        },
-        {
-          name: "maxLng",
-          in: "query",
-          description: "Bounding box east edge (see `minLat`)",
-          schema: { type: "number", minimum: -180, maximum: 180 },
-        },
-        {
-          name: "lat",
-          in: "query",
-          description: "Radius search center latitude. `lat`, `lng` and `radiusKm` must be sent together. Mutually exclusive with the bounding box filter.",
-          schema: { type: "number", minimum: -90, maximum: 90 },
-        },
-        {
-          name: "lng",
-          in: "query",
-          description: "Radius search center longitude (see `lat`)",
-          schema: { type: "number", minimum: -180, maximum: 180 },
-        },
-        {
-          name: "radiusKm",
-          in: "query",
-          description: "Radius in kilometers (see `lat`), Haversine distance",
-          schema: { type: "number", exclusiveMinimum: 0, maximum: MAX_RADIUS_KM },
-        },
+        ...geoParams("the place's coordinates"),
       ],
       responses: {
         200: {
-          description: "Page of places",
-          content: { "application/json": { schema: paginated("Place") } },
+          description: "Page of places (each with its card stats: rating and cover photo)",
+          content: { "application/json": { schema: paginated("PlaceCard") } },
         },
         400: responseRef("BadRequest"),
       },
@@ -1261,35 +1339,7 @@ const paths: Record<string, Record<string, unknown>> = {
       },
     },
   },
-  "/places/{placeId}/favorite": {
-    put: {
-      tags: ["Favorites"],
-      summary: "Favorite a place",
-      description:
-        "Idempotent: favoriting an already favorited place is a no-op (204) that keeps the original `createdAt`. 404 unless the place exists and is PUBLISHED.",
-      security: bearer,
-      parameters: [{ $ref: "#/components/parameters/PlaceId" }],
-      responses: {
-        204: { description: "Place is now a favorite" },
-        400: responseRef("BadRequest"),
-        401: responseRef("Unauthorized"),
-        404: responseRef("NotFound"),
-      },
-    },
-    delete: {
-      tags: ["Favorites"],
-      summary: "Unfavorite a place",
-      description:
-        "Idempotent: 204 whether or not the favorite existed, and regardless of the place's status or existence (never 404).",
-      security: bearer,
-      parameters: [{ $ref: "#/components/parameters/PlaceId" }],
-      responses: {
-        204: { description: "Place is not a favorite" },
-        400: responseRef("BadRequest"),
-        401: responseRef("Unauthorized"),
-      },
-    },
-  },
+  ...favoriteTargetPaths("place"),
   ...reviewTargetPaths("place"),
   "/places/{id}/status": {
     patch: {
@@ -1314,7 +1364,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Events"],
       summary: "List events",
       description:
-        "Public (optional bearer token). Anonymous and regular users only see PUBLISHED events; MODERATOR / ADMIN see every status and may filter with `status`. Paginated; default order is `startsAt` ascending. **`from` defaults to now** (for everyone), so by default only upcoming and ongoing events are listed; send an earlier `from` to see past events. Range semantics are overlap: an event matches when it starts at/before `to` and is still running at/after `from` (`endsAt >= from`, or no `endsAt` and `startsAt >= from`).",
+        "Public (optional bearer token). Anonymous and regular users only see PUBLISHED events; MODERATOR / ADMIN see every status and may filter with `status`. Paginated; default order is `startsAt` ascending. **`from` defaults to now** (for everyone), so by default only upcoming and ongoing events are listed; send an earlier `from` to see past events. Range semantics are overlap: an event matches when it starts at/before `to` and is still running at/after `from` (`endsAt >= from`, or no `endsAt` and `startsAt >= from`). Every item has its resolved location (`latitude`, `longitude`, `address`) and a `place` summary, so no request per place is needed. Geo filters: bounding box (`minLat`, `minLng`, `maxLat`, `maxLng`) or radius (`lat`, `lng`, `radiusKm`), never both.",
       security: optionalBearer,
       parameters: [
         { $ref: "#/components/parameters/Page" },
@@ -1374,11 +1424,12 @@ const paths: Record<string, Record<string, unknown>> = {
           schema: { type: "string", maxLength: 100 },
         },
         ...planConditionsParams,
+        ...geoParams("the event's location (its place's point, or its own when it has no place; events without a location never match)"),
       ],
       responses: {
         200: {
-          description: "Page of events",
-          content: { "application/json": { schema: paginated("Event") } },
+          description: "Page of events (each with its card stats: rating and cover photo)",
+          content: { "application/json": { schema: paginated("EventCard") } },
         },
         400: responseRef("BadRequest"),
       },
@@ -1387,7 +1438,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Events"],
       summary: "Create an event (MODERATOR, ADMIN)",
       description:
-        "New events start as PENDING. Datetimes must be ISO 8601 with offset and `endsAt` must not be earlier than `startsAt`. 422 when the place, category or source does not exist." + priceLimitNote,
+        "New events start as PENDING. Datetimes must be ISO 8601 with offset and `endsAt` must not be earlier than `startsAt`. Location: either `placeId` (the place's point is used) or the event's own `latitude` + `longitude` (+ optional `address`), never both (400); an event with neither is allowed but never shown on the map. 422 when the place, category or source does not exist." + priceLimitNote,
       security: bearer,
       requestBody: jsonBody(CreateEventSchema),
       responses: {
@@ -1404,7 +1455,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Events"],
       summary: "Get an event",
       description:
-        "Public (optional bearer token). Includes a summary of the event's place, the event's photos ordered by position and the rating summary over PUBLISHED reviews (`averageRating`, `reviewCount`, `ratingDistribution`). It also has the verification summary (`myVerifiedToday` uses the token or `X-Device-Id`). A non-PUBLISHED event is 404 unless the caller is MODERATOR / ADMIN or its author (they see it with `hiddenReason`); for other callers `place` is null when the linked place is not PUBLISHED. Authenticated callers also get `isMine`.",
+        "Public (optional bearer token). Includes a summary of the event's place, the event's photos ordered by position and the rating summary over PUBLISHED reviews (`averageRating`, `reviewCount`, `ratingDistribution`). It also has the verification summary (`myVerifiedToday` uses the token or `X-Device-Id`). A non-PUBLISHED event is 404 unless the caller is MODERATOR / ADMIN or its author (they see it with `hiddenReason`); for other callers `place` is null when the linked place is not PUBLISHED (the location fields stay). Authenticated callers also get `isFavorite` and `isMine`.",
       security: optionalBearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }, deviceIdHeader],
       responses: {
@@ -1417,7 +1468,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Events"],
       summary: "Replace an event (MODERATOR, ADMIN)",
       description:
-        "Full replace of the editable fields (omitted price/audience fields go back to their defaults); the status is kept (use `PATCH /events/{id}/status`). 422 when the place, category or source does not exist." + priceLimitNote,
+        "Full replace of the editable fields (omitted price/audience/location fields go back to their defaults); the status is kept (use `PATCH /events/{id}/status`). Same location rule as `POST /events`: do not send back the `latitude`/`longitude`/`address` of a response when `placeId` is set, they come from the place. 422 when the place, category or source does not exist." + priceLimitNote,
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       requestBody: jsonBody(UpdateEventSchema),
@@ -1433,7 +1484,7 @@ const paths: Record<string, Record<string, unknown>> = {
     delete: {
       tags: ["Events"],
       summary: "Delete an event (ADMIN)",
-      description: "Notifications about the event are deleted with it.",
+      description: "Notifications, favorites, photos, reviews, verifications and reports of the event are deleted with it.",
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       responses: {
@@ -1568,7 +1619,7 @@ const paths: Record<string, Record<string, unknown>> = {
     get: {
       tags: ["Submissions"],
       summary: "List my submissions",
-      description: "Only the caller's own submissions, any status. Default order is `createdAt` descending (newest first).",
+      description: "Only the caller's own submissions. Every status unless `status` is given. Default order is `createdAt` descending (newest first).",
       security: bearer,
       parameters: [
         { $ref: "#/components/parameters/Page" },
@@ -1579,6 +1630,13 @@ const paths: Record<string, Record<string, unknown>> = {
           description: "Field to sort by: `field` ascending, `-field` descending. Default: `-createdAt`.",
           schema: { type: "string", enum: SUBMISSION_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
         },
+        {
+          name: "status",
+          in: "query",
+          description: "Only this status (e.g. `PENDING` for the app's pending pins); all statuses when omitted",
+          schema: { type: "string", enum: [...CONTENT_STATUSES] },
+        },
+        { name: "type", in: "query", description: "Only places or only events; both when omitted", schema: { type: "string", enum: [...SUBMISSION_TYPES] } },
       ],
       responses: {
         200: { description: "Page of submissions", content: { "application/json": { schema: paginated("Submission") } } },
@@ -1591,7 +1649,9 @@ const paths: Record<string, Record<string, unknown>> = {
     get: {
       tags: ["Submissions"],
       summary: "Get one of my submissions",
-      description: "404 if it does not exist or belongs to another user. Shows the moderator's `reviewNote` when rejected.",
+      description:
+        "404 if it does not exist or belongs to another user. When rejected it shows `rejectionReason`, `reviewNote` and " +
+        "`rejectionMessage`; once approved, `created` points to the published Place/Event.",
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       responses: {
@@ -1599,6 +1659,27 @@ const paths: Record<string, Record<string, unknown>> = {
         400: responseRef("BadRequest"),
         401: responseRef("Unauthorized"),
         404: responseRef("NotFound"),
+      },
+    },
+    put: {
+      tags: ["Submissions"],
+      summary: "Edit one of my submissions",
+      description:
+        "Full replace of a PENDING suggestion: same body and rules as `POST /me/submissions` (400 / 422), and `data.photos` " +
+        "replaces the attached photos. The `type` cannot change (422). 404 if it does not exist or belongs to another user; " +
+        "409 once it is no longer PENDING (an edit and a concurrent review run one after the other). " +
+        `Rate-limited like creating: ${SUBMISSION_CREATE_RATE_LIMIT.max} requests per ${SUBMISSION_CREATE_RATE_LIMIT.windowMs / 60000} minutes per user (429).`,
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      requestBody: jsonBody(CreateSubmissionSchema),
+      responses: {
+        200: jsonResponse("Updated submission", "Submission"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        404: responseRef("NotFound"),
+        409: responseRef("Conflict"),
+        422: responseRef("UnprocessableEntity"),
+        429: errorResponse("Too many requests"),
       },
     },
     delete: {
@@ -1672,7 +1753,8 @@ const paths: Record<string, Record<string, unknown>> = {
       description:
         "In one transaction: creates the Place/Event as PUBLISHED, attributed to the community source, and marks the " +
         "submission PUBLISHED with the reviewer and date. Only PENDING submissions (409 otherwise, also when another " +
-        "moderator approved it first). References are re-checked (422 if the canton, category or place no longer exists).",
+        "moderator approved it first). References are re-checked (422 if the canton, category or place no longer exists). " +
+        "The submission's `created` keeps the link to the new Place/Event (shown to the author).",
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       responses: {
@@ -1690,7 +1772,11 @@ const paths: Record<string, Record<string, unknown>> = {
     post: {
       tags: ["Submissions"],
       summary: "Reject a submission (MODERATOR, ADMIN)",
-      description: "Only PENDING submissions (409 otherwise). The reason is stored as `reviewNote` and shown to the author.",
+      description:
+        `Only PENDING submissions (409 otherwise). \`reason\` is one of: ${rejectionReasonList}, or \`otro\`, which requires ` +
+        "`note` (400 without it); `note` is optional for the other codes. The author sees `rejectionReason`, `reviewNote` " +
+        "and `rejectionMessage`. Temporary compatibility: any other text in `reason` (the free-text body used before #40) " +
+        "is stored as `otro` with that text as the note.",
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       requestBody: jsonBody(RejectSubmissionSchema),
@@ -1706,6 +1792,7 @@ const paths: Record<string, Record<string, unknown>> = {
   },
   ...galleryPaths("place"),
   ...galleryPaths("event"),
+  ...favoriteTargetPaths("event"),
   ...reviewTargetPaths("event"),
   ...communityPaths("place"),
   ...communityPaths("event"),
@@ -2203,6 +2290,7 @@ const openApiDocument = {
             type: ["string", "null"],
             description: "Why it is hidden (ARCHIVED by verifications, reports or moderation); null otherwise",
           },
+          authorName: authorNameSchema,
           verifiedAt: {
             type: ["string", "null"],
             format: "date-time",
@@ -2213,7 +2301,7 @@ const openApiDocument = {
         },
         required: [
           "id", "cantonId", "categoryId", "sourceId", "name", "description", "latitude", "longitude",
-          "address", "openingHours", "targetAudience", "status", "hiddenReason", "verifiedAt", "createdAt", "updatedAt",
+          "address", "openingHours", "targetAudience", "status", "hiddenReason", "authorName", "verifiedAt", "createdAt", "updatedAt",
           ...planConditionsRequired,
         ],
       },
@@ -2275,13 +2363,24 @@ const openApiDocument = {
         },
         required: ["averageRating", "reviewCount", "distribution"],
       },
-      FavoritePlace: {
+      Favorite: {
         type: "object",
+        description: "A saved place or event: exactly one of `place` / `event` is set, as told by `type`.",
         properties: {
-          place: { $ref: "#/components/schemas/Place" },
-          createdAt: { type: "string", format: "date-time", description: "When the user favorited the place" },
+          type: { type: "string", enum: ["PLACE", "EVENT"] },
+          place: { oneOf: [{ $ref: "#/components/schemas/PlaceCard" }, { type: "null" }], description: "Set when `type` is PLACE" },
+          event: { oneOf: [{ $ref: "#/components/schemas/EventCard" }, { type: "null" }], description: "Set when `type` is EVENT" },
+          createdAt: { type: "string", format: "date-time", description: "When the user saved it" },
         },
-        required: ["place", "createdAt"],
+        required: ["type", "place", "event", "createdAt"],
+      },
+      PlaceCard: {
+        description: "A place in a list or in the saved items, with what its card shows.",
+        allOf: [{ $ref: "#/components/schemas/Place" }, planStatsSchema],
+      },
+      EventCard: {
+        description: "An event in a list or in the saved items, with what its card shows.",
+        allOf: [{ $ref: "#/components/schemas/Event" }, planStatsSchema],
       },
       PlaceDetail: {
         allOf: [
@@ -2344,6 +2443,19 @@ const openApiDocument = {
           description: { type: ["string", "null"], maxLength: 5000 },
           startsAt: { type: "string", format: "date-time", description: "ISO 8601, UTC" },
           endsAt: { type: ["string", "null"], format: "date-time", description: "ISO 8601, UTC; never earlier than startsAt" },
+          latitude: {
+            type: ["number", "null"],
+            minimum: -90,
+            maximum: 90,
+            description:
+              "Where the event is on the map: the place's point when `placeId` is set (whatever the place's status), otherwise the event's own location; null when it has neither",
+          },
+          longitude: { type: ["number", "null"], minimum: -180, maximum: 180, description: "See `latitude`" },
+          address: { type: ["string", "null"], maxLength: 191, description: "The place's address, or the event's own (see `latitude`)" },
+          place: {
+            oneOf: [{ $ref: "#/components/schemas/PlaceSummary" }, { type: "null" }],
+            description: "Null when the event has no place or the caller may not see it (not PUBLISHED); the location fields stay",
+          },
           targetAudience: { $ref: "#/components/schemas/TargetAudience" },
           ...planConditionsProperties,
           status: { $ref: "#/components/schemas/ContentStatus" },
@@ -2351,12 +2463,14 @@ const openApiDocument = {
             type: ["string", "null"],
             description: "Why it is hidden (ARCHIVED by verifications, reports or moderation); null otherwise",
           },
+          authorName: authorNameSchema,
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
         },
         required: [
           "id", "placeId", "categoryId", "sourceId", "title", "description", "startsAt", "endsAt",
-          "targetAudience", "status", "hiddenReason", "createdAt", "updatedAt",
+          "latitude", "longitude", "address", "place",
+          "targetAudience", "status", "hiddenReason", "authorName", "createdAt", "updatedAt",
           ...planConditionsRequired,
         ],
       },
@@ -2366,9 +2480,9 @@ const openApiDocument = {
           {
             type: "object",
             properties: {
-              place: {
-                oneOf: [{ $ref: "#/components/schemas/PlaceSummary" }, { type: "null" }],
-                description: "Null when the event has no place or the caller may not see it (not PUBLISHED)",
+              isFavorite: {
+                type: "boolean",
+                description: "Only present for authenticated callers: whether the caller saved this event",
               },
               photos: {
                 type: "array",
@@ -2395,7 +2509,7 @@ const openApiDocument = {
               },
             },
             required: [
-              "place", "photos", "averageRating", "reviewCount", "ratingDistribution", "lastVerifiedAt",
+              "photos", "averageRating", "reviewCount", "ratingDistribution", "lastVerifiedAt",
               "verificationCount", "myVerifiedToday",
             ],
           },
@@ -2489,12 +2603,34 @@ const openApiDocument = {
             description: "The suggested fields: a POST /places body (PLACE) or POST /events body (EVENT), without sourceId, plus `photos` (array of upload URLs, possibly empty). Event dates as ISO 8601 UTC.",
           },
           status: { $ref: "#/components/schemas/ContentStatus" },
-          reviewedById: { type: ["string", "null"], format: "uuid" },
           reviewedAt: { type: ["string", "null"], format: "date-time" },
-          reviewNote: { type: ["string", "null"], description: "Moderator's reason when REJECTED" },
+          rejectionReason: {
+            type: ["string", "null"],
+            enum: [...REJECTION_REASONS, null],
+            description: `Rejection code when REJECTED (null otherwise, and for rejections from before #40): ${rejectionReasonList}, or \`otro\` (the moderator's note)`,
+          },
+          reviewNote: { type: ["string", "null"], description: "The moderator's written note (required for `otro`)" },
+          rejectionMessage: {
+            type: ["string", "null"],
+            description: "What to show the author when REJECTED: the reason's text, or the note for `otro`; null otherwise",
+          },
+          created: {
+            oneOf: [
+              {
+                type: "object",
+                properties: { type: { type: "string", enum: [...SUBMISSION_TYPES] }, id: { type: "string", format: "uuid" } },
+                required: ["type", "id"],
+              },
+              { type: "null" },
+            ],
+            description: "The Place/Event it became once approved; null before that, for approvals from before #40, or if it was deleted",
+          },
           createdAt: { type: "string", format: "date-time" },
         },
-        required: ["id", "userId", "type", "data", "status", "reviewedById", "reviewedAt", "reviewNote", "createdAt"],
+        required: [
+          "id", "userId", "type", "data", "status", "reviewedAt", "rejectionReason", "reviewNote",
+          "rejectionMessage", "created", "createdAt",
+        ],
       },
       ModerationSubmission: {
         allOf: [
@@ -2502,10 +2638,15 @@ const openApiDocument = {
           {
             type: "object",
             properties: {
+              reviewedById: {
+                type: ["string", "null"],
+                format: "uuid",
+                description: "Who reviewed it. Only in moderation responses: the author is not told which moderator decided",
+              },
               aiScore: { type: ["number", "null"], description: "Reserved for the AI moderation job; not writable through the API" },
               aiReason: { type: ["string", "null"], description: "Reserved for the AI moderation job; not writable through the API" },
             },
-            required: ["aiScore", "aiReason"],
+            required: ["reviewedById", "aiScore", "aiReason"],
           },
         ],
       },

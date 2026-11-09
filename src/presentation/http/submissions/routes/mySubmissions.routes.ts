@@ -16,6 +16,8 @@ mySubmissionsRouter.use(jwtAuth);
 mySubmissionsRouter.post("/", rateLimit({ ...SUBMISSION_CREATE_RATE_LIMIT, keyGenerator: byUserId }), validateSchema(CreateSubmissionSchema), asyncHandler(mySubmissionsController.create.bind(mySubmissionsController)));
 mySubmissionsRouter.get("/", validateSchema(ListMySubmissionsQuerySchema, "query"), asyncHandler(mySubmissionsController.list.bind(mySubmissionsController)));
 mySubmissionsRouter.get("/:id", validateSchema(uuidParamSchema, "params"), asyncHandler(mySubmissionsController.get.bind(mySubmissionsController)));
+// Edit while PENDING: same body and rules as POST; its own limiter with the same budget as creating.
+mySubmissionsRouter.put("/:id", rateLimit({ ...SUBMISSION_CREATE_RATE_LIMIT, keyGenerator: byUserId }), validateSchema(uuidParamSchema, "params"), validateSchema(CreateSubmissionSchema), asyncHandler(mySubmissionsController.update.bind(mySubmissionsController)));
 mySubmissionsRouter.delete("/:id", validateSchema(uuidParamSchema, "params"), asyncHandler(mySubmissionsController.delete.bind(mySubmissionsController)));
 
 export default mySubmissionsRouter;

@@ -16,9 +16,10 @@ import { planConditionsToColumns, planConditionsWhere } from "@/infrastructure/c
 import { PrismaPlaceMapper } from "../mappers/PrismaPlaceMapper";
 import { publishedRatingSummary } from "@/infrastructure/reviews/repositories/ratingSummary";
 import { PrismaPhotoMapper } from "@/infrastructure/photos/mappers/PrismaPhotoMapper";
-
-const KM_PER_DEGREE = 111.32;
-const EARTH_RADIUS_KM = 6371;
+import { withinRadiusSql } from "@/infrastructure/core/repositories/geo";
+import { PLAN_AUTHOR_INCLUDE } from "@/infrastructure/core/repositories/planAuthor";
+import { COVER_PHOTO_INCLUDE, publishedRatingsFor, toPlanStats } from "@/infrastructure/core/repositories/planStats";
+import { PlaceCard } from "@/domain/places/entities/PlaceCard";
 
 export default class PrismaPlaceRepository implements IPlaceRepository {
 
@@ -28,16 +29,17 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
     this.client = client || prisma;
   }
 
-  async list(params: PaginationParams, filters: PlaceListFilters = {}): Promise<PaginatedResult<Place>> {
+  async list(params: PaginationParams, filters: PlaceListFilters = {}): Promise<PaginatedResult<PlaceCard>> {
     try {
       const where = await this.buildWhere(filters);
-      return await paginate(
+      const page = await paginate(
         this.client as Parameters<typeof paginate>[0],
         params,
         {
           findMany: (tx, page) =>
             tx.place.findMany({
               where,
+              include: { ...PLAN_AUTHOR_INCLUDE, ...COVER_PHOTO_INCLUDE },
               skip: page.skip,
               take: page.take,
               // `id` as tie-breaker keeps pagination stable when the sort field has duplicates.
@@ -45,8 +47,14 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
             }),
           count: (tx) => tx.place.count({ where }),
         },
-        PrismaPlaceMapper.toDomain,
+        (row) => ({ row, place: PrismaPlaceMapper.toDomain(row) }),
       );
+      // Card stats: the cover came with the page; the ratings of the whole page in one grouped query.
+      const ratings = await publishedRatingsFor(this.client, "place", page.items.map((item) => item.place.id));
+      return {
+        ...page,
+        items: page.items.map(({ row, place }) => ({ place, stats: toPlanStats(row, ratings.get(place.id)) })),
+      };
     } catch (error) {
       console.error("Error listing places:", error);
       throw new DatabaseError("Could not list places", error);
@@ -55,7 +63,7 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
 
   async find(id: string): Promise<Place | null> {
     try {
-      const row = await this.client.place.findUnique({ where: { id } });
+      const row = await this.client.place.findUnique({ where: { id }, include: PLAN_AUTHOR_INCLUDE });
       return row ? PrismaPlaceMapper.toDomain(row) : null;
     } catch (error) {
       console.error("Error finding place:", error);
@@ -68,7 +76,7 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
       const [row, rating] = await Promise.all([
         this.client.place.findUnique({
           where: { id },
-          include: { photos: { orderBy: [{ position: "asc" }, { id: "asc" }] } },
+          include: { ...PLAN_AUTHOR_INCLUDE, photos: { orderBy: [{ position: "asc" }, { id: "asc" }] } },
         }),
         publishedRatingSummary(this.client, { placeId: id }),
       ]);
@@ -87,6 +95,7 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
   async create(data: NormalizedPlaceData, options: CreatePlanOptions = {}): Promise<Place> {
     try {
       const row = await this.client.place.create({
+        include: PLAN_AUTHOR_INCLUDE,
         data: {
           cantonId: data.cantonId,
           categoryId: data.categoryId,
@@ -147,15 +156,6 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
     }
   }
 
-  async cantonExists(id: number): Promise<boolean> {
-    try {
-      return (await this.client.canton.count({ where: { id } })) > 0;
-    } catch (error) {
-      console.error("Error checking canton:", error);
-      throw new DatabaseError("Could not check canton", error);
-    }
-  }
-
   private async buildWhere(filters: PlaceListFilters): Promise<Prisma.PlaceWhereInput> {
     const where: Prisma.PlaceWhereInput = {};
 
@@ -189,27 +189,12 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
   /**
    * Ids of places within `radiusKm` of the center. The enclosing bounding box narrows the
    * candidates through the (latitude, longitude) index; the Haversine distance then removes
-   * the corners of the box. Fully parameterized (tagged template), never string-built.
+   * the corners of the box. Fully parameterized, never string-built (`withinRadiusSql`).
    */
-  private async findIdsWithinRadius({ lat, lng, radiusKm }: RadiusFilter): Promise<string[]> {
-    const deltaLat = radiusKm / KM_PER_DEGREE;
-    const minLat = Math.max(-90, lat - deltaLat);
-    const maxLat = Math.min(90, lat + deltaLat);
-    // Near the poles a degree of longitude shrinks to nothing: drop the longitude bounds there.
-    const cosLat = Math.cos((lat * Math.PI) / 180);
-    const deltaLng = cosLat < 1e-6 ? 360 : radiusKm / (KM_PER_DEGREE * cosLat);
-    const minLng = deltaLng >= 180 ? -180 : lng - deltaLng;
-    const maxLng = deltaLng >= 180 ? 180 : lng + deltaLng;
-
-    const rows = await this.client.$queryRaw<{ id: string }[]>`
-      SELECT id FROM Place
-      WHERE latitude BETWEEN ${minLat} AND ${maxLat}
-        AND longitude BETWEEN ${minLng} AND ${maxLng}
-        AND ${EARTH_RADIUS_KM} * ACOS(LEAST(1, GREATEST(-1,
-              COS(RADIANS(${lat})) * COS(RADIANS(latitude)) * COS(RADIANS(longitude) - RADIANS(${lng}))
-              + SIN(RADIANS(${lat})) * SIN(RADIANS(latitude))
-            ))) <= ${radiusKm}
-    `;
+  private async findIdsWithinRadius(radius: RadiusFilter): Promise<string[]> {
+    const rows = await this.client.$queryRaw<{ id: string }[]>(
+      Prisma.sql`SELECT id FROM Place WHERE ${withinRadiusSql("latitude", "longitude", radius)}`,
+    );
     return rows.map((row) => row.id);
   }
 }

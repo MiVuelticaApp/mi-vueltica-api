@@ -4,6 +4,7 @@ import { TARGET_AUDIENCES } from "@/domain/places/valueObjects/targetAudience.va
 import { contentStatusField } from "@/presentation/http/places/validators/changePlaceStatus";
 import { dateTimeField } from "./createEvent";
 import { planConditionsQueryFields } from "@/presentation/http/places/validators/planConditions";
+import { geoQueryFields, refineGeoQuery } from "@/presentation/http/core/validators/geo";
 
 export const EVENT_SORT_FIELDS = ["startsAt", "createdAt", "title"] as const;
 
@@ -31,9 +32,12 @@ export const ListEventsQuerySchema = createPaginationQuerySchema(EVENT_SORT_FIEL
     status: contentStatusField.optional(),
     q: z.string().trim().max(100, { message: "La búsqueda no puede exceder 100 caracteres" }).optional(),
     ...planConditionsQueryFields,
+    // Same params as GET /places, matched against the event's place or its own location.
+    ...geoQueryFields,
   })
   .refine((query) => !query.from || !query.to || query.from.getTime() <= query.to.getTime(), {
     path: ["to"],
     message: "from no puede ser posterior a to",
   })
+  .superRefine(refineGeoQuery)
   .transform((query) => ({ ...query, from: query.from ?? new Date() }));

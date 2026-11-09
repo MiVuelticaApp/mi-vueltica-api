@@ -5,6 +5,7 @@ import { ContentStatus, parseContentStatus } from "@/domain/places/valueObjects/
 import { TargetAudience, parseTargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
 import { PlanCommunity, PlanCommunityProps } from "@/domain/community/valueObjects/planCommunity.valueObject";
 import { PlanConditions, PlanConditionsData, PlanConditionsValue } from "@/domain/places/valueObjects/planConditions.valueObject";
+import { EventLocationValue, normalizeEventLocation } from "../valueObjects/eventLocation.valueObject";
 
 /** Editable fields shared by create and full-replace update (no status). */
 export interface EventData extends PlanConditionsData {
@@ -16,6 +17,13 @@ export interface EventData extends PlanConditionsData {
   startsAt: Date;
   endsAt?: Date | null;
   targetAudience?: TargetAudience;
+  /**
+   * The event's own location, only for events without a place (a street fair, a concert in a park).
+   * `latitude` and `longitude` go together; `address` needs them. With a `placeId` they must be absent.
+   */
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
 }
 
 /** `EventData` after running every field through its value object. */
@@ -28,11 +36,16 @@ export interface NormalizedEventData extends PlanConditionsValue {
   startsAt: Date;
   endsAt: Date | null;
   targetAudience: TargetAudience;
+  /** Own location, kept flat: submissions store this object as JSON and normalize it again on read. */
+  latitude: number | null;
+  longitude: number | null;
+  address: string | null;
 }
 
 /** Validates and normalizes editable data (trim, empty -> null, defaults). Throws `DataException`. */
 export function normalizeEventData(data: EventData): NormalizedEventData {
   const schedule = EventSchedule.create(data.startsAt, data.endsAt);
+  const location = normalizeEventLocation(data);
   return {
     placeId: data.placeId ?? null,
     categoryId: data.categoryId,
@@ -42,6 +55,9 @@ export function normalizeEventData(data: EventData): NormalizedEventData {
     startsAt: schedule.startsAt,
     endsAt: schedule.endsAt,
     targetAudience: parseTargetAudience(data.targetAudience ?? "EVERYONE"),
+    latitude: location?.latitude ?? null,
+    longitude: location?.longitude ?? null,
+    address: location?.address ?? null,
     ...PlanConditions.create(data).value,
   };
 }
@@ -58,6 +74,9 @@ export class Event {
       title: EventTitle.create(props.title),
       description: EventDescription.create(props.description),
       schedule: EventSchedule.create(props.startsAt, props.endsAt),
+      // Lenient on read: a row with a place never carries its own point (the place's is used), so a
+      // hand-edited row with both cannot break every list. Writes go through the strict `normalizeEventData`.
+      location: props.placeId ? null : normalizeEventLocation(props),
       targetAudience: parseTargetAudience(props.targetAudience),
       conditions: PlanConditions.create(props),
       status: parseContentStatus(props.status),
@@ -75,6 +94,8 @@ export class Event {
   get description() { return this.props.description.value; }
   get startsAt() { return this.props.schedule.startsAt; }
   get endsAt() { return this.props.schedule.endsAt; }
+  /** The event's own location: null when it has a place or no location at all (see `resolveEventLocation`). */
+  get location() { return this.props.location; }
   get targetAudience() { return this.props.targetAudience; }
   get pricePerPerson() { return this.props.conditions.value.pricePerPerson; }
   get priceTier() { return this.props.conditions.priceTier; }
@@ -83,6 +104,8 @@ export class Event {
   get wheelchair() { return this.props.conditions.value.wheelchair; }
   get status() { return this.props.status; }
   get authorId() { return this.props.community.authorId; }
+  /** "Ana M.", "Anónimo" or null (see `planAuthorName`). */
+  get authorName() { return this.props.community.authorName; }
   get hiddenReason() { return this.props.community.hiddenReason; }
   get reportedAt() { return this.props.community.reportedAt; }
 
@@ -101,6 +124,7 @@ export class Event {
     this.props.title = EventTitle.create(normalized.title);
     this.props.description = EventDescription.create(normalized.description);
     this.props.schedule = EventSchedule.create(normalized.startsAt, normalized.endsAt);
+    this.props.location = normalizeEventLocation(normalized);
     this.props.targetAudience = normalized.targetAudience;
     this.props.conditions = PlanConditions.create(normalized);
   }
@@ -121,6 +145,7 @@ export interface EventProps {
   title: EventTitle;
   description: EventDescription;
   schedule: EventSchedule;
+  location: EventLocationValue | null;
   targetAudience: TargetAudience;
   conditions: PlanConditions;
   status: ContentStatus;
@@ -138,6 +163,9 @@ export interface EventConstructorProps extends PlanCommunityProps {
   description?: string | null;
   startsAt: Date;
   endsAt?: Date | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
   targetAudience: TargetAudience;
   pricePerPerson: number | null;
   freeFor: PlanConditionsValue["freeFor"];

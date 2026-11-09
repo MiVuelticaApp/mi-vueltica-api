@@ -6,8 +6,15 @@ import { CONTENT_STATUSES } from "@/domain/places/valueObjects/contentStatus.val
 
 export { SUBMISSION_SORT_FIELDS };
 
-/** GET /me/submissions — the author's own submissions (newest first by default). */
-export const ListMySubmissionsQuerySchema = createPaginationQuerySchema(SUBMISSION_SORT_FIELDS);
+/**
+ * GET /me/submissions — the author's own submissions (newest first by default). `status` / `type` are optional
+ * filters with no default, so without them every submission is listed (the app asks for `status=PENDING` to draw
+ * its "Pendiente" pins).
+ */
+export const ListMySubmissionsQuerySchema = createPaginationQuerySchema(SUBMISSION_SORT_FIELDS).extend({
+  status: z.enum(CONTENT_STATUSES, { error: `status debe ser uno de: ${CONTENT_STATUSES.join(", ")}` }).optional(),
+  type: z.enum(SUBMISSION_TYPES, { error: `type debe ser uno de: ${SUBMISSION_TYPES.join(", ")}` }).optional(),
+});
 
 /** GET /submissions — moderation queue (PENDING and oldest first by default). */
 export const ListSubmissionsQuerySchema = createPaginationQuerySchema(SUBMISSION_SORT_FIELDS).extend({

@@ -112,7 +112,11 @@ export const photoGalleryUOW = new PrismaPhotoGalleryUnitOfWork();
 
 // providers
 export const idGenerator = new UuidIDGenerator();
-export const googleOAuthProvider = new GoogleOAuthProvider();
+export const googleOAuthProvider = new GoogleOAuthProvider([
+  ENV.GOOGLE_IOS_CLIENT_ID,
+  ENV.GOOGLE_ANDROID_CLIENT_ID,
+  ENV.GOOGLE_WEB_CLIENT_ID,
+]);
 export const appleOAuthProvider = new AppleOAuthProvider(
   ENV.APPLE_TEAM_ID,
   ENV.APPLE_KEY_ID,
@@ -143,9 +147,9 @@ export const categoryService = new CategoryService(categoryRepository);
 export const provinceService = new ProvinceService(provinceRepository);
 export const cantonService = new CantonService(cantonRepository, provinceRepository);
 export const sourceService = new SourceService(sourceRepository);
-export const placeService = new PlaceService(placeRepository, categoryRepository, sourceRepository);
+export const placeService = new PlaceService(placeRepository, cantonRepository, categoryRepository, sourceRepository);
 export const eventService = new EventService(eventRepository, placeRepository, categoryRepository, sourceRepository);
-export const favoriteService = new FavoriteService(favoriteRepository, placeRepository);
+export const favoriteService = new FavoriteService(favoriteRepository, placeRepository, eventRepository);
 export const deviceService = new DeviceService(deviceRepository);
 export const notificationService = new NotificationService(notificationRepository);
 export const uploadService: IUploadService = new UploadService(
@@ -167,7 +171,7 @@ export const communityService: ICommunityService = new CommunityService(
   uploadService,
 );
 export const photoService: IPhotoService = new PhotoService(photoRepository, photoGalleryUOW, placeRepository, eventRepository, uploadService);
-export const submissionService = new SubmissionService(submissionRepository, placeRepository, categoryRepository, submissionApprovalUOW, uploadService);
+export const submissionService = new SubmissionService(submissionRepository, placeRepository, cantonRepository, categoryRepository, submissionApprovalUOW, uploadService);
 export const userInterestService = new UserInterestService(userRepository, userInterestRepository, categoryRepository);
 export const oAuthService = new OAuthService(userService, googleOAuthProvider, appleOAuthProvider, idGenerator);
 
@@ -207,7 +211,7 @@ export const provinceController = new ProvinceController(provinceService);
 export const cantonController = new CantonController(cantonService);
 export const sourceController = new SourceController(sourceService);
 export const placeController = new PlaceController(placeService, favoriteService, communityService);
-export const eventController = new EventController(eventService, communityService);
+export const eventController = new EventController(eventService, favoriteService, communityService);
 export const favoriteController = new FavoriteController(favoriteService);
 export const reviewController = new ReviewController(reviewService);
 export const communityController = new CommunityController(communityService);

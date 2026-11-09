@@ -1,3 +1,4 @@
+import { PlanStatsResponse } from "@/presentation/http/core/responses/PlanStatsResponse";
 import { VerificationFieldsResponse } from "@/presentation/http/community/responses/CommunityResponses";
 import { RatingFieldsResponse } from "@/presentation/http/reviews/responses/RatingSummaryResponse";
 import { TargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
@@ -14,6 +15,15 @@ export interface EventResponse {
   description: string | null;
   startsAt: string;
   endsAt: string | null;
+  /**
+   * Where the event is on the map: the place's point when `placeId` is set, otherwise the event's own
+   * location; all three null when it has neither. Write them only for events without a place.
+   */
+  latitude: number | null;
+  longitude: number | null;
+  address: string | null;
+  /** Null when the event has no place or the caller may not see it (not PUBLISHED). */
+  place: PlaceSummaryResponse | null;
   targetAudience: TargetAudience;
   /** Colones per person; 0 = free, null = unknown. */
   pricePerPerson: number | null;
@@ -26,9 +36,14 @@ export interface EventResponse {
   status: ContentStatus;
   /** Why the plan is hidden (ARCHIVED by verifications, reports or moderation); null otherwise. */
   hiddenReason: string | null;
+  /** Who contributed it: "Ana M." (first name + surname initial), "Anónimo" for a community plan without a known author, null for team content. */
+  authorName: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+/** An event in a list (or a saved event): the event plus its card stats. */
+export type EventCardResponse = EventResponse & PlanStatsResponse;
 
 export interface PlaceSummaryResponse {
   id: string;
@@ -47,10 +62,10 @@ export interface EventPhotoResponse {
 }
 
 export interface EventDetailResponse extends EventResponse, RatingFieldsResponse, VerificationFieldsResponse {
-  /** Null when the event has no place or the caller may not see it (not PUBLISHED). */
-  place: PlaceSummaryResponse | null;
   /** The event's own gallery, ordered by `position` ascending. */
   photos: EventPhotoResponse[];
+  /** Whether the authenticated caller saved it. Omitted for anonymous callers. */
+  isFavorite?: boolean;
   /** Whether the authenticated caller is the author (their submission created it). Omitted for anonymous callers. */
   isMine?: boolean;
 }

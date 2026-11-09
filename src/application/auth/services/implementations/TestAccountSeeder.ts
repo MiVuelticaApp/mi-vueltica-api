@@ -4,12 +4,9 @@ import { IUserService } from "@/application/users/services/interfaces/IUserServi
 
 
 /**
- * Seeds a fresh review account with a demo company and some sample data, so App Store / Google
- * Play reviewers land on a populated app instead of an empty one. Runs once, on the first
- * test-login of a brand new user (see TestLoginService) — never on subsequent logins.
- *
- * Stays well under the FREE plan limits (`PlanCatalog.ts`): 4 clients, 4 products and 3 orders
- * are nowhere near the 25 clients / 20 products / 10 documents-per-month ceiling.
+ * Hook to seed a fresh review account with sample data, so App Store / Google Play reviewers land
+ * on a populated app instead of an empty one. Runs once, on the first test login of a brand new
+ * user (see TestLoginService), never on later logins. It is a placeholder: it writes nothing yet.
  */
 export class TestAccountSeeder implements ITestAccountSeeder {
   constructor(
@@ -18,9 +15,8 @@ export class TestAccountSeeder implements ITestAccountSeeder {
 
   async seed(userId: string): Promise<void> {
     try {
-      // Idempotency guard: only seed a user that exists and has no company yet. A retried
-      // login, or a redeploy that re-runs this against the same account, must not duplicate
-      // the demo data.
+      // Idempotency guard for when it writes data: a retried login, or a redeploy that re-runs it
+      // against the same account, must not duplicate the sample data.
       const user = await this.usersService.find(userId);
       if (!user) return;
 

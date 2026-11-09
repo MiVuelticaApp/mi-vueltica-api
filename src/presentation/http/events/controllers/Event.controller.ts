@@ -5,6 +5,8 @@ import { EventListFilters } from "@/domain/events/repositories/IEventRepository"
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { getValidated } from "@/presentation/http/core/middlewares/validateSchema";
 import { toPaginationParams } from "@/presentation/http/core/validators/pagination";
+import { toGeoFilters } from "@/presentation/http/core/validators/geo";
+import { IFavoriteService } from "@/application/favorites/services/interfaces/IFavoriteService";
 import { toPaginatedResponse } from "@/presentation/http/core/mappers/Pagination.mapper";
 import { ListEventsQuerySchema } from "../validators/listEvents";
 import { CreateEventRequest } from "../requests/CreateEventRequest";
@@ -28,6 +30,7 @@ function canSeeUnpublished(req: Request): boolean {
 export default class EventController {
   constructor(
     private readonly eventService: IEventService,
+    private readonly favoriteService: IFavoriteService,
     private readonly communityService: ICommunityService,
   ) {}
 
@@ -50,10 +53,11 @@ export default class EventController {
       seniors: query.seniors,
       families: query.families,
       wheelchair: query.wheelchair,
+      ...toGeoFilters(query),
     };
 
     const result = await this.eventService.list(toPaginationParams(query), filters);
-    res.json(toPaginatedResponse(result, EventDtoMapper.toResponse));
+    res.json(toPaginatedResponse(result, EventDtoMapper.toCardResponse));
   }
 
   async get(req: Request, res: Response): Promise<void> {
@@ -64,8 +68,11 @@ export default class EventController {
     });
     const verification = await this.communityService.verificationSummary({ type: "EVENT", id }, optionalPerson(req));
     const response = EventDtoMapper.toDetailResponse(detail, verification);
-    // `isMine` is only present for authenticated callers.
-    if (req.user) response.isMine = detail.event.isAuthoredBy(req.user.id);
+    // `isFavorite` and `isMine` are only present for authenticated callers.
+    if (req.user) {
+      response.isFavorite = await this.favoriteService.isFavorite(req.user.id, { type: "EVENT", id });
+      response.isMine = detail.event.isAuthoredBy(req.user.id);
+    }
     res.json(response);
   }
 
