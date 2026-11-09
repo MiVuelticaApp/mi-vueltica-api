@@ -24,7 +24,6 @@ const NODE_ENV = process.env.NODE_ENV || "development";
 const ENV = {
   NODE_ENV,
   PORT: process.env.PORT || 3000,
-  DATABASE_URL: process.env.DATABASE_URL || "mongodb://localhost:27017/myapp",
   JWT_SECRET: process.env.JWT_SECRET || "your_jwt_secret",
   RESEND_API_KEY: required("RESEND_API_KEY"),
   MAIL_FROM: required("MAIL_FROM"),
@@ -94,7 +93,7 @@ function validateTestLoginConfig(): void {
   console.warn(
     "\n" +
     "==================== WARNING: TEST LOGIN ENABLED ====================\n" +
-    "Password login (POST /auth/test-login) is ENABLED on this deployment.\n" +
+    "Password login (POST /auth/qa) is ENABLED on this deployment.\n" +
     "This exists ONLY for App Store / Google Play review.\n" +
     "TURN IT OFF (TEST_LOGIN_ENABLED=false) AS SOON AS THE APP IS APPROVED.\n" +
     "======================================================================\n"
