@@ -4,7 +4,6 @@ export class ReportAlreadyExistsError extends ApplicationError {
   constructor(message?: string) {
     super(message || "Ya reportaste este plan");
     this.name = "ReportAlreadyExistsError";
-    this.stack = new Error().stack;
     this.statusCode = 409;
     this.status = 'fail';
     this.isOperational = true;
