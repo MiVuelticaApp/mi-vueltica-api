@@ -2,6 +2,7 @@ import { ISubmissionRepository } from "@/domain/submissions/repositories/ISubmis
 import { IPlaceRepository } from "@/domain/places/repositories/IPlaceRepository";
 import { IEventRepository } from "@/domain/events/repositories/IEventRepository";
 import { ICategoryRepository } from "@/domain/categories/repositories/ICategoryRepository";
+import { ICantonRepository } from "@/domain/geography/repositories/ICantonRepository";
 import { ISourceRepository } from "@/domain/sources/repositories/ISourceRepository";
 import { IPhotoRepository } from "@/domain/photos/repositories/IPhotoRepository";
 
@@ -21,6 +22,7 @@ export interface ISubmissionApprovalContext {
   getSubmissionRepository(): ISubmissionRepository;
   getPlaceRepository(): IPlaceRepository;
   getEventRepository(): IEventRepository;
+  getCantonRepository(): ICantonRepository;
   getCategoryRepository(): ICategoryRepository;
   getSourceRepository(): ISourceRepository;
   getPhotoRepository(): IPhotoRepository;
