@@ -1,7 +1,9 @@
 import { Event } from "@/domain/events/entities/Event";
-import { PlaceSummary } from "@/domain/events/entities/EventDetail";
+import { EventListItem, PlaceSummary, toEventListItem } from "@/domain/events/entities/EventDetail";
 import { planConditionsFromColumns } from "@/infrastructure/core/repositories/planConditions";
 import { Event as PrismaEvent, Place as PrismaPlace } from "@/infrastructure/prisma/generated/prisma/client";
+
+export type PrismaEventWithPlace = PrismaEvent & { place: PrismaPlace | null };
 
 export class PrismaEventMapper {
   static toDomain(row: PrismaEvent): Event {
@@ -14,6 +16,10 @@ export class PrismaEventMapper {
       description: row.description,
       startsAt: row.startsAt,
       endsAt: row.endsAt,
+      // Prisma `Decimal` -> number (same as Place).
+      latitude: row.latitude ? row.latitude.toNumber() : null,
+      longitude: row.longitude ? row.longitude.toNumber() : null,
+      address: row.address,
       targetAudience: row.targetAudience,
       ...planConditionsFromColumns(row),
       status: row.status,
@@ -23,6 +29,14 @@ export class PrismaEventMapper {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });
+  }
+
+  /** The event plus its place summary and resolved location (no visibility rule applied). */
+  static toListItem(row: PrismaEventWithPlace): EventListItem {
+    return toEventListItem(
+      PrismaEventMapper.toDomain(row),
+      row.place ? PrismaEventMapper.placeSummaryToDomain(row.place) : null,
+    );
   }
 
   static placeSummaryToDomain(row: PrismaPlace): PlaceSummary {
