@@ -1,6 +1,6 @@
 import { CreatePlanOptions } from "@/domain/community/valueObjects/planCommunity.valueObject";
 import { Event, NormalizedEventData } from "@/domain/events/entities/Event";
-import { EventDetail, EventListItem } from "@/domain/events/entities/EventDetail";
+import { EventCard, EventDetail, EventListItem } from "@/domain/events/entities/EventDetail";
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { PlanConditionsFilters } from "@/domain/places/valueObjects/planConditions.valueObject";
 import { TargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
@@ -33,7 +33,7 @@ export interface EventListFilters extends PlanConditionsFilters, GeoFilters {
 
 export interface IEventRepository {
   /** Items carry the place summary as loaded (any status); the service applies the visibility rule. */
-  list(params: PaginationParams, filters?: EventListFilters): Promise<PaginatedResult<EventListItem>>;
+  list(params: PaginationParams, filters?: EventListFilters): Promise<PaginatedResult<EventCard>>;
   find(id: string): Promise<Event | null>;
   /** Same as `find` plus the place summary and resolved location. */
   findItem(id: string): Promise<EventListItem | null>;

@@ -1,7 +1,8 @@
 import { VerificationSummary } from "@/domain/community/entities/Verification";
 import CommunityDtoMapper from "@/presentation/http/community/mappers/Community.mapper";
-import { EventDetail, EventListItem, PlaceSummary } from "@/domain/events/entities/EventDetail";
-import { EventDetailResponse, EventResponse, PlaceSummaryResponse } from "../responses/EventResponse";
+import { EventCard, EventDetail, EventListItem, PlaceSummary } from "@/domain/events/entities/EventDetail";
+import { toPlanStatsResponse } from "@/presentation/http/core/mappers/PlanStats.mapper";
+import { EventCardResponse, EventDetailResponse, EventResponse, PlaceSummaryResponse } from "../responses/EventResponse";
 import RatingSummaryDtoMapper from "@/presentation/http/reviews/mappers/RatingSummary.mapper";
 
 export default class EventDtoMapper {
@@ -32,6 +33,11 @@ export default class EventDtoMapper {
       createdAt: event.createdAt.toISOString(),
       updatedAt: event.updatedAt.toISOString(),
     };
+  }
+
+  /** Lists and saved events: the event plus its card stats (rating and cover photo). */
+  static toCardResponse(card: EventCard): EventCardResponse {
+    return { ...EventDtoMapper.toResponse(card), ...toPlanStatsResponse(card.stats) };
   }
 
   static toDetailResponse(detail: EventDetail, verification: VerificationSummary): EventDetailResponse {

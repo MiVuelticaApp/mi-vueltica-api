@@ -1,5 +1,5 @@
 import { Event, EventData, normalizeEventData } from "@/domain/events/entities/Event";
-import { EventDetail, EventListItem, withVisiblePlace } from "@/domain/events/entities/EventDetail";
+import { EventCard, EventDetail, EventListItem, withVisiblePlace } from "@/domain/events/entities/EventDetail";
 import { IEventRepository, EventListFilters } from "@/domain/events/repositories/IEventRepository";
 import { IPlaceRepository } from "@/domain/places/repositories/IPlaceRepository";
 import { ICategoryRepository } from "@/domain/categories/repositories/ICategoryRepository";
@@ -20,7 +20,7 @@ export class EventService implements IEventService {
     private readonly sourceRepository: ISourceRepository,
   ) {}
 
-  async list(params: PaginationParams, filters?: EventListFilters): Promise<PaginatedResult<EventListItem>> {
+  async list(params: PaginationParams, filters?: EventListFilters): Promise<PaginatedResult<EventCard>> {
     const result = await this.eventRepository.list(params, filters);
     // Same rule as `get`: do not leak a place that the caller is not allowed to see.
     return { ...result, items: result.items.map((item) => withVisiblePlace(item, filters?.statuses)) };

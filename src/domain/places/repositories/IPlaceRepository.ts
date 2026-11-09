@@ -1,6 +1,7 @@
 import { CreatePlanOptions } from "@/domain/community/valueObjects/planCommunity.valueObject";
 import { Place, NormalizedPlaceData } from "@/domain/places/entities/Place";
 import { PlaceDetail } from "@/domain/places/entities/PlaceDetail";
+import { PlaceCard } from "@/domain/places/entities/PlaceCard";
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { PlanConditionsFilters } from "@/domain/places/valueObjects/planConditions.valueObject";
 import { TargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
@@ -22,7 +23,8 @@ export interface PlaceListFilters extends PlanConditionsFilters, GeoFilters {
 }
 
 export interface IPlaceRepository {
-  list(params: PaginationParams, filters?: PlaceListFilters): Promise<PaginatedResult<Place>>;
+  /** Each item carries its card stats (PUBLISHED rating and cover photo). */
+  list(params: PaginationParams, filters?: PlaceListFilters): Promise<PaginatedResult<PlaceCard>>;
   find(id: string): Promise<Place | null>;
   findDetail(id: string): Promise<PlaceDetail | null>;
   /** New places are always created as PENDING. */

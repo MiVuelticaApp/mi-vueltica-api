@@ -1,3 +1,4 @@
+import { PlanStatsResponse } from "@/presentation/http/core/responses/PlanStatsResponse";
 import { VerificationFieldsResponse } from "@/presentation/http/community/responses/CommunityResponses";
 import { OpeningHoursValue } from "@/domain/places/valueObjects/openingHours.valueObject";
 import { TargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
@@ -39,6 +40,9 @@ export interface PlacePhotoResponse {
   url: string;
   position: number;
 }
+
+/** A place in a list (or a saved place): the place plus its card stats. */
+export type PlaceCardResponse = PlaceResponse & PlanStatsResponse;
 
 export interface PlaceDetailResponse extends PlaceResponse, VerificationFieldsResponse {
   /** Ordered by `position` ascending. */

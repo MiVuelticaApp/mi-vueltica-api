@@ -57,7 +57,7 @@ export default class EventController {
     };
 
     const result = await this.eventService.list(toPaginationParams(query), filters);
-    res.json(toPaginatedResponse(result, EventDtoMapper.toResponse));
+    res.json(toPaginatedResponse(result, EventDtoMapper.toCardResponse));
   }
 
   async get(req: Request, res: Response): Promise<void> {

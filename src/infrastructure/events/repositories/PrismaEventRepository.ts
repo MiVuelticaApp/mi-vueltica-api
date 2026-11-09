@@ -1,6 +1,6 @@
 import { CreatePlanOptions } from "@/domain/community/valueObjects/planCommunity.valueObject";
 import { Event, NormalizedEventData } from "@/domain/events/entities/Event";
-import { EventDetail, EventListItem } from "@/domain/events/entities/EventDetail";
+import { EventCard, EventDetail, EventListItem } from "@/domain/events/entities/EventDetail";
 import { IEventRepository, EventListFilters } from "@/domain/events/repositories/IEventRepository";
 import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
 import { BoundingBox, RadiusFilter } from "@/domain/core/geo/GeoFilters";
@@ -13,6 +13,7 @@ import { PrismaPhotoMapper } from "@/infrastructure/photos/mappers/PrismaPhotoMa
 import { planConditionsToColumns, planConditionsWhere } from "@/infrastructure/core/repositories/planConditions";
 import { withinRadiusSql } from "@/infrastructure/core/repositories/geo";
 import { PLAN_AUTHOR_INCLUDE } from "@/infrastructure/core/repositories/planAuthor";
+import { COVER_PHOTO_INCLUDE, publishedRatingsFor, toPlanStats } from "@/infrastructure/core/repositories/planStats";
 import { publishedRatingSummary } from "@/infrastructure/reviews/repositories/ratingSummary";
 import { PrismaEventMapper } from "../mappers/PrismaEventMapper";
 
@@ -24,10 +25,10 @@ export default class PrismaEventRepository implements IEventRepository {
     this.client = client || prisma;
   }
 
-  async list(params: PaginationParams, filters: EventListFilters = {}): Promise<PaginatedResult<EventListItem>> {
+  async list(params: PaginationParams, filters: EventListFilters = {}): Promise<PaginatedResult<EventCard>> {
     try {
       const where = await this.buildWhere(filters);
-      return await paginate(
+      const page = await paginate(
         this.client as Parameters<typeof paginate>[0],
         params,
         {
@@ -35,7 +36,7 @@ export default class PrismaEventRepository implements IEventRepository {
             tx.event.findMany({
               where,
               // The place summary is embedded so clients need no request per place (#37).
-              include: { place: true, ...PLAN_AUTHOR_INCLUDE },
+              include: { place: true, ...PLAN_AUTHOR_INCLUDE, ...COVER_PHOTO_INCLUDE },
               skip: page.skip,
               take: page.take,
               // `id` as tie-breaker keeps pagination stable when the sort field has duplicates.
@@ -43,8 +44,14 @@ export default class PrismaEventRepository implements IEventRepository {
             }),
           count: (tx) => tx.event.count({ where }),
         },
-        PrismaEventMapper.toListItem,
+        (row) => ({ row, item: PrismaEventMapper.toListItem(row) }),
       );
+      // Card stats: the cover came with the page; the ratings of the whole page in one grouped query.
+      const ratings = await publishedRatingsFor(this.client, "event", page.items.map(({ item }) => item.event.id));
+      return {
+        ...page,
+        items: page.items.map(({ row, item }) => ({ ...item, stats: toPlanStats(row, ratings.get(item.event.id)) })),
+      };
     } catch (error) {
       console.error("Error listing events:", error);
       throw new DatabaseError("Could not list events", error);

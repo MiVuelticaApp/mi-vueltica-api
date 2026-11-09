@@ -320,6 +320,25 @@ const galleryPaths = (kind: "place" | "event") => {
 };
 
 /** PUBLISHED reviews per star. */
+/** Card stats of list items (PlaceCard / EventCard). Same rating rules as the detail, without the distribution. */
+const planStatsSchema = {
+  type: "object",
+  properties: {
+    averageRating: {
+      type: ["number", "null"],
+      minimum: 1,
+      maximum: 5,
+      description: "Mean of PUBLISHED reviews rounded to 2 decimals; null when there are none",
+    },
+    reviewCount: { type: "integer", minimum: 0, description: "Number of PUBLISHED reviews" },
+    coverPhotoUrl: {
+      type: ["string", "null"],
+      description: "First photo of the gallery (lowest position), for the card's thumbnail; null without photos",
+    },
+  },
+  required: ["averageRating", "reviewCount", "coverPhotoUrl"],
+};
+
 const ratingDistributionSchema = {
   type: "array",
   minItems: MAX_RATING,
@@ -1251,8 +1270,8 @@ const paths: Record<string, Record<string, unknown>> = {
       ],
       responses: {
         200: {
-          description: "Page of places",
-          content: { "application/json": { schema: paginated("Place") } },
+          description: "Page of places (each with its card stats: rating and cover photo)",
+          content: { "application/json": { schema: paginated("PlaceCard") } },
         },
         400: responseRef("BadRequest"),
       },
@@ -1409,8 +1428,8 @@ const paths: Record<string, Record<string, unknown>> = {
       ],
       responses: {
         200: {
-          description: "Page of events",
-          content: { "application/json": { schema: paginated("Event") } },
+          description: "Page of events (each with its card stats: rating and cover photo)",
+          content: { "application/json": { schema: paginated("EventCard") } },
         },
         400: responseRef("BadRequest"),
       },
@@ -2342,11 +2361,19 @@ const openApiDocument = {
         description: "A saved place or event: exactly one of `place` / `event` is set, as told by `type`.",
         properties: {
           type: { type: "string", enum: ["PLACE", "EVENT"] },
-          place: { oneOf: [{ $ref: "#/components/schemas/Place" }, { type: "null" }], description: "Set when `type` is PLACE" },
-          event: { oneOf: [{ $ref: "#/components/schemas/Event" }, { type: "null" }], description: "Set when `type` is EVENT" },
+          place: { oneOf: [{ $ref: "#/components/schemas/PlaceCard" }, { type: "null" }], description: "Set when `type` is PLACE" },
+          event: { oneOf: [{ $ref: "#/components/schemas/EventCard" }, { type: "null" }], description: "Set when `type` is EVENT" },
           createdAt: { type: "string", format: "date-time", description: "When the user saved it" },
         },
         required: ["type", "place", "event", "createdAt"],
+      },
+      PlaceCard: {
+        description: "A place in a list or in the saved items, with what its card shows.",
+        allOf: [{ $ref: "#/components/schemas/Place" }, planStatsSchema],
+      },
+      EventCard: {
+        description: "An event in a list or in the saved items, with what its card shows.",
+        allOf: [{ $ref: "#/components/schemas/Event" }, planStatsSchema],
       },
       PlaceDetail: {
         allOf: [

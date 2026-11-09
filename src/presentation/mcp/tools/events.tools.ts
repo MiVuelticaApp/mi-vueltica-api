@@ -15,7 +15,7 @@ import { EventListFilters } from "@/domain/events/repositories/IEventRepository"
 import { MAX_RADIUS_KM } from "@/presentation/http/core/validators/geo";
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/domain/core/pagination/Pagination";
 import { toPaginatedResponse } from "@/presentation/http/core/mappers/Pagination.mapper";
-import { planConditionsInput, planConditionsOutput } from "../utils/planConditions";
+import { planConditionsInput, planConditionsOutput, planStatsOutput } from "../utils/planConditions";
 import { toolError, toolErrorMessage, toolOk } from "../utils/toolResult";
 
 const eventOutput = {
@@ -50,7 +50,7 @@ const eventOutput = {
 };
 
 const paginatedEventsOutput = {
-  data: z.array(z.object(eventOutput)),
+  data: z.array(z.object({ ...eventOutput, ...planStatsOutput })),
   page: z.number().int(),
   pageSize: z.number().int(),
   total: z.number().int(),
@@ -193,7 +193,7 @@ export function registerEventTools(server: McpServer, eventService: IEventServic
         { page: args.page, pageSize: args.pageSize, sort: { field: "startsAt", direction: "asc" } },
         built.filters,
       );
-      return toolOk({ ...toPaginatedResponse(result, EventDtoMapper.toResponse) });
+      return toolOk({ ...toPaginatedResponse(result, EventDtoMapper.toCardResponse) });
     } catch (error) {
       return toolError(error);
     }
