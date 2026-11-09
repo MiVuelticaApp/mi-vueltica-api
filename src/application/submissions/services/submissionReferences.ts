@@ -1,12 +1,14 @@
 import { SubmissionPayload } from "@/domain/submissions/entities/SubmissionPayload";
 import { IPlaceRepository } from "@/domain/places/repositories/IPlaceRepository";
 import { ICategoryRepository } from "@/domain/categories/repositories/ICategoryRepository";
+import { ICantonRepository } from "@/domain/geography/repositories/ICantonRepository";
 import { InvalidCantonError } from "@/application/places/errors/InvalidCantonError";
 import { InvalidCategoryError } from "@/application/places/errors/InvalidCategoryError";
 import { InvalidPlaceError } from "@/application/events/errors/InvalidPlaceError";
 
 export interface SubmissionReferenceRepositories {
   placeRepository: IPlaceRepository;
+  cantonRepository: ICantonRepository;
   categoryRepository: ICategoryRepository;
 }
 
@@ -17,10 +19,10 @@ export interface SubmissionReferenceRepositories {
  */
 export async function ensureSubmissionReferencesExist(
   payload: SubmissionPayload,
-  { placeRepository, categoryRepository }: SubmissionReferenceRepositories,
+  { placeRepository, cantonRepository, categoryRepository }: SubmissionReferenceRepositories,
 ): Promise<void> {
   if (payload.type === "PLACE") {
-    if (!(await placeRepository.cantonExists(payload.data.cantonId))) throw new InvalidCantonError();
+    if (!(await cantonRepository.find(payload.data.cantonId))) throw new InvalidCantonError();
   } else if (payload.data.placeId && !(await placeRepository.find(payload.data.placeId))) {
     throw new InvalidPlaceError();
   }
