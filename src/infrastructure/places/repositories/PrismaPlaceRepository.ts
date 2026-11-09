@@ -17,6 +17,7 @@ import { PrismaPlaceMapper } from "../mappers/PrismaPlaceMapper";
 import { publishedRatingSummary } from "@/infrastructure/reviews/repositories/ratingSummary";
 import { PrismaPhotoMapper } from "@/infrastructure/photos/mappers/PrismaPhotoMapper";
 import { withinRadiusSql } from "@/infrastructure/core/repositories/geo";
+import { PLAN_AUTHOR_INCLUDE } from "@/infrastructure/core/repositories/planAuthor";
 
 export default class PrismaPlaceRepository implements IPlaceRepository {
 
@@ -36,6 +37,7 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
           findMany: (tx, page) =>
             tx.place.findMany({
               where,
+              include: PLAN_AUTHOR_INCLUDE,
               skip: page.skip,
               take: page.take,
               // `id` as tie-breaker keeps pagination stable when the sort field has duplicates.
@@ -53,7 +55,7 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
 
   async find(id: string): Promise<Place | null> {
     try {
-      const row = await this.client.place.findUnique({ where: { id } });
+      const row = await this.client.place.findUnique({ where: { id }, include: PLAN_AUTHOR_INCLUDE });
       return row ? PrismaPlaceMapper.toDomain(row) : null;
     } catch (error) {
       console.error("Error finding place:", error);
@@ -66,7 +68,7 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
       const [row, rating] = await Promise.all([
         this.client.place.findUnique({
           where: { id },
-          include: { photos: { orderBy: [{ position: "asc" }, { id: "asc" }] } },
+          include: { ...PLAN_AUTHOR_INCLUDE, photos: { orderBy: [{ position: "asc" }, { id: "asc" }] } },
         }),
         publishedRatingSummary(this.client, { placeId: id }),
       ]);
@@ -85,6 +87,7 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
   async create(data: NormalizedPlaceData, options: CreatePlanOptions = {}): Promise<Place> {
     try {
       const row = await this.client.place.create({
+        include: PLAN_AUTHOR_INCLUDE,
         data: {
           cantonId: data.cantonId,
           categoryId: data.categoryId,
