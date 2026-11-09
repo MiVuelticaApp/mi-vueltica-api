@@ -1,5 +1,5 @@
-import { Event, EventData } from "@/domain/events/entities/Event";
-import { EventDetail } from "@/domain/events/entities/EventDetail";
+import { EventData } from "@/domain/events/entities/Event";
+import { EventCard, EventDetail, EventListItem } from "@/domain/events/entities/EventDetail";
 import { EventListFilters } from "@/domain/events/repositories/IEventRepository";
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
@@ -17,11 +17,12 @@ export interface EventVisibilityOptions {
 }
 
 export interface IEventService {
-  list(params: PaginationParams, filters?: EventListFilters): Promise<PaginatedResult<Event>>;
+  /** `filters.statuses` also hides the place summary of places outside those statuses (the location stays). */
+  list(params: PaginationParams, filters?: EventListFilters): Promise<PaginatedResult<EventCard>>;
   /** Throws `EventNotFoundError` when missing or hidden by `options.statuses`. */
   get(id: string, options?: EventVisibilityOptions): Promise<EventDetail>;
-  create(data: EventInput): Promise<Event>;
-  update(id: string, data: EventInput): Promise<Event>;
-  changeStatus(id: string, status: ContentStatus): Promise<Event>;
+  create(data: EventInput): Promise<EventListItem>;
+  update(id: string, data: EventInput): Promise<EventListItem>;
+  changeStatus(id: string, status: ContentStatus): Promise<EventListItem>;
   delete(id: string): Promise<void>;
 }

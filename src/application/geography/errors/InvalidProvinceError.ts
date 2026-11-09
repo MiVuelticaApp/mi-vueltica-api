@@ -5,7 +5,6 @@ export class InvalidProvinceError extends ApplicationError {
   constructor(message?: string) {
     super(message || "La provincia indicada no existe");
     this.name = "InvalidProvinceError";
-    this.stack = new Error().stack;
     this.statusCode = 422;
     this.status = 'fail';
     this.isOperational = true;

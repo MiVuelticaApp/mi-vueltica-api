@@ -33,16 +33,6 @@ export default class MyProfileController {
     res.json(UserDtoMapper.toMyProfileResponse(user, await this.userInterestService.list(id)));
   }
 
-  async logout(req: Request, res: Response) {
-    // Invalidate user session or token here if applicable
-    req.logout((err) => {
-      if (err) {
-        return res.status(500).json({ message: "Error logging out" });
-      }
-      res.status(200).json({ message: "Logged out successfully" });
-    });
-  }
-
   async deleteAccount(req: Request, res: Response): Promise<void> {
     const { appleAuthCode } = req.body ?? {};
     const { id } = getAuthUser(req);

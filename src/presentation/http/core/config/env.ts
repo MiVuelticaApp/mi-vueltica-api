@@ -24,7 +24,6 @@ const NODE_ENV = process.env.NODE_ENV || "development";
 const ENV = {
   NODE_ENV,
   PORT: process.env.PORT || 3000,
-  DATABASE_URL: process.env.DATABASE_URL || "mongodb://localhost:27017/myapp",
   JWT_SECRET: process.env.JWT_SECRET || "your_jwt_secret",
   RESEND_API_KEY: required("RESEND_API_KEY"),
   MAIL_FROM: required("MAIL_FROM"),
@@ -33,6 +32,12 @@ const ENV = {
   TEST_LOGIN_ENABLED: process.env.TEST_LOGIN_ENABLED === "true",
   TEST_LOGIN_EMAIL: process.env.TEST_LOGIN_EMAIL || "",
   TEST_LOGIN_PASSWORD: process.env.TEST_LOGIN_PASSWORD || "",
+  // Google Sign In: id tokens are accepted when their audience is one of these client ids. Not
+  // required() so a deployment without them still boots; with none set, Google login is rejected.
+  // GOOGLE_WEB_CLIENT_ID is the audience of Android tokens (the app sets `webClientId`, #35).
+  GOOGLE_IOS_CLIENT_ID: process.env.GOOGLE_IOS_CLIENT_ID || "",
+  GOOGLE_ANDROID_CLIENT_ID: process.env.GOOGLE_ANDROID_CLIENT_ID || "",
+  GOOGLE_WEB_CLIENT_ID: process.env.GOOGLE_WEB_CLIENT_ID || "",
   // Apple Sign In. Deliberately NOT required(): an existing deployment without these must
   // still boot. Used both to verify Apple id tokens at login and to revoke tokens at
   // DELETE /api/v1/me (App Review 5.1.1(v)). AppleOAuthProvider silently skips revocation
@@ -94,7 +99,7 @@ function validateTestLoginConfig(): void {
   console.warn(
     "\n" +
     "==================== WARNING: TEST LOGIN ENABLED ====================\n" +
-    "Password login (POST /auth/test-login) is ENABLED on this deployment.\n" +
+    "Password login (POST /auth/qa) is ENABLED on this deployment.\n" +
     "This exists ONLY for App Store / Google Play review.\n" +
     "TURN IT OFF (TEST_LOGIN_ENABLED=false) AS SOON AS THE APP IS APPROVED.\n" +
     "======================================================================\n"

@@ -1,5 +1,5 @@
 import { Event, EventData, normalizeEventData } from "@/domain/events/entities/Event";
-import { EventDetail } from "@/domain/events/entities/EventDetail";
+import { EventCard, EventDetail, EventListItem, withVisiblePlace } from "@/domain/events/entities/EventDetail";
 import { IEventRepository, EventListFilters } from "@/domain/events/repositories/IEventRepository";
 import { IPlaceRepository } from "@/domain/places/repositories/IPlaceRepository";
 import { ICategoryRepository } from "@/domain/categories/repositories/ICategoryRepository";
@@ -20,8 +20,10 @@ export class EventService implements IEventService {
     private readonly sourceRepository: ISourceRepository,
   ) {}
 
-  async list(params: PaginationParams, filters?: EventListFilters): Promise<PaginatedResult<Event>> {
-    return this.eventRepository.list(params, filters);
+  async list(params: PaginationParams, filters?: EventListFilters): Promise<PaginatedResult<EventCard>> {
+    const result = await this.eventRepository.list(params, filters);
+    // Same rule as `get`: do not leak a place that the caller is not allowed to see.
+    return { ...result, items: result.items.map((item) => withVisiblePlace(item, filters?.statuses)) };
   }
 
   async get(id: string, options: EventVisibilityOptions = {}): Promise<EventDetail> {
@@ -32,33 +34,31 @@ export class EventService implements IEventService {
     if (statuses && !statuses.includes(detail.event.status) && !isAuthor) {
       throw new EventNotFoundError();
     }
-    // Do not leak a place that the caller is not allowed to see.
-    if (statuses && detail.place && !statuses.includes(detail.place.status)) {
-      return { ...detail, place: null };
-    }
-    return detail;
+    // Do not leak a place that the caller is not allowed to see (its location stays on the event).
+    return withVisiblePlace(detail, statuses);
   }
 
-  async create(data: EventInput): Promise<Event> {
+  async create(data: EventInput): Promise<EventListItem> {
     const normalized = normalizeEventData(data);
     await this.ensureReferencesExist(normalized);
-    return this.eventRepository.create(normalized);
+    const event = await this.eventRepository.create(normalized);
+    return this.findItemOrFail(event.id);
   }
 
-  async update(id: string, data: EventInput): Promise<Event> {
+  async update(id: string, data: EventInput): Promise<EventListItem> {
     const event = await this.findOrFail(id);
     // Validate the payload before touching the database for references.
     event.update(data);
     await this.ensureReferencesExist(normalizeEventData(data));
     await this.eventRepository.update(event);
-    return this.findOrFail(id);
+    return this.findItemOrFail(id);
   }
 
-  async changeStatus(id: string, status: ContentStatus): Promise<Event> {
+  async changeStatus(id: string, status: ContentStatus): Promise<EventListItem> {
     const event = await this.findOrFail(id);
     event.changeStatus(parseContentStatus(status));
     await this.eventRepository.update(event);
-    return this.findOrFail(id);
+    return this.findItemOrFail(id);
   }
 
   async delete(id: string): Promise<void> {
@@ -71,6 +71,12 @@ export class EventService implements IEventService {
     const event = await this.eventRepository.find(id);
     if (!event) throw new EventNotFoundError();
     return event;
+  }
+
+  private async findItemOrFail(id: string): Promise<EventListItem> {
+    const item = await this.eventRepository.findItem(id);
+    if (!item) throw new EventNotFoundError();
+    return item;
   }
 
   private async ensureReferencesExist(data: Pick<EventData, "placeId" | "categoryId" | "sourceId">): Promise<void> {

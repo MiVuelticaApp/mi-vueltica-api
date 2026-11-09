@@ -7,6 +7,7 @@ import PrismaSubmissionRepository from "../repositories/PrismaSubmissionReposito
 import PrismaPlaceRepository from "@/infrastructure/places/repositories/PrismaPlaceRepository";
 import PrismaEventRepository from "@/infrastructure/events/repositories/PrismaEventRepository";
 import PrismaCategoryRepository from "@/infrastructure/categories/repositories/PrismaCategoryRepository";
+import PrismaCantonRepository from "@/infrastructure/geography/repositories/PrismaCantonRepository";
 import PrismaSourceRepository from "@/infrastructure/sources/repositories/PrismaSourceRepository";
 import PrismaPhotoRepository from "@/infrastructure/photos/repositories/PrismaPhotoRepository";
 
@@ -18,6 +19,7 @@ export class PrismaSubmissionApprovalUnitOfWork implements ISubmissionApprovalUn
         getSubmissionRepository: () => new PrismaSubmissionRepository(tx),
         getPlaceRepository: () => new PrismaPlaceRepository(tx),
         getEventRepository: () => new PrismaEventRepository(tx),
+        getCantonRepository: () => new PrismaCantonRepository(tx),
         getCategoryRepository: () => new PrismaCategoryRepository(tx),
         getSourceRepository: () => new PrismaSourceRepository(tx),
         getPhotoRepository: () => new PrismaPhotoRepository(tx),

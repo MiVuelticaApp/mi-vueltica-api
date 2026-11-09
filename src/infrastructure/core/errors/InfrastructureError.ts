@@ -7,7 +7,6 @@ export default class InfrastructureError extends Error {
   constructor(message: string, cause?: unknown) {
     super(message, { cause });
     this.name = "InfrastructureError";
-    this.stack = new Error().stack;
     this.status = `${this.statusCode}`.startsWith('4') ? 'fail' : 'error';
   }
 }

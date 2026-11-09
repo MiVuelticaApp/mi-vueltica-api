@@ -15,33 +15,33 @@ export default class AccountDeletionEmailSender {
     to: string,
     name: string,
   ): Promise<void> {
-    const subject = `Tu cuenta en Delivo ha sido eliminada`;
+    const subject = `Tu cuenta en Mi Vueltica ha sido eliminada`;
     const greeting = name ? `Hola, ${name}` : "Hola";
 
     const text = [
       greeting + ":",
       "",
-      "Te confirmamos que tu cuenta en Delivo y todos tus datos personales han sido eliminados.",
+      "Te confirmamos que tu cuenta en Mi Vueltica y todos tus datos personales han sido eliminados.",
       "",
       "Esta acción es irreversible y no se puede deshacer.",
       "",
       "Si creaste esta cuenta por error o ya no la necesitas, no tienes que hacer nada más.",
       "",
       "Atentamente,",
-      "El equipo de Delivo",
+      "El equipo de Mi Vueltica",
     ].join("\n");
 
     const html = `
       <div style="font-family: Arial, sans-serif; color: #1a1a1a;">
         <h2>${greeting}</h2>
-        <p>Tu cuenta en <strong>Delivo</strong> y todos tus datos personales han sido eliminados.</p>
+        <p>Tu cuenta en <strong>Mi Vueltica</strong> y todos tus datos personales han sido eliminados.</p>
         <p style="background-color:#fef2f2;border-left:4px solid #dc2626;padding:10px 14px;border-radius:4px;">
           Esta acción es <strong>irreversible</strong> y no se puede deshacer.
         </p>
         <p style="font-size:12px;color:#6b7280;">
           Si creaste esta cuenta por error o ya no la necesitas, no tienes que hacer nada más.
         </p>
-        <p style="font-size:12px;color:#6b7280;">Atentamente,<br/>El equipo de Delivo</p>
+        <p style="font-size:12px;color:#6b7280;">Atentamente,<br/>El equipo de Mi Vueltica</p>
       </div>
     `;
 

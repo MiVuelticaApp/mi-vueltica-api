@@ -97,6 +97,8 @@ export class Place {
   get status() { return this.props.status; }
   get verifiedAt() { return this.props.verifiedAt; }
   get authorId() { return this.props.community.authorId; }
+  /** "Ana M.", "Anónimo" or null (see `planAuthorName`). */
+  get authorName() { return this.props.community.authorName; }
   get hiddenReason() { return this.props.community.hiddenReason; }
   get reportedAt() { return this.props.community.reportedAt; }
 

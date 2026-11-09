@@ -90,6 +90,19 @@ enum PricePaid {
 }
 
 /// Why a plan was reported (app values: cerro, noGratis, masDe5000, horario, inapropiado, spam, otro).
+/// Why a submission was rejected (#40). API/app codes are mapped in `infrastructure/submissions/mappers/submissionEnums.ts`.
+enum SubmissionRejectionReason {
+  DUPLICATE
+  OVER_5000
+  PAST_EVENT
+  INCOMPLETE
+  WRONG_LOCATION
+  NOT_PUBLIC
+  INAPPROPRIATE
+  SPAM
+  OTHER
+}
+
 enum ReportReason {
   CLOSED
   NOT_FREE
@@ -246,6 +259,7 @@ model Place {
   reviews       Review[]
   verifications Verification[]
   reports       Report[]
+  submissions   Submission[]   @relation("SubmissionCreatedPlace")
 
   @@index([cantonId, status])
   @@index([categoryId])
@@ -263,6 +277,12 @@ model Event {
 
   startsAt DateTime
   endsAt   DateTime?
+
+  // Own location (issue #37), only for events without a place (a street fair, a concert in a park).
+  // The domain never stores both a `placeId` and these; with a place, the place's point is used.
+  latitude  Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+  address   String?
 
   targetAudience TargetAudience @default(EVERYONE)
   status         ContentStatus  @default(PENDING)
@@ -291,12 +311,15 @@ model Event {
   source        Source?        @relation(fields: [sourceId], references: [id])
   author        User?          @relation("EventAuthor", fields: [authorId], references: [id], onDelete: SetNull)
   notifications Notification[]
+  favorites     Favorite[]
   photos        Photo[]
   reviews       Review[]
   verifications Verification[]
   reports       Report[]
+  submissions   Submission[]   @relation("SubmissionCreatedEvent")
 
   @@index([startsAt, status])
+  @@index([latitude, longitude])
 }
 
 /// Ordered gallery photo of exactly one Place or one Event (enforced by the application: MySQL 8
@@ -369,31 +392,46 @@ model Submission {
   type   SubmissionType
   data   Json // raw suggestion, copied to Place/Event once approved
 
-  status       ContentStatus @default(PENDING)
-  aiScore      Float?
-  aiReason     String?       @db.Text
-  reviewedById String?
-  reviewedAt   DateTime?
-  reviewNote   String?       @db.Text // moderator's reason when rejecting (aiReason is reserved for the AI job)
+  status          ContentStatus              @default(PENDING)
+  aiScore         Float?
+  aiReason        String?                    @db.Text
+  reviewedById    String?
+  reviewedAt      DateTime?
+  reviewNote      String?                    @db.Text // moderator's reason when rejecting (aiReason is reserved for the AI job)
+  // #40: the reason code when REJECTED (reviewNote is the optional note, required for OTHER), and the
+  // Place/Event an approval created (exactly one, set by the application; SET NULL if it is deleted).
+  rejectionReason SubmissionRejectionReason?
+  createdPlaceId  String?
+  createdEventId  String?
 
   createdAt DateTime @default(now())
 
-  author     User               @relation("SubmissionAuthor", fields: [userId], references: [id], onDelete: Cascade)
-  reviewedBy User?              @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  uploads    SubmissionUpload[]
+  author       User               @relation("SubmissionAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy   User?              @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  createdPlace Place?             @relation("SubmissionCreatedPlace", fields: [createdPlaceId], references: [id], onDelete: SetNull)
+  createdEvent Event?             @relation("SubmissionCreatedEvent", fields: [createdEventId], references: [id], onDelete: SetNull)
+  uploads      SubmissionUpload[]
 
   @@index([status, createdAt])
 }
 
+/// A saved place or event (issue #37). Exactly one of `placeId` / `eventId` is set, enforced by the
+/// application (`PrismaFavoriteRepository`, `PrismaFavoriteMapper`), not by a CHECK: MySQL 8 rejects a
+/// CHECK on columns used by a foreign key with a referential action (error 3823, see Photo).
 model Favorite {
+  id        String   @id @default(uuid())
   userId    String
-  placeId   String
+  placeId   String?
+  eventId   String?
   createdAt DateTime @default(now())
 
-  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  place Place? @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  event Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  @@id([userId, placeId])
+  @@unique([userId, placeId]) // one favorite per user per place
+  @@unique([userId, eventId]) // one favorite per user per event
+  @@index([userId, createdAt])
 }
 
 /// A rating of exactly one Place or one Event (enforced by the application, like Photo: MySQL 8

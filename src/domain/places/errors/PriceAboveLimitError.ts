@@ -5,7 +5,6 @@ export class PriceAboveLimitError extends DomainError {
   constructor(message?: string) {
     super(message || "El precio por persona no puede superar ₡5.000");
     this.name = "PriceAboveLimitError";
-    this.stack = new Error().stack;
     this.statusCode = 422;
     this.status = "fail";
   }

@@ -132,7 +132,6 @@ export class CategoryNotFoundError extends ApplicationError {
   constructor(message?: string) {
     super(message || "Categoría no encontrada");
     this.name = "CategoryNotFoundError";
-    this.stack = new Error().stack;
     this.statusCode = 404;
     this.status = 'fail';
     this.isOperational = true;
@@ -145,6 +144,8 @@ Rules:
 - Always extend `ApplicationError`. `errorHandler` only uses `statusCode` and `message` for
   `ApplicationError` / `DomainError` / `InfrastructureError`; a plain `Error` becomes a generic 500.
 - Default message in Spanish (it reaches the client), overridable through the constructor.
+- Do not assign `this.stack`: `super()` already captures it with the class name and message. Replacing it with
+  `new Error().stack` (as the project template used to) drops both, and the log shows only `Error`.
 - Usual status codes: 404 `NotFound`, 409 `AlreadyExists` / `InUse` / invalid state (`SubmissionNotPendingError`),
   422 `Invalid{Reference}`, 403 `SelfModificationError`. Reuse the shared ones in
   `src/application/core/errors/` (`UnauthorizedError` 401, `ForbiddenError` 403).

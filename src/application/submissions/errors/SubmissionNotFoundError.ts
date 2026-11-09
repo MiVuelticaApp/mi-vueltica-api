@@ -4,7 +4,6 @@ export class SubmissionNotFoundError extends ApplicationError {
   constructor(message?: string) {
     super(message || "Sugerencia no encontrada");
     this.name = "SubmissionNotFoundError";
-    this.stack = new Error().stack;
     this.statusCode = 404;
     this.status = 'fail';
     this.isOperational = true;
