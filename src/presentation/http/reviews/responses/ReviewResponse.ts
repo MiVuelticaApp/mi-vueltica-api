@@ -4,9 +4,9 @@ import { PaginatedResponse } from "@/presentation/http/core/responses/PaginatedR
 import { RatingSummaryResponse } from "./RatingSummaryResponse";
 
 export interface ReviewAuthorResponse {
-  /** Null when the author deleted their account. */
+  /** Null only for a review without an author (reviews are deleted with the account). */
   id: string | null;
-  /** Author's first name, or "Anónimo" when the account was deleted. */
+  /** Author's first name, or "Anónimo" for a review without an author. */
   name: string;
   initials: string;
 }

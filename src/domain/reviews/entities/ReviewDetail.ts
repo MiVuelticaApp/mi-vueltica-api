@@ -11,7 +11,7 @@ export interface ReviewAuthor {
 /** Read model for review responses. */
 export interface ReviewDetail {
   review: Review;
-  /** Null once the author deleted their account (the review is kept, shown as "Anónimo"). */
+  /** Null only for a review without an author: reviews are deleted with the account, so it should not happen (shown as "Anónimo"). */
   author: ReviewAuthor | null;
   /** Set for place reviews. */
   place: { id: string; name: string } | null;
