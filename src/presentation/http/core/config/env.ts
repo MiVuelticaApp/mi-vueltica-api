@@ -33,6 +33,12 @@ const ENV = {
   TEST_LOGIN_ENABLED: process.env.TEST_LOGIN_ENABLED === "true",
   TEST_LOGIN_EMAIL: process.env.TEST_LOGIN_EMAIL || "",
   TEST_LOGIN_PASSWORD: process.env.TEST_LOGIN_PASSWORD || "",
+  // Google Sign In: id tokens are accepted when their audience is one of these client ids. Not
+  // required() so a deployment without them still boots; with none set, Google login is rejected.
+  // GOOGLE_WEB_CLIENT_ID is the audience of Android tokens (the app sets `webClientId`, #35).
+  GOOGLE_IOS_CLIENT_ID: process.env.GOOGLE_IOS_CLIENT_ID || "",
+  GOOGLE_ANDROID_CLIENT_ID: process.env.GOOGLE_ANDROID_CLIENT_ID || "",
+  GOOGLE_WEB_CLIENT_ID: process.env.GOOGLE_WEB_CLIENT_ID || "",
   // Apple Sign In. Deliberately NOT required(): an existing deployment without these must
   // still boot. Used both to verify Apple id tokens at login and to revoke tokens at
   // DELETE /api/v1/me (App Review 5.1.1(v)). AppleOAuthProvider silently skips revocation

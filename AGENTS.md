@@ -47,8 +47,8 @@ Env vars (see `.env.example`):
   `S3_SECRET_KEY`, and in production `PUBLIC_API_URL` (`required()` in
   `src/presentation/http/core/config/env.ts`; see "Uploads & files").
 - **Needed in practice**: `JWT_SECRET` (`JwtTokenService` falls back to a hard-coded secret when it is unset,
-  so always set it outside local dev), `JWT_EXPIRES_IN` (default `7d`), and `GOOGLE_CLIENT_ID`,
-  `GOOGLE_IOS_CLIENT_ID`, `GOOGLE_ANDROID_CLIENT_ID` for Google login.
+  so always set it outside local dev), `JWT_EXPIRES_IN` (default `7d`), and `GOOGLE_IOS_CLIENT_ID`,
+  `GOOGLE_ANDROID_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID` for Google login (see "Auth"). `GOOGLE_CLIENT_ID` is no longer read.
 - **Optional**: `S3_BUCKET` (`mi-vueltica`), `S3_REGION` (`us-east-1`), `S3_FORCE_PATH_STYLE` (true),
   `UPLOAD_ORPHAN_GRACE_HOURS` (24), `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (see "Account
   deletion") and `TEST_LOGIN_ENABLED`, `TEST_LOGIN_EMAIL`, `TEST_LOGIN_PASSWORD` (see "Test login").
@@ -91,6 +91,15 @@ No test, lint, or typecheck scripts are configured.
 
 API auth uses JWT (`src/presentation/http/auth/middlewares/jwtAuth.ts`). Extracts `Bearer` token from `Authorization` header, sets `req.user`. Routes apply `jwtAuth` middleware as needed. Login is Google (`POST /auth/google`) or Apple Sign In
 (`POST /auth/apple`); both return a JWT.
+
+Google id tokens are verified by `GoogleOAuthProvider` against the audiences it receives from `container.ts`
+(`ENV.GOOGLE_IOS_CLIENT_ID`, `GOOGLE_ANDROID_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID`; empty values are ignored). The web
+client id is required for Android: `@react-native-google-signin` only returns an id token when `webClientId` is set,
+and that token's `aud` is the web client id (#35). With no client id configured the provider warns at boot and
+rejects every Google login (fail closed, 401 `InvalidCredentialsError`). **Email sign-in was dropped** (product
+decision on #35, 2026-11-08): users sign in with Google or Apple only, so do not add an email/password or
+email-code login without a new decision. The review-only test login (`POST /auth/qa`, see "Test login") stays.
+`POST /auth/refresh` only re-signs a still-valid token; there is no refresh-token flow.
 
 ## Test login (App Store / Play review)
 
