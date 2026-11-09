@@ -1,7 +1,7 @@
 import { ReviewDetail } from "@/domain/reviews/entities/ReviewDetail";
 import { ReviewAuthorResponse, ReviewResponse } from "../responses/ReviewResponse";
 
-/** Shown for reviews whose author deleted their account. */
+/** Defensive fallback for a review without an author (reviews are deleted with the account, so it should not happen). */
 export const ANONYMOUS_AUTHOR: ReviewAuthorResponse = { id: null, name: "Anónimo", initials: "A" };
 
 export default class ReviewDtoMapper {
