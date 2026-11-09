@@ -3,6 +3,7 @@ import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueO
 import { GalleryPhoto } from "@/domain/photos/entities/Photo";
 import { RatingSummary } from "@/domain/reviews/entities/RatingSummary";
 import { EventLocationValue } from "../valueObjects/eventLocation.valueObject";
+import { PlanStats } from "@/domain/core/plans/PlanStats";
 
 /** Minimal view of the place an event takes place at. */
 export interface PlaceSummary {
@@ -32,6 +33,11 @@ export interface EventListItem {
   place: PlaceSummary | null;
   /** From `resolveEventLocation`; kept even when `place` is hidden. */
   location: EventLocationValue | null;
+}
+
+/** Read model for event lists (and saved events): the list item plus what its card shows. */
+export interface EventCard extends EventListItem {
+  stats: PlanStats;
 }
 
 /** Read model for the detail endpoint: the list item plus the gallery and rating. */

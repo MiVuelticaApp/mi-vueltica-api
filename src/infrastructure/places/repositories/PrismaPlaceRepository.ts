@@ -18,6 +18,8 @@ import { publishedRatingSummary } from "@/infrastructure/reviews/repositories/ra
 import { PrismaPhotoMapper } from "@/infrastructure/photos/mappers/PrismaPhotoMapper";
 import { withinRadiusSql } from "@/infrastructure/core/repositories/geo";
 import { PLAN_AUTHOR_INCLUDE } from "@/infrastructure/core/repositories/planAuthor";
+import { COVER_PHOTO_INCLUDE, publishedRatingsFor, toPlanStats } from "@/infrastructure/core/repositories/planStats";
+import { PlaceCard } from "@/domain/places/entities/PlaceCard";
 
 export default class PrismaPlaceRepository implements IPlaceRepository {
 
@@ -27,17 +29,17 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
     this.client = client || prisma;
   }
 
-  async list(params: PaginationParams, filters: PlaceListFilters = {}): Promise<PaginatedResult<Place>> {
+  async list(params: PaginationParams, filters: PlaceListFilters = {}): Promise<PaginatedResult<PlaceCard>> {
     try {
       const where = await this.buildWhere(filters);
-      return await paginate(
+      const page = await paginate(
         this.client as Parameters<typeof paginate>[0],
         params,
         {
           findMany: (tx, page) =>
             tx.place.findMany({
               where,
-              include: PLAN_AUTHOR_INCLUDE,
+              include: { ...PLAN_AUTHOR_INCLUDE, ...COVER_PHOTO_INCLUDE },
               skip: page.skip,
               take: page.take,
               // `id` as tie-breaker keeps pagination stable when the sort field has duplicates.
@@ -45,8 +47,14 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
             }),
           count: (tx) => tx.place.count({ where }),
         },
-        PrismaPlaceMapper.toDomain,
+        (row) => ({ row, place: PrismaPlaceMapper.toDomain(row) }),
       );
+      // Card stats: the cover came with the page; the ratings of the whole page in one grouped query.
+      const ratings = await publishedRatingsFor(this.client, "place", page.items.map((item) => item.place.id));
+      return {
+        ...page,
+        items: page.items.map(({ row, place }) => ({ place, stats: toPlanStats(row, ratings.get(place.id)) })),
+      };
     } catch (error) {
       console.error("Error listing places:", error);
       throw new DatabaseError("Could not list places", error);

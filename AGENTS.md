@@ -365,6 +365,11 @@ token or missing/soft-deleted user continues anonymously, never 401; a valid one
 - **verifiedAt**: `Place.changeStatus(status, now)` sets `verifiedAt = now` whenever the place transitions to
   `PUBLISHED` (an already-PUBLISHED place keeps its `verifiedAt`); other statuses leave it untouched.
 - **isFavorite**: `GET /:id` adds `isFavorite: boolean` when the caller is authenticated (see Favorites) and omits it for anonymous callers; the list endpoint is unchanged.
+- **Card stats** (lists only: `GET /places`, `GET /events`, `/me/favorites` and the MCP list/search tools): every item adds
+  `averageRating` (2 decimals, `null` without reviews) and `reviewCount` over PUBLISHED reviews, and `coverPhotoUrl` (first gallery
+  photo by `position` then `id`, `null` without photos). Read models `PlaceCard` / `EventCard` (`domain/core/plans/PlanStats.ts`); the
+  repositories load the cover with `COVER_PHOTO_INCLUDE` and the ratings with ONE grouped query per page (`publishedRatingsFor`,
+  `infrastructure/core/repositories/planStats.ts`), never one per item. Mapped by `toCardResponse`; the detail keeps its own fields.
 - **Community fields**: every response has `hiddenReason` and `authorName`; `GET /:id` adds `lastVerifiedAt`, `verificationCount`,
   `myVerifiedToday` and, for authenticated callers, `isMine` (see "Verifications & reports").
 - **authorName** (#40, places and events, also in lists, favorites and MCP): "Ana M." (first name + first surname initial, same
@@ -442,7 +447,7 @@ require `jwtAuth` + `requireRole("MODERATOR", "ADMIN")`; `DELETE /:id` requires 
   `EventService.get` / `EventService.list` through the same `statuses` option. Authenticated callers also get `isFavorite` (see Favorites).
 - **Photos**: events have their own gallery (same `Photo` table); `GET /:id` embeds `photos` (ordered by `position`).
 - **Rating**: `GET /:id` adds `averageRating`, `reviewCount` and `ratingDistribution` over the event's PUBLISHED reviews
-  (same as places; see Reviews).
+  (same as places; see Reviews). Lists carry the card stats (`averageRating`, `reviewCount`, `coverPhotoUrl`), as places.
 - **Community fields**: same as places (`hiddenReason`, `authorName`, verification summary, `isMine`, author visibility).
 - **Delete** is a plain `event.delete`; notifications, favorites, photos, reviews, verifications and reports cascade at DB level.
 
@@ -453,8 +458,8 @@ Saved places **and events** (#37; the app's "Guardados" screen). One `Favorite` 
 `(userId, placeId)` and `(userId, eventId)`, both foreign keys cascade. The migration `20261110120000_add_event_location_and_event_favorites`
 is hand-written: Prisma's generated one fails on a table with rows (error 1553 on MySQL 8, duplicate empty PK on MariaDB).
 
-- `GET /api/v1/me/favorites` (under `profileRouter`, so `jwtAuth`): paginated `{ type: "PLACE" | "EVENT", place: PlaceResponse | null,
-  event: EventResponse | null, createdAt }` (exactly one of `place` / `event` is set). Optional `type=PLACE|EVENT` filter (the app's tabs;
+- `GET /api/v1/me/favorites` (under `profileRouter`, so `jwtAuth`): paginated `{ type: "PLACE" | "EVENT", place: PlaceCardResponse | null,
+  event: EventCardResponse | null, createdAt }` (the list item plus its card stats, see Places) (exactly one of `place` / `event` is set). Optional `type=PLACE|EVENT` filter (the app's tabs;
   both when omitted). Only favorites whose place/event is currently `PUBLISHED` are listed and counted; unpublishing hides a favorite
   (the row stays) and re-publishing brings it back. Past events stay listed. Event items follow the public visibility rule for their
   `place` summary (resolved coordinates kept). Sort whitelist is `createdAt` only, default **desc** (most recently saved first), tie-breaker `id`.
@@ -763,7 +768,7 @@ when the response ends, so there is no in-memory session state. `GET /mcp` and `
   `search_places` (required `query`, optional radius `lat`+`lng`+`radiusKm` all together else `isError`, `categoryId?`, `cantonId?`, `status?`, paging; read-only).
   `list_events` (`from?` defaults to now, `to?`, `categoryId?`, `placeId?`, `cantonId?`, `targetAudience?`, `status?`, optional radius `lat`+`lng`+`radiusKm`
   all together else `isError`, paging; by `startsAt` asc, `from > to` is an `isError`) and `search_events` (same plus required `query` on title/description;
-  read-only); their items carry the resolved `latitude`/`longitude`/`address` and `place`. `create_place` and `create_event`
+  read-only); their items carry the resolved `latitude`/`longitude`/`address` and `place`. Every list/search item also has the card stats (`averageRating`, `reviewCount`, `coverPhotoUrl`). `create_place` and `create_event`
   (same fields as the POST bodies, including the event's own `latitude`/`longitude`/`address`; created as `PENDING`; datetimes ISO 8601 with offset;
   `endsAt < startsAt` or `placeId` plus own location surface as `isError` via the domain value objects).
   The MCP caller is privileged, so list/search include every status unless `status` is given. Input uses raw Zod shapes (no object-level refinements), so

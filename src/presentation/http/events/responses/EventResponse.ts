@@ -1,3 +1,4 @@
+import { PlanStatsResponse } from "@/presentation/http/core/responses/PlanStatsResponse";
 import { VerificationFieldsResponse } from "@/presentation/http/community/responses/CommunityResponses";
 import { RatingFieldsResponse } from "@/presentation/http/reviews/responses/RatingSummaryResponse";
 import { TargetAudience } from "@/domain/places/valueObjects/targetAudience.valueObject";
@@ -40,6 +41,9 @@ export interface EventResponse {
   createdAt: string;
   updatedAt: string;
 }
+
+/** An event in a list (or a saved event): the event plus its card stats. */
+export type EventCardResponse = EventResponse & PlanStatsResponse;
 
 export interface PlaceSummaryResponse {
   id: string;
