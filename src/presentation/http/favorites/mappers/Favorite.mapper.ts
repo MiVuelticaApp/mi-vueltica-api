@@ -7,8 +7,8 @@ export default class FavoriteDtoMapper {
   static toResponse(favorite: FavoriteItem): FavoriteResponse {
     return {
       type: favorite.type,
-      place: favorite.type === "PLACE" ? PlaceDtoMapper.toResponse(favorite.place) : null,
-      event: favorite.type === "EVENT" ? EventDtoMapper.toResponse(favorite.event) : null,
+      place: favorite.type === "PLACE" ? PlaceDtoMapper.toCardResponse(favorite.place) : null,
+      event: favorite.type === "EVENT" ? EventDtoMapper.toCardResponse(favorite.event) : null,
       createdAt: favorite.createdAt.toISOString(),
     };
   }

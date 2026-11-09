@@ -55,7 +55,7 @@ export default class PlaceController {
     };
 
     const result = await this.placeService.list(toPaginationParams(query), filters);
-    res.json(toPaginatedResponse(result, PlaceDtoMapper.toResponse));
+    res.json(toPaginatedResponse(result, PlaceDtoMapper.toCardResponse));
   }
 
   async get(req: Request, res: Response): Promise<void> {
