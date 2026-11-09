@@ -8,6 +8,7 @@ import { paginate } from "@/infrastructure/core/repositories/prismaPagination";
 import DatabaseError from "@/infrastructure/core/errors/DatabaseError";
 import DatabaseInsertError from "@/infrastructure/core/errors/DatabaseInsertError";
 import { PrismaFavoriteMapper } from "../mappers/PrismaFavoriteMapper";
+import { COVER_PHOTO_INCLUDE, publishedRatingsFor } from "@/infrastructure/core/repositories/planStats";
 import { PLAN_AUTHOR_INCLUDE } from "@/infrastructure/core/repositories/planAuthor";
 
 /** `placeId` or `eventId` for a target: exactly one is ever set. */
@@ -42,7 +43,7 @@ export default class PrismaFavoriteRepository implements IFavoriteRepository {
       };
       // Most recently favorited first unless a direction is given; `id` keeps pages stable.
       const direction = params.sort?.direction ?? "desc";
-      return await paginate(
+      const page = await paginate(
         this.client as Parameters<typeof paginate>[0],
         params,
         {
@@ -50,8 +51,8 @@ export default class PrismaFavoriteRepository implements IFavoriteRepository {
             tx.favorite.findMany({
               where,
               include: {
-                place: { include: PLAN_AUTHOR_INCLUDE },
-                event: { include: { place: true, ...PLAN_AUTHOR_INCLUDE } },
+                place: { include: { ...PLAN_AUTHOR_INCLUDE, ...COVER_PHOTO_INCLUDE } },
+                event: { include: { place: true, ...PLAN_AUTHOR_INCLUDE, ...COVER_PHOTO_INCLUDE } },
               },
               skip: page.skip,
               take: page.take,
@@ -59,8 +60,16 @@ export default class PrismaFavoriteRepository implements IFavoriteRepository {
             }),
           count: (tx) => tx.favorite.count({ where }),
         },
-        PrismaFavoriteMapper.toDomain,
+        (row) => row,
       );
+      // Card stats for the saved places and events of the page: two grouped queries at most.
+      const placeIds = page.items.flatMap((row) => (row.placeId ? [row.placeId] : []));
+      const eventIds = page.items.flatMap((row) => (row.eventId ? [row.eventId] : []));
+      const [placeRatings, eventRatings] = await Promise.all([
+        publishedRatingsFor(this.client, "place", placeIds),
+        publishedRatingsFor(this.client, "event", eventIds),
+      ]);
+      return { ...page, items: page.items.map((row) => PrismaFavoriteMapper.toDomain(row, placeRatings, eventRatings)) };
     } catch (error) {
       console.error("Error listing favorites:", error);
       throw new DatabaseError("Could not list favorites", error);
