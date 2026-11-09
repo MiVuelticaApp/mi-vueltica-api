@@ -90,6 +90,19 @@ enum PricePaid {
 }
 
 /// Why a plan was reported (app values: cerro, noGratis, masDe5000, horario, inapropiado, spam, otro).
+/// Why a submission was rejected (#40). API/app codes are mapped in `infrastructure/submissions/mappers/submissionEnums.ts`.
+enum SubmissionRejectionReason {
+  DUPLICATE
+  OVER_5000
+  PAST_EVENT
+  INCOMPLETE
+  WRONG_LOCATION
+  NOT_PUBLIC
+  INAPPROPRIATE
+  SPAM
+  OTHER
+}
+
 enum ReportReason {
   CLOSED
   NOT_FREE
@@ -246,6 +259,7 @@ model Place {
   reviews       Review[]
   verifications Verification[]
   reports       Report[]
+  submissions   Submission[]   @relation("SubmissionCreatedPlace")
 
   @@index([cantonId, status])
   @@index([categoryId])
@@ -302,6 +316,7 @@ model Event {
   reviews       Review[]
   verifications Verification[]
   reports       Report[]
+  submissions   Submission[]   @relation("SubmissionCreatedEvent")
 
   @@index([startsAt, status])
   @@index([latitude, longitude])
@@ -377,18 +392,25 @@ model Submission {
   type   SubmissionType
   data   Json // raw suggestion, copied to Place/Event once approved
 
-  status       ContentStatus @default(PENDING)
-  aiScore      Float?
-  aiReason     String?       @db.Text
-  reviewedById String?
-  reviewedAt   DateTime?
-  reviewNote   String?       @db.Text // moderator's reason when rejecting (aiReason is reserved for the AI job)
+  status          ContentStatus              @default(PENDING)
+  aiScore         Float?
+  aiReason        String?                    @db.Text
+  reviewedById    String?
+  reviewedAt      DateTime?
+  reviewNote      String?                    @db.Text // moderator's reason when rejecting (aiReason is reserved for the AI job)
+  // #40: the reason code when REJECTED (reviewNote is the optional note, required for OTHER), and the
+  // Place/Event an approval created (exactly one, set by the application; SET NULL if it is deleted).
+  rejectionReason SubmissionRejectionReason?
+  createdPlaceId  String?
+  createdEventId  String?
 
   createdAt DateTime @default(now())
 
-  author     User               @relation("SubmissionAuthor", fields: [userId], references: [id], onDelete: Cascade)
-  reviewedBy User?              @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
-  uploads    SubmissionUpload[]
+  author       User               @relation("SubmissionAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy   User?              @relation("SubmissionReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  createdPlace Place?             @relation("SubmissionCreatedPlace", fields: [createdPlaceId], references: [id], onDelete: SetNull)
+  createdEvent Event?             @relation("SubmissionCreatedEvent", fields: [createdEventId], references: [id], onDelete: SetNull)
+  uploads      SubmissionUpload[]
 
   @@index([status, createdAt])
 }
