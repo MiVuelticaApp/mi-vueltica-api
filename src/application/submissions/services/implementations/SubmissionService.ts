@@ -13,10 +13,16 @@ import { COMMUNITY_SOURCE_ID } from "@/domain/sources/communitySource";
 import { PhotoOwner } from "@/domain/photos/valueObjects/photoOwner.valueObject";
 import { IUploadService } from "@/application/uploads/services/interfaces/IUploadService";
 import { PaginatedResult, PaginationParams, SortDirection } from "@/domain/core/pagination/Pagination";
-import { ISubmissionService, SubmissionApprovalResult, SubmissionQueueFilters } from "../interfaces/ISubmissionService";
+import {
+  ISubmissionService,
+  SubmissionApprovalResult,
+  SubmissionQueueFilters,
+  SubmissionRejection,
+} from "../interfaces/ISubmissionService";
 import { ensureSubmissionReferencesExist } from "../submissionReferences";
 import { SubmissionNotFoundError } from "../../errors/SubmissionNotFoundError";
 import { SubmissionNotPendingError } from "../../errors/SubmissionNotPendingError";
+import { SubmissionTypeChangeError } from "../../errors/SubmissionTypeChangeError";
 
 type Params = PaginationParams<SubmissionSortField>;
 
@@ -36,20 +42,46 @@ export class SubmissionService implements ISubmissionService {
   ) {}
 
   async create(userId: string, input: SubmissionPayloadInput): Promise<Submission> {
-    // Same domain rules as creating a Place/Event (400), then the same reference checks (422).
+    const { payload, uploadIds } = await this.prepare(userId, input);
+    return this.submissionRepository.create({ userId, payload, uploadIds });
+  }
+
+  async updateMine(userId: string, id: string, input: SubmissionPayloadInput): Promise<Submission> {
+    // Validation (400/422) and the upload checks first, outside the transaction.
+    const { payload, uploadIds } = await this.prepare(userId, input);
+    return this.approvalUOW.runInTransaction(async (ctx) => {
+      const submissionRepository = ctx.getSubmissionRepository();
+      // Same row lock as approval: an edit and a concurrent approval run one after the other, so a
+      // moderator never approves a half-edited suggestion and an edit never lands after approval.
+      const submission = await submissionRepository.findForUpdate(id);
+      // Someone else's submission is reported as missing, so its existence is not leaked.
+      if (!submission || !submission.belongsTo(userId)) throw new SubmissionNotFoundError();
+      if (!submission.isPending()) throw new SubmissionNotPendingError("Solo se pueden editar sugerencias pendientes");
+      if (submission.type !== payload.type) throw new SubmissionTypeChangeError();
+      submission.edit(payload);
+      if (!(await submissionRepository.updatePendingOwned(submission, uploadIds))) {
+        throw new SubmissionNotPendingError("Solo se pueden editar sugerencias pendientes");
+      }
+      return submission;
+    });
+  }
+
+  /**
+   * Shared by create and edit: same domain rules as creating a Place/Event (400), the same reference
+   * checks (422), and every photo must be one of the author's own uploads (422). Photos are stored in
+   * canonical form and linked so the orphan cleanup keeps the files while the submission exists.
+   */
+  private async prepare(userId: string, input: SubmissionPayloadInput) {
     const payload = normalizeSubmissionPayload(input);
     await ensureSubmissionReferencesExist(payload, {
       placeRepository: this.placeRepository,
       categoryRepository: this.categoryRepository,
     });
-    // Every photo must be one of the author's own uploads (422); stored in canonical form and
-    // linked to the submission so the orphan cleanup keeps the files while it exists.
     const photos = await this.uploadService.resolveOwnUploads(userId, payload.data.photos);
-    return this.submissionRepository.create({
-      userId,
+    return {
       payload: withSubmissionPhotos(payload, photos.map((photo) => photo.url)),
       uploadIds: photos.map((photo) => photo.uploadId),
-    });
+    };
   }
 
   async listMine(userId: string, params: Params): Promise<PaginatedResult<Submission>> {
@@ -131,7 +163,8 @@ export class SubmissionService implements ISubmissionService {
         await photoRepository.create({ owner, url: this.uploadService.urlFor(uploadId), uploadId, position });
       }
 
-      submission.approve(reviewerId, now);
+      // Records which Place/Event it became, so the author can open it from "Mis vuelticas".
+      submission.approve(reviewerId, now, created);
       // Second guard (the row lock is the first): only succeeds if the row is still PENDING;
       // otherwise this throws and the transaction rolls back the Place/Event created above.
       if (!(await submissionRepository.markReviewed(submission))) throw new SubmissionNotPendingError();
@@ -140,10 +173,10 @@ export class SubmissionService implements ISubmissionService {
     });
   }
 
-  async reject(id: string, reviewerId: string, reason: string): Promise<Submission> {
+  async reject(id: string, reviewerId: string, { reason, note }: SubmissionRejection): Promise<Submission> {
     const submission = await this.get(id);
     if (!submission.isPending()) throw new SubmissionNotPendingError();
-    submission.reject(reviewerId, reason, new Date());
+    submission.reject(reviewerId, reason, note ?? null, new Date());
     if (!(await this.submissionRepository.markReviewed(submission))) throw new SubmissionNotPendingError();
     return submission;
   }

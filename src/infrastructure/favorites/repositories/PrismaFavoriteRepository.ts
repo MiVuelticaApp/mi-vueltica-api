@@ -8,6 +8,7 @@ import { paginate } from "@/infrastructure/core/repositories/prismaPagination";
 import DatabaseError from "@/infrastructure/core/errors/DatabaseError";
 import DatabaseInsertError from "@/infrastructure/core/errors/DatabaseInsertError";
 import { PrismaFavoriteMapper } from "../mappers/PrismaFavoriteMapper";
+import { PLAN_AUTHOR_INCLUDE } from "@/infrastructure/core/repositories/planAuthor";
 
 /** `placeId` or `eventId` for a target: exactly one is ever set. */
 function targetColumns(target: FavoriteTarget): { placeId: string | null; eventId: string | null } {
@@ -48,7 +49,10 @@ export default class PrismaFavoriteRepository implements IFavoriteRepository {
           findMany: (tx, page) =>
             tx.favorite.findMany({
               where,
-              include: { place: true, event: { include: { place: true } } },
+              include: {
+                place: { include: PLAN_AUTHOR_INCLUDE },
+                event: { include: { place: true, ...PLAN_AUTHOR_INCLUDE } },
+              },
               skip: page.skip,
               take: page.take,
               orderBy: [{ createdAt: direction }, { id: "asc" }],

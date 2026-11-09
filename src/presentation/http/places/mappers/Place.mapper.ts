@@ -26,6 +26,7 @@ export default class PlaceDtoMapper {
       wheelchair: place.wheelchair,
       status: place.status,
       hiddenReason: place.hiddenReason,
+      authorName: place.authorName,
       verifiedAt: place.verifiedAt ? place.verifiedAt.toISOString() : null,
       createdAt: place.createdAt.toISOString(),
       updatedAt: place.updatedAt.toISOString(),

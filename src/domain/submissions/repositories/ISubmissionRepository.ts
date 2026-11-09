@@ -33,10 +33,15 @@ export interface ISubmissionRepository {
   findForUpdate(id: string): Promise<Submission | null>;
   list(params: PaginationParams<SubmissionSortField>, filters?: SubmissionListFilters): Promise<PaginatedResult<Submission>>;
   /**
-   * Persists the review fields (status, reviewer, date, note) only if the row is still PENDING.
-   * Returns false when someone else reviewed or withdrew it first.
+   * Persists the review fields (status, reviewer, date, note, rejection reason, created Place/Event)
+   * only if the row is still PENDING. Returns false when someone else reviewed or withdrew it first.
    */
   markReviewed(submission: Submission): Promise<boolean>;
+  /**
+   * Replaces the suggestion (`data`) and its linked uploads, only if it belongs to the author and
+   * is still PENDING. Call it inside a unit of work after `findForUpdate`. Returns false otherwise.
+   */
+  updatePendingOwned(submission: Submission, uploadIds: string[]): Promise<boolean>;
   /** Deletes the submission only if it belongs to `userId` and is still PENDING. */
   deletePendingOwned(id: string, userId: string): Promise<boolean>;
 }

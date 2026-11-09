@@ -12,6 +12,7 @@ import { paginate } from "@/infrastructure/core/repositories/prismaPagination";
 import DatabaseError from "@/infrastructure/core/errors/DatabaseError";
 import DatabaseInsertError from "@/infrastructure/core/errors/DatabaseInsertError";
 import { PrismaSubmissionMapper } from "../mappers/PrismaSubmissionMapper";
+import { rejectionReasonToDb } from "../mappers/submissionEnums";
 
 export default class PrismaSubmissionRepository implements ISubmissionRepository {
 
@@ -106,12 +107,37 @@ export default class PrismaSubmissionRepository implements ISubmissionRepository
           reviewedById: submission.reviewedById,
           reviewedAt: submission.reviewedAt,
           reviewNote: submission.reviewNote,
+          rejectionReason: rejectionReasonToDb(submission.rejectionReason),
+          ...PrismaSubmissionMapper.createdToColumns(submission.created),
         },
       });
       return count === 1;
     } catch (error) {
       console.error("Error reviewing submission:", error);
       throw new DatabaseInsertError("Could not review submission", error);
+    }
+  }
+
+  async updatePendingOwned(submission: Submission, uploadIds: string[]): Promise<boolean> {
+    try {
+      // Conditional write (second guard after the row lock): nothing changes unless it is still the
+      // author's PENDING submission.
+      const { count } = await this.client.submission.updateMany({
+        where: { id: submission.id, userId: submission.userId, status: "PENDING" },
+        data: { data: PrismaSubmissionMapper.payloadToJson(submission.payload) },
+      });
+      if (count !== 1) return false;
+      // Replace the linked uploads; files no longer referenced are released to the orphan cleanup.
+      await this.client.submissionUpload.deleteMany({ where: { submissionId: submission.id } });
+      if (uploadIds.length > 0) {
+        await this.client.submissionUpload.createMany({
+          data: uploadIds.map((uploadId) => ({ submissionId: submission.id, uploadId })),
+        });
+      }
+      return true;
+    } catch (error) {
+      console.error("Error updating submission:", error);
+      throw new DatabaseInsertError("Could not update submission", error);
     }
   }
 

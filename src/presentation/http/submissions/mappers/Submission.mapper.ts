@@ -14,9 +14,11 @@ export default class SubmissionDtoMapper {
       type: submission.type,
       data: SubmissionDtoMapper.dataToResponse(submission),
       status: submission.status,
-      reviewedById: submission.reviewedById,
       reviewedAt: submission.reviewedAt ? submission.reviewedAt.toISOString() : null,
+      rejectionReason: submission.rejectionReason,
       reviewNote: submission.reviewNote,
+      rejectionMessage: submission.rejectionMessage,
+      created: submission.created ? { ...submission.created } : null,
       createdAt: submission.createdAt.toISOString(),
     };
   }
@@ -24,6 +26,7 @@ export default class SubmissionDtoMapper {
   static toModerationResponse(submission: Submission): ModerationSubmissionResponse {
     return {
       ...SubmissionDtoMapper.toResponse(submission),
+      reviewedById: submission.reviewedById,
       aiScore: submission.aiScore,
       aiReason: submission.aiReason,
     };

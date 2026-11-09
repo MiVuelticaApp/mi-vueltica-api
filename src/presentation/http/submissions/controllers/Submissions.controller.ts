@@ -41,8 +41,8 @@ export default class SubmissionsController {
   async reject(req: Request, res: Response): Promise<void> {
     const { id: reviewerId } = getAuthUser(req);
     const { id } = getValidated<IdParams>(req, "params");
-    const { reason }: RejectSubmissionRequest = req.body;
-    const submission = await this.submissionService.reject(id, reviewerId, reason);
+    const { reason, note }: RejectSubmissionRequest = req.body;
+    const submission = await this.submissionService.reject(id, reviewerId, { reason, note });
     res.json(SubmissionDtoMapper.toModerationResponse(submission));
   }
 }
