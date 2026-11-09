@@ -1,5 +1,20 @@
 # AGENTS.md
 
+## Pending deploy actions (read first)
+
+Operational notes that must be handled before the next production deploy. **If you are an agent working in this
+repo, tell the user about every item below that is still open, whatever the task is**, and before you merge to
+`main`, deploy, run `prisma migrate deploy` against production or change anything under `prisma/migrations`, make
+sure the user has confirmed each step. Remove an item (in its own commit) only after the user confirms it is done
+in production.
+
+- **`20261112120000_delete_reviews_with_account` deletes data and cannot be undone.** It runs on its own at container
+  start. It deletes every review already left without an author by earlier account deletions (with their photos and
+  "útil" votes) and makes future account deletions delete the account's reviews. Before deploying it:
+  1. Back up the `Review`, `ReviewPhoto` and `ReviewUsefulVote` tables
+     (`mysqldump <db> Review ReviewPhoto ReviewUsefulVote > reviews-backup.sql`).
+  2. Optionally check how many rows it will delete: `SELECT COUNT(*) FROM Review WHERE userId IS NULL;`.
+
 ## Architecture
 
 DDL / Clean Architecture with 4 layers. Dependency direction: **domain → application → infrastructure → presentation**.
@@ -137,10 +152,11 @@ iOS client; unknown keys → 400. The response is **204** with no body. Service 
 2. Capture `email` and `name` **before** deleting (the confirmation email needs a recipient).
 3. Hard delete the `User` row. Everything that belongs to the user is removed by the database:
    `UserInterest`, `Submission` (as author), `Favorite`, `ReviewUsefulVote`, `Device` and `Notification` cascade;
-   `Submission.reviewedById` is set to null for submissions the user moderated. **Reviews are kept anonymized**:
-   `Review.userId` is `ON DELETE SET NULL` and the API shows the author as `{ id: null, name: "Anónimo" }` (the app's
-   `anonymizeOnDelete` rule; #38). Likewise `Place.authorId` / `Event.authorId` and `Verification.userId` /
-   `Report.userId` are `SET NULL` (the plans, verifications and reports stay; #39).
+   `Submission.reviewedById` is set to null for submissions the user moderated. **Reviews are deleted** with the
+   account (`Review.userId` is `ON DELETE CASCADE`; their photos and "útil" votes cascade, their uploads go to the orphan
+   cleanup), as the app's `anonymizeOnDelete` rule says: published plans stay as "Anónimo", reviews and pending plans go.
+   `Place.authorId` / `Event.authorId` and `Verification.userId` / `Report.userId` are `SET NULL` (the plans,
+   verifications and reports stay; #39).
 
 It returns `AccountDeletionResult` `{ email, name }`.
 
@@ -418,8 +434,9 @@ entity, not a CHECK: MySQL error 3823, same as `Photo`), one per user and place/
 enums and mapped in `PrismaReviewMapper`; `null` = not told), `photos` and `status`. Responses (`ReviewDetail` read model):
 `{ id, placeId, eventId, rating, comment, wentWith, spent, photos: string[], usefulCount, markedUsefulByMe, status,
 createdAt, author: { id, name, initials }, place: { id, name } | null, event: { id, title } | null }`. Only the author's
-first name is exposed; `initials` are first name + first surname. Reviews of deleted accounts are kept with
-`userId = NULL` and shown as `{ id: null, name: "Anónimo", initials: "A" }`.
+first name is exposed; `initials` are first name + first surname. Reviews are deleted with their author's
+account (see "Account deletion"); a review without an author (only possible for a hand-edited row) would be shown as
+`{ id: null, name: "Anónimo", initials: "A" }`.
 
 - `GET /api/v1/places/:placeId/reviews` and `GET /api/v1/events/:eventId/reviews` (`createTargetReviewsRouter(type)`,
   `Router({ mergeParams: true })`, mounted **before** `/places` / `/events`): public with `optionalJwtAuth`. PUBLISHED
@@ -624,7 +641,7 @@ because its community edition is no longer maintained). Module `uploads` (`src/{
   `UploadService.cleanupOrphans`: uploads older than `UPLOAD_ORPHAN_GRACE_HOURS` with no reference are deleted, the row
   first with one conditional `DELETE ... NOT EXISTS` (a reference added meanwhile keeps it), then the object. So a
   deleted photo, a withdrawn submission, a deleted review, a deleted place/event or a deleted account all release their
-  files (a deleted account keeps its anonymized reviews, and so their photos).
+  files (a deleted account also deletes its reviews, and so releases their photos).
   `Upload.userId` is `SET NULL` on account deletion.
 - **New features with photos**: reuse `IUploadService.resolveOwnUploads(userId, urls)`, link the uploads (a join table
   like `SubmissionUpload`, or an `uploadId` column like `Verification` / `Report`) and add them to the cleanup's
