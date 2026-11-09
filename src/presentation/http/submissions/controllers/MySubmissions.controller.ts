@@ -37,6 +37,14 @@ export default class MySubmissionsController {
     res.json(SubmissionDtoMapper.toResponse(submission));
   }
 
+  async update(req: Request, res: Response): Promise<void> {
+    const { id: userId } = getAuthUser(req);
+    const { id } = getValidated<IdParams>(req, "params");
+    const body: CreateSubmissionRequest = req.body;
+    const submission = await this.submissionService.updateMine(userId, id, body);
+    res.json(SubmissionDtoMapper.toResponse(submission));
+  }
+
   async delete(req: Request, res: Response): Promise<void> {
     const { id: userId } = getAuthUser(req);
     const { id } = getValidated<IdParams>(req, "params");

@@ -16,7 +16,10 @@ export default class SubmissionDtoMapper {
       status: submission.status,
       reviewedById: submission.reviewedById,
       reviewedAt: submission.reviewedAt ? submission.reviewedAt.toISOString() : null,
+      rejectionReason: submission.rejectionReason,
       reviewNote: submission.reviewNote,
+      rejectionMessage: submission.rejectionMessage,
+      created: submission.created ? { ...submission.created } : null,
       createdAt: submission.createdAt.toISOString(),
     };
   }
