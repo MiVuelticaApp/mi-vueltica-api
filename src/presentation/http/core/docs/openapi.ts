@@ -2569,7 +2569,6 @@ const openApiDocument = {
             description: "The suggested fields: a POST /places body (PLACE) or POST /events body (EVENT), without sourceId, plus `photos` (array of upload URLs, possibly empty). Event dates as ISO 8601 UTC.",
           },
           status: { $ref: "#/components/schemas/ContentStatus" },
-          reviewedById: { type: ["string", "null"], format: "uuid" },
           reviewedAt: { type: ["string", "null"], format: "date-time" },
           rejectionReason: {
             type: ["string", "null"],
@@ -2595,7 +2594,7 @@ const openApiDocument = {
           createdAt: { type: "string", format: "date-time" },
         },
         required: [
-          "id", "userId", "type", "data", "status", "reviewedById", "reviewedAt", "rejectionReason", "reviewNote",
+          "id", "userId", "type", "data", "status", "reviewedAt", "rejectionReason", "reviewNote",
           "rejectionMessage", "created", "createdAt",
         ],
       },
@@ -2605,10 +2604,15 @@ const openApiDocument = {
           {
             type: "object",
             properties: {
+              reviewedById: {
+                type: ["string", "null"],
+                format: "uuid",
+                description: "Who reviewed it. Only in moderation responses: the author is not told which moderator decided",
+              },
               aiScore: { type: ["number", "null"], description: "Reserved for the AI moderation job; not writable through the API" },
               aiReason: { type: ["string", "null"], description: "Reserved for the AI moderation job; not writable through the API" },
             },
-            required: ["aiScore", "aiReason"],
+            required: ["reviewedById", "aiScore", "aiReason"],
           },
         ],
       },

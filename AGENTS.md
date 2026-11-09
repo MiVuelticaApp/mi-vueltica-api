@@ -621,6 +621,7 @@ expected to use this same API as regular authenticated clients (discovering it t
 - **Author side** — `/api/v1/me/submissions` (`mySubmissionsRouter`, mounted **before** `/me`, own `jwtAuth`):
   `POST /` (201), `GET /` (paginated, own only, default `-createdAt`), `GET /:id`, `PUT /:id` (edit, see below),
   `DELETE /:id` (204, only while `PENDING`, else 409). Someone else's submission is a 404 (existence is not leaked).
+  Author responses do not include `reviewedById` (which moderator decided); only the moderation responses do.
 - **Edit** (#40): `PUT /me/submissions/:id`, same body and validation as `POST` (400/422, photos re-checked and replaced),
   only while `PENDING` (409), the `type` cannot change (422 `SubmissionTypeChangeError`). Runs in the approval unit of work
   after `findForUpdate`, so an edit and a concurrent approve/reject are applied one after the other; `updatePendingOwned`
