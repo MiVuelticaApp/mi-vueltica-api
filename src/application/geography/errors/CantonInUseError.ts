@@ -4,7 +4,6 @@ export class CantonInUseError extends ApplicationError {
   constructor(message?: string) {
     super(message || "No se puede eliminar el cantón porque tiene lugares asociados");
     this.name = "CantonInUseError";
-    this.stack = new Error().stack;
     this.statusCode = 409;
     this.status = 'fail';
     this.isOperational = true;

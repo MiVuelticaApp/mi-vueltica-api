@@ -4,7 +4,6 @@ export class SubmissionNotPendingError extends ApplicationError {
   constructor(message?: string) {
     super(message || "La sugerencia ya no está pendiente");
     this.name = "SubmissionNotPendingError";
-    this.stack = new Error().stack;
     this.statusCode = 409;
     this.status = 'fail';
     this.isOperational = true;
