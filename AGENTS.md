@@ -668,6 +668,8 @@ expected to use this same API as regular authenticated clients (discovering it t
   canonical form and linked through `SubmissionUpload` so the orphan cleanup keeps them while the submission exists.
   On approval, inside the same transaction, they become the Place/Event gallery in the submitted order (`Photo` rows
   with `uploadId`). Old submissions without the key read back as `photos: []`.
+- **Filters on the author list**: `GET /me/submissions` takes optional `status` and `type` with no default (all of
+  them when omitted); the app asks for `status=PENDING` to draw its "Pendiente" pins. Unknown values → 400.
 - **Rate limit**: `POST /me/submissions` allows `SUBMISSION_CREATE_RATE_LIMIT` (20 / 15 min,
   `src/presentation/http/submissions/submissionLimits.ts`) **per user** via `rateLimit({ keyGenerator: byUserId })`
   (in-memory, per process). Raise it if a crawler account needs more.
