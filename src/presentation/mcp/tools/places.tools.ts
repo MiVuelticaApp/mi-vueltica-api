@@ -13,7 +13,7 @@ import {
   targetAudienceField,
 } from "@/presentation/http/places/validators/createPlace";
 import { MAX_RADIUS_KM } from "@/presentation/http/places/validators/listPlaces";
-import { planConditionsInput, planConditionsOutput } from "../utils/planConditions";
+import { planConditionsInput, planConditionsOutput, planStatsOutput } from "../utils/planConditions";
 import { toolError, toolErrorMessage, toolOk } from "../utils/toolResult";
 
 const contentStatus = z.enum(CONTENT_STATUSES);
@@ -40,7 +40,7 @@ const placeOutput = z.object({
 });
 
 const paginatedPlacesOutput = {
-  data: z.array(placeOutput),
+  data: z.array(placeOutput.extend(planStatsOutput)),
   page: z.number().int(),
   pageSize: z.number().int(),
   total: z.number().int(),
@@ -166,7 +166,7 @@ export function registerPlaceTools(server: McpServer, placeService: IPlaceServic
             statuses: status ? [status] : undefined,
           },
         );
-        return toolOk({ ...toPaginatedResponse(result, PlaceDtoMapper.toResponse) });
+        return toolOk({ ...toPaginatedResponse(result, PlaceDtoMapper.toCardResponse) });
       } catch (error) {
         return toolError(error);
       }
@@ -203,7 +203,7 @@ export function registerPlaceTools(server: McpServer, placeService: IPlaceServic
             radius,
           },
         );
-        return toolOk({ ...toPaginatedResponse(result, PlaceDtoMapper.toResponse) });
+        return toolOk({ ...toPaginatedResponse(result, PlaceDtoMapper.toCardResponse) });
       } catch (error) {
         return toolError(error);
       }

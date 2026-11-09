@@ -25,3 +25,10 @@ export const planConditionsInput = {
   ),
   wheelchair: planConditionsFields.wheelchair.describe("Accesible en silla de ruedas. Por defecto false."),
 };
+
+/** Card stats added to list/search items (not to create results): PUBLISHED rating and first gallery photo. */
+export const planStatsOutput = {
+  averageRating: z.number().nullable().describe("Promedio de reseñas publicadas (2 decimales); null sin reseñas."),
+  reviewCount: z.number().int().describe("Cantidad de reseñas publicadas."),
+  coverPhotoUrl: z.string().nullable().describe("Primera foto de la galería; null sin fotos."),
+};

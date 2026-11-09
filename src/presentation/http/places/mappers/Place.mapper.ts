@@ -2,7 +2,9 @@ import { VerificationSummary } from "@/domain/community/entities/Verification";
 import CommunityDtoMapper from "@/presentation/http/community/mappers/Community.mapper";
 import { Place } from "@/domain/places/entities/Place";
 import { PlaceDetail } from "@/domain/places/entities/PlaceDetail";
-import { PlaceDetailResponse, PlaceResponse } from "../responses/PlaceResponse";
+import { PlaceCardResponse, PlaceDetailResponse, PlaceResponse } from "../responses/PlaceResponse";
+import { PlaceCard } from "@/domain/places/entities/PlaceCard";
+import { toPlanStatsResponse } from "@/presentation/http/core/mappers/PlanStats.mapper";
 import RatingSummaryDtoMapper from "@/presentation/http/reviews/mappers/RatingSummary.mapper";
 
 export default class PlaceDtoMapper {
@@ -31,6 +33,11 @@ export default class PlaceDtoMapper {
       createdAt: place.createdAt.toISOString(),
       updatedAt: place.updatedAt.toISOString(),
     };
+  }
+
+  /** Lists and saved places: the place plus its card stats (rating and cover photo). */
+  static toCardResponse({ place, stats }: PlaceCard): PlaceCardResponse {
+    return { ...PlaceDtoMapper.toResponse(place), ...toPlanStatsResponse(stats) };
   }
 
   static toDetailResponse(detail: PlaceDetail, verification: VerificationSummary): PlaceDetailResponse {
