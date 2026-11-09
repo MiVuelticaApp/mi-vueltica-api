@@ -365,8 +365,14 @@ token or missing/soft-deleted user continues anonymously, never 401; a valid one
 - **verifiedAt**: `Place.changeStatus(status, now)` sets `verifiedAt = now` whenever the place transitions to
   `PUBLISHED` (an already-PUBLISHED place keeps its `verifiedAt`); other statuses leave it untouched.
 - **isFavorite**: `GET /:id` adds `isFavorite: boolean` when the caller is authenticated (see Favorites) and omits it for anonymous callers; the list endpoint is unchanged.
-- **Community fields**: every response has `hiddenReason`; `GET /:id` adds `lastVerifiedAt`, `verificationCount`,
+- **Community fields**: every response has `hiddenReason` and `authorName`; `GET /:id` adds `lastVerifiedAt`, `verificationCount`,
   `myVerifiedToday` and, for authenticated callers, `isMine` (see "Verifications & reports").
+- **authorName** (#40, places and events, also in lists, favorites and MCP): "Ana M." (first name + first surname initial, same
+  privacy level as reviews) when `authorId` is set; "Anónimo" when there is no author but the source is the community one
+  (`COMMUNITY_SOURCE_ID`: deleted account, or approved before #39); `null` otherwise (team content). Resolved by `planAuthorName`
+  (`domain/community/valueObjects/planAuthor.valueObject.ts`) from the names loaded with `PLAN_AUTHOR_INCLUDE`
+  (`infrastructure/core/repositories/planAuthor.ts`, only `name`/`surnames`): add that include to every Place/Event read that
+  reaches a response, or the name comes out `null`.
 - **Photos**: `GET /:id` embeds the gallery (`photos`, ordered by `position`); managed through the Photos endpoints.
 - **Delete** is a plain `place.delete`: photos, favorites and reviews cascade at DB level and events keep existing with
   `placeId = null` (SET NULL). Category/source deletes still return 409 while any place references them.
@@ -437,7 +443,7 @@ require `jwtAuth` + `requireRole("MODERATOR", "ADMIN")`; `DELETE /:id` requires 
 - **Photos**: events have their own gallery (same `Photo` table); `GET /:id` embeds `photos` (ordered by `position`).
 - **Rating**: `GET /:id` adds `averageRating`, `reviewCount` and `ratingDistribution` over the event's PUBLISHED reviews
   (same as places; see Reviews).
-- **Community fields**: same as places (`hiddenReason`, verification summary, `isMine`, author visibility).
+- **Community fields**: same as places (`hiddenReason`, `authorName`, verification summary, `isMine`, author visibility).
 - **Delete** is a plain `event.delete`; notifications, favorites, photos, reviews, verifications and reports cascade at DB level.
 
 ## Favorites
@@ -613,12 +619,27 @@ Community suggestions of places/events that become real content once a moderator
 expected to use this same API as regular authenticated clients (discovering it through `/openapi.json`).
 
 - **Author side** — `/api/v1/me/submissions` (`mySubmissionsRouter`, mounted **before** `/me`, own `jwtAuth`):
-  `POST /` (201), `GET /` (paginated, own only, default `-createdAt`), `GET /:id`, `DELETE /:id` (204, only while
-  `PENDING`, else 409). Someone else's submission is a 404 (existence is not leaked).
+  `POST /` (201), `GET /` (paginated, own only, default `-createdAt`), `GET /:id`, `PUT /:id` (edit, see below),
+  `DELETE /:id` (204, only while `PENDING`, else 409). Someone else's submission is a 404 (existence is not leaked).
+- **Edit** (#40): `PUT /me/submissions/:id`, same body and validation as `POST` (400/422, photos re-checked and replaced),
+  only while `PENDING` (409), the `type` cannot change (422 `SubmissionTypeChangeError`). Runs in the approval unit of work
+  after `findForUpdate`, so an edit and a concurrent approve/reject are applied one after the other; `updatePendingOwned`
+  is the second guard. Its own per-user limiter with the creation budget.
 - **Moderation** — `/api/v1/submissions` (`jwtAuth` + `requireRole("MODERATOR", "ADMIN")` on the whole router):
   `GET /` (queue: `status` defaults to `PENDING`, optional `type`, default order `createdAt` asc), `GET /:id`,
-  `POST /:id/approve` (200 `{ submission, created: { type, id } }`), `POST /:id/reject` (`{ reason }`, 1-1000 chars,
-  stored in `Submission.reviewNote`). Approve/reject only from `PENDING`, else 409 `SubmissionNotPendingError`.
+  `POST /:id/approve` (200 `{ submission, created: { type, id } }`), `POST /:id/reject` (`{ reason, note? }`, see below).
+  Approve/reject only from `PENDING`, else 409 `SubmissionNotPendingError`.
+- **Rejection reasons** (#40): `reason` is a code from `REJECTION_REASONS`
+  (`domain/submissions/valueObjects/rejectionReason.valueObject.ts`, shared with the app): `duplicado`, `masDe5000`,
+  `eventoPasado`, `datosIncompletos`, `ubicacionIncorrecta`, `noEsPublico`, `inapropiado`, `spam`, `otro`. `otro` requires
+  `note` (400); the note (1-1000) is optional otherwise and stored in `reviewNote`. Stored in `Submission.rejectionReason`
+  (uppercase enum, mapped in `infrastructure/submissions/mappers/submissionEnums.ts`). Responses add `rejectionReason` and
+  `rejectionMessage` (the code's text from `REJECTION_REASON_LABELS`, or the note for `otro`). **Temporary compatibility**:
+  `RejectSubmissionSchema` turns any other text in `reason` (the free-text body used before #40) into `otro` + that note;
+  remove it once the app sends codes. Rejections from before #40 were backfilled to `OTHER`.
+- **Created plan** (#40): approving stores the new Place/Event in `Submission.createdPlaceId` / `createdEventId` (exactly one,
+  FK `SET NULL`), exposed as `created: { type, id } | null` in every submission response (author and moderation), so the
+  author can open it. Approvals from before #40 stay `null`.
 - **Body** `{ type: "PLACE" | "EVENT", data }`: a Zod discriminated union (`validators/createSubmission.ts`, rendered
   as `oneOf`). `data` is the `POST /places` or `POST /events` body **without `sourceId`**; unknown keys (`sourceId`,
   `aiScore`, `aiReason`, `status`, ...) are stripped. The event variant reuses `CreateEventBaseSchema` +
@@ -643,8 +664,9 @@ expected to use this same API as regular authenticated clients (discovering it t
   `src/presentation/http/submissions/submissionLimits.ts`) **per user** via `rateLimit({ keyGenerator: byUserId })`
   (in-memory, per process). Raise it if a crawler account needs more.
 - `aiScore` / `aiReason` are never writable through the API (reserved for an AI moderation job) and only shown in the
-  moderation responses. There is no column linking a submission to the Place/Event it created; the approve
-  response returns it.
+  moderation responses.
+- Province/canton (#40, point 1): the API keeps requiring `cantonId` for PLACE suggestions; the app picks the canton
+  with a selector filtered by province (`GET /provinces?include=cantons`).
 - Caveat: reading a submission re-validates its stored `data` with the current Place/Event rules, so tightening
   those rules can make old submissions fail to load (400). Migrate or relax the data if that ever happens.
 

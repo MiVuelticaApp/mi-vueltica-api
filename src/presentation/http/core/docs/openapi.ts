@@ -60,6 +60,7 @@ import {
 import { ChangeUserRoleSchema } from "@/presentation/http/users/validators/changeUserRole";
 import { USER_SORT_FIELDS } from "@/presentation/http/users/validators/listUsers";
 import { CreateSubmissionSchema } from "@/presentation/http/submissions/validators/createSubmission";
+import { REJECTION_REASONS, REJECTION_REASON_LABELS } from "@/domain/submissions/valueObjects/rejectionReason.valueObject";
 import { RejectSubmissionSchema } from "@/presentation/http/submissions/validators/rejectSubmission";
 import { SUBMISSION_SORT_FIELDS } from "@/presentation/http/submissions/validators/listSubmissions";
 import { SUBMISSION_CREATE_RATE_LIMIT } from "@/presentation/http/submissions/submissionLimits";
@@ -122,6 +123,19 @@ export const paginationParams = [
 ];
 
 const booleanFlagSchema = { type: "string", enum: ["true", "false"] } as const;
+
+/** `authorName` of Place and Event (#40). */
+const authorNameSchema = {
+  type: ["string", "null"],
+  description:
+    'Who contributed it: "Ana M." (first name + first surname initial), "Anónimo" for a community plan whose author is ' +
+    "unknown (deleted account, or approved before authors were recorded), null for team content",
+};
+
+/** `reason` codes of `POST /submissions/{id}/reject` with the text the author sees (#40). */
+const rejectionReasonList = Object.entries(REJECTION_REASON_LABELS)
+  .map(([code, label]) => `\`${code}\` (${label})`)
+  .join(", ");
 
 /** Bounding box or radius filters shared by `GET /places` and `GET /events` (`what` names the point matched). */
 const geoParams = (what: string) => [
@@ -1609,7 +1623,9 @@ const paths: Record<string, Record<string, unknown>> = {
     get: {
       tags: ["Submissions"],
       summary: "Get one of my submissions",
-      description: "404 if it does not exist or belongs to another user. Shows the moderator's `reviewNote` when rejected.",
+      description:
+        "404 if it does not exist or belongs to another user. When rejected it shows `rejectionReason`, `reviewNote` and " +
+        "`rejectionMessage`; once approved, `created` points to the published Place/Event.",
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       responses: {
@@ -1617,6 +1633,27 @@ const paths: Record<string, Record<string, unknown>> = {
         400: responseRef("BadRequest"),
         401: responseRef("Unauthorized"),
         404: responseRef("NotFound"),
+      },
+    },
+    put: {
+      tags: ["Submissions"],
+      summary: "Edit one of my submissions",
+      description:
+        "Full replace of a PENDING suggestion: same body and rules as `POST /me/submissions` (400 / 422), and `data.photos` " +
+        "replaces the attached photos. The `type` cannot change (422). 404 if it does not exist or belongs to another user; " +
+        "409 once it is no longer PENDING (an edit and a concurrent review run one after the other). " +
+        `Rate-limited like creating: ${SUBMISSION_CREATE_RATE_LIMIT.max} requests per ${SUBMISSION_CREATE_RATE_LIMIT.windowMs / 60000} minutes per user (429).`,
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      requestBody: jsonBody(CreateSubmissionSchema),
+      responses: {
+        200: jsonResponse("Updated submission", "Submission"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        404: responseRef("NotFound"),
+        409: responseRef("Conflict"),
+        422: responseRef("UnprocessableEntity"),
+        429: errorResponse("Too many requests"),
       },
     },
     delete: {
@@ -1690,7 +1727,8 @@ const paths: Record<string, Record<string, unknown>> = {
       description:
         "In one transaction: creates the Place/Event as PUBLISHED, attributed to the community source, and marks the " +
         "submission PUBLISHED with the reviewer and date. Only PENDING submissions (409 otherwise, also when another " +
-        "moderator approved it first). References are re-checked (422 if the canton, category or place no longer exists).",
+        "moderator approved it first). References are re-checked (422 if the canton, category or place no longer exists). " +
+        "The submission's `created` keeps the link to the new Place/Event (shown to the author).",
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       responses: {
@@ -1708,7 +1746,11 @@ const paths: Record<string, Record<string, unknown>> = {
     post: {
       tags: ["Submissions"],
       summary: "Reject a submission (MODERATOR, ADMIN)",
-      description: "Only PENDING submissions (409 otherwise). The reason is stored as `reviewNote` and shown to the author.",
+      description:
+        `Only PENDING submissions (409 otherwise). \`reason\` is one of: ${rejectionReasonList}, or \`otro\`, which requires ` +
+        "`note` (400 without it); `note` is optional for the other codes. The author sees `rejectionReason`, `reviewNote` " +
+        "and `rejectionMessage`. Temporary compatibility: any other text in `reason` (the free-text body used before #40) " +
+        "is stored as `otro` with that text as the note.",
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       requestBody: jsonBody(RejectSubmissionSchema),
@@ -2222,6 +2264,7 @@ const openApiDocument = {
             type: ["string", "null"],
             description: "Why it is hidden (ARCHIVED by verifications, reports or moderation); null otherwise",
           },
+          authorName: authorNameSchema,
           verifiedAt: {
             type: ["string", "null"],
             format: "date-time",
@@ -2232,7 +2275,7 @@ const openApiDocument = {
         },
         required: [
           "id", "cantonId", "categoryId", "sourceId", "name", "description", "latitude", "longitude",
-          "address", "openingHours", "targetAudience", "status", "hiddenReason", "verifiedAt", "createdAt", "updatedAt",
+          "address", "openingHours", "targetAudience", "status", "hiddenReason", "authorName", "verifiedAt", "createdAt", "updatedAt",
           ...planConditionsRequired,
         ],
       },
@@ -2386,13 +2429,14 @@ const openApiDocument = {
             type: ["string", "null"],
             description: "Why it is hidden (ARCHIVED by verifications, reports or moderation); null otherwise",
           },
+          authorName: authorNameSchema,
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
         },
         required: [
           "id", "placeId", "categoryId", "sourceId", "title", "description", "startsAt", "endsAt",
           "latitude", "longitude", "address", "place",
-          "targetAudience", "status", "hiddenReason", "createdAt", "updatedAt",
+          "targetAudience", "status", "hiddenReason", "authorName", "createdAt", "updatedAt",
           ...planConditionsRequired,
         ],
       },
@@ -2527,10 +2571,33 @@ const openApiDocument = {
           status: { $ref: "#/components/schemas/ContentStatus" },
           reviewedById: { type: ["string", "null"], format: "uuid" },
           reviewedAt: { type: ["string", "null"], format: "date-time" },
-          reviewNote: { type: ["string", "null"], description: "Moderator's reason when REJECTED" },
+          rejectionReason: {
+            type: ["string", "null"],
+            enum: [...REJECTION_REASONS, null],
+            description: `Rejection code when REJECTED (null otherwise, and for rejections from before #40): ${rejectionReasonList}, or \`otro\` (the moderator's note)`,
+          },
+          reviewNote: { type: ["string", "null"], description: "The moderator's written note (required for `otro`)" },
+          rejectionMessage: {
+            type: ["string", "null"],
+            description: "What to show the author when REJECTED: the reason's text, or the note for `otro`; null otherwise",
+          },
+          created: {
+            oneOf: [
+              {
+                type: "object",
+                properties: { type: { type: "string", enum: [...SUBMISSION_TYPES] }, id: { type: "string", format: "uuid" } },
+                required: ["type", "id"],
+              },
+              { type: "null" },
+            ],
+            description: "The Place/Event it became once approved; null before that, for approvals from before #40, or if it was deleted",
+          },
           createdAt: { type: "string", format: "date-time" },
         },
-        required: ["id", "userId", "type", "data", "status", "reviewedById", "reviewedAt", "reviewNote", "createdAt"],
+        required: [
+          "id", "userId", "type", "data", "status", "reviewedById", "reviewedAt", "rejectionReason", "reviewNote",
+          "rejectionMessage", "created", "createdAt",
+        ],
       },
       ModerationSubmission: {
         allOf: [
