@@ -5,7 +5,6 @@ export default class FileStorageError extends InfrastructureError {
   constructor(message: string, cause?: unknown) {
     super(message, cause);
     this.name = "FileStorageError";
-    this.stack = new Error().stack;
     this.statusCode = 503;
     this.status = "error";
   }

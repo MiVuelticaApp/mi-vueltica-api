@@ -4,7 +4,6 @@ export class CantonAlreadyExistsError extends ApplicationError {
   constructor(message?: string) {
     super(message || "Ya existe un cantón con ese código o nombre");
     this.name = "CantonAlreadyExistsError";
-    this.stack = new Error().stack;
     this.statusCode = 409;
     this.status = 'fail';
     this.isOperational = true;

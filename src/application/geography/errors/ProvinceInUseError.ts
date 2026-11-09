@@ -4,7 +4,6 @@ export class ProvinceInUseError extends ApplicationError {
   constructor(message?: string) {
     super(message || "No se puede eliminar la provincia porque tiene cantones asociados");
     this.name = "ProvinceInUseError";
-    this.stack = new Error().stack;
     this.statusCode = 409;
     this.status = 'fail';
     this.isOperational = true;

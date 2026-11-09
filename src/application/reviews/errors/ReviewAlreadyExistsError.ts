@@ -4,7 +4,6 @@ export class ReviewAlreadyExistsError extends ApplicationError {
   constructor(message?: string) {
     super(message || "Ya escribiste una reseña para este lugar");
     this.name = "ReviewAlreadyExistsError";
-    this.stack = new Error().stack;
     this.statusCode = 409;
     this.status = 'fail';
     this.isOperational = true;
