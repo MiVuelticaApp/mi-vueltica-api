@@ -1,9 +1,11 @@
 import { Place } from "@/domain/places/entities/Place";
 import { planConditionsFromColumns } from "@/infrastructure/core/repositories/planConditions";
+import { PlanAuthorRow, authorNameFromRow } from "@/infrastructure/core/repositories/planAuthor";
 import { Place as PrismaPlace, Prisma } from "@/infrastructure/prisma/generated/prisma/client";
 
 export class PrismaPlaceMapper {
-  static toDomain(row: PrismaPlace): Place {
+  /** Load the row with `PLAN_AUTHOR_INCLUDE` so `authorName` can be resolved. */
+  static toDomain(row: PrismaPlace & Pick<PlanAuthorRow, "author">): Place {
     return new Place({
       id: row.id,
       cantonId: row.cantonId,
@@ -21,6 +23,7 @@ export class PrismaPlaceMapper {
       status: row.status,
       verifiedAt: row.verifiedAt,
       authorId: row.authorId,
+      authorName: authorNameFromRow(row),
       hiddenReason: row.hiddenReason,
       reportedAt: row.reportedAt,
       createdAt: row.createdAt,
