@@ -12,6 +12,7 @@ import DatabaseInsertError from "@/infrastructure/core/errors/DatabaseInsertErro
 import { PrismaPhotoMapper } from "@/infrastructure/photos/mappers/PrismaPhotoMapper";
 import { planConditionsToColumns, planConditionsWhere } from "@/infrastructure/core/repositories/planConditions";
 import { withinRadiusSql } from "@/infrastructure/core/repositories/geo";
+import { PLAN_AUTHOR_INCLUDE } from "@/infrastructure/core/repositories/planAuthor";
 import { publishedRatingSummary } from "@/infrastructure/reviews/repositories/ratingSummary";
 import { PrismaEventMapper } from "../mappers/PrismaEventMapper";
 
@@ -34,7 +35,7 @@ export default class PrismaEventRepository implements IEventRepository {
             tx.event.findMany({
               where,
               // The place summary is embedded so clients need no request per place (#37).
-              include: { place: true },
+              include: { place: true, ...PLAN_AUTHOR_INCLUDE },
               skip: page.skip,
               take: page.take,
               // `id` as tie-breaker keeps pagination stable when the sort field has duplicates.
@@ -52,7 +53,7 @@ export default class PrismaEventRepository implements IEventRepository {
 
   async find(id: string): Promise<Event | null> {
     try {
-      const row = await this.client.event.findUnique({ where: { id } });
+      const row = await this.client.event.findUnique({ where: { id }, include: PLAN_AUTHOR_INCLUDE });
       return row ? PrismaEventMapper.toDomain(row) : null;
     } catch (error) {
       console.error("Error finding event:", error);
@@ -62,7 +63,7 @@ export default class PrismaEventRepository implements IEventRepository {
 
   async findItem(id: string): Promise<EventListItem | null> {
     try {
-      const row = await this.client.event.findUnique({ where: { id }, include: { place: true } });
+      const row = await this.client.event.findUnique({ where: { id }, include: { place: true, ...PLAN_AUTHOR_INCLUDE } });
       return row ? PrismaEventMapper.toListItem(row) : null;
     } catch (error) {
       console.error("Error finding event:", error);
@@ -75,7 +76,7 @@ export default class PrismaEventRepository implements IEventRepository {
       const [row, rating] = await Promise.all([
         this.client.event.findUnique({
           where: { id },
-          include: { place: true, photos: { orderBy: [{ position: "asc" }, { id: "asc" }] } },
+          include: { place: true, ...PLAN_AUTHOR_INCLUDE, photos: { orderBy: [{ position: "asc" }, { id: "asc" }] } },
         }),
         publishedRatingSummary(this.client, { eventId: id }),
       ]);
@@ -94,6 +95,7 @@ export default class PrismaEventRepository implements IEventRepository {
   async create(data: NormalizedEventData, options: CreatePlanOptions = {}): Promise<Event> {
     try {
       const row = await this.client.event.create({
+        include: PLAN_AUTHOR_INCLUDE,
         data: {
           placeId: data.placeId,
           categoryId: data.categoryId,

@@ -2,9 +2,10 @@ import { FavoriteItem } from "@/domain/favorites/entities/FavoriteItem";
 import { PrismaPlaceMapper } from "@/infrastructure/places/mappers/PrismaPlaceMapper";
 import { PrismaEventMapper, PrismaEventWithPlace } from "@/infrastructure/events/mappers/PrismaEventMapper";
 import { Favorite as PrismaFavorite, Place as PrismaPlace } from "@/infrastructure/prisma/generated/prisma/client";
+import { PlanAuthorRow } from "@/infrastructure/core/repositories/planAuthor";
 
 export type PrismaFavoriteWithTarget = PrismaFavorite & {
-  place: PrismaPlace | null;
+  place: (PrismaPlace & Pick<PlanAuthorRow, "author">) | null;
   event: PrismaEventWithPlace | null;
 };
 
