@@ -1,5 +1,24 @@
 # AGENTS.md
 
+## Pending deploy actions (read first)
+
+Operational notes that must be handled before the next production deploy. **If you are an agent working in this
+repo, tell the user about every item below that is still open, whatever the task is**, and before you merge to
+`main`, deploy, run `prisma migrate deploy` against production or change anything under `prisma/migrations`, make
+sure the user has confirmed each step. Remove an item (in its own commit) only after the user confirms it is done
+in production.
+
+- **`20261110120000_add_event_location_and_event_favorites` (#37) rewrites the `Favorite` primary key.** It runs on
+  its own at container start (`prisma migrate deploy` in the Dockerfile CMD). If it fails, the API does not start and
+  Prisma blocks later deploys (P3009, as in #46). It was tested on MySQL 8.4 and MariaDB 11 with existing rows, but
+  not on the production database. Before deploying it:
+  1. Confirm the production engine and version (`SELECT VERSION();`); it must be MySQL 8.x.
+  2. Back up the `Favorite` table (`mysqldump <db> Favorite > favorite-backup.sql`).
+  3. If possible, run `prisma migrate deploy` first on a copy of the production database.
+  There is no automatic rollback: MySQL commits each DDL statement, so a failure halfway leaves the earlier steps
+  applied. Check what ran, finish or undo it by hand, then `npx prisma migrate resolve --applied|--rolled-back <name>`
+  (see "Database"). The header of the migration explains each step.
+
 ## Architecture
 
 DDL / Clean Architecture with 4 layers. Dependency direction: **domain → application → infrastructure → presentation**.
@@ -35,7 +54,10 @@ MariaDB (not MySQL, not MongoDB). Uses `@prisma/adapter-mariadb`. Connection con
 columns used by a foreign key with `ON DELETE CASCADE`, MySQL error 3823). Test hand-written SQL on `mysql:8.4` as
 well as MariaDB, and remember MySQL commits each DDL statement, so a failed migration leaves the earlier statements
 applied: check what ran, then mark it with `npx prisma migrate resolve --applied <name>` (or `--rolled-back`
-after undoing it by hand).
+after undoing it by hand). **Never edit a migration file after it has run anywhere** (not even a comment): Prisma
+stores its checksum and reports it as modified. Put notes in AGENTS.md or in a new migration instead. When a
+migration changes an existing table with data (primary keys, NOT NULL columns), add an entry to "Pending deploy
+actions" at the top of this file.
 
 The connection parameters (host, user, password, database, port) are parsed from `DATABASE_URL`, which is
 also what the Prisma CLI reads (`prisma.config.ts`).
@@ -389,34 +411,58 @@ require `jwtAuth` + `requireRole("MODERATOR", "ADMIN")`; `DELETE /:id` requires 
   (through `place`; events without a place never match), `targetAudience`, `status` (privileged only), `q` (substring on title/description, max 100).
   **`from` defaults to now for everyone** (applied after validation), so the list shows upcoming/ongoing events unless an earlier `from` is sent.
   Range semantics are overlap: `startsAt <= to` AND (`endsAt >= from` OR (`endsAt IS NULL` AND `startsAt >= from`)).
+  **Geo** (#37): same params and rules as places (`bbox` or `radius`, shared `presentation/http/core/validators/geo.ts`), matched against the
+  event's **resolved location**. Bbox is a Prisma `OR` (own point when `placeId` is null, else the place's point); radius is a `UNION` of two
+  parameterized `$queryRaw` branches (own point / joined place) built with `withinRadiusSql` (`infrastructure/core/repositories/geo.ts`, also used by
+  `PrismaPlaceRepository`), returning ids for `id IN (...)`. Events without any location never match a geo filter.
 - **Body**: `placeId?` (uuid|null), `categoryId`, `sourceId?` (uuid|null), `title` (1-191), `description?` (<=5000), `startsAt`, `endsAt?`
-  (ISO 8601 with offset; responses always use `toISOString()` UTC), `targetAudience?` (default `EVERYONE`). Status is not in POST/PUT: new events are
-  `PENDING`, PUT keeps the current status. There is no `verifiedAt` on events.
+  (ISO 8601 with offset; responses always use `toISOString()` UTC), `targetAudience?` (default `EVERYONE`), and the own location `latitude?`,
+  `longitude?`, `address?` (see below). Status is not in POST/PUT: new events are `PENDING`, PUT keeps the current status. There is no `verifiedAt` on events.
+- **Own location** (#37): an event either has a `placeId` (its location is the place's point) **or** its own `latitude` + `longitude` (+ optional
+  `address`, <=191, trimmed) for events without a fixed place, **or neither** (allowed, just not on the map). Rules (`eventLocationError` in
+  `domain/events/valueObjects/eventLocation.valueObject.ts`, used by both Zod and the domain → 400): own fields together with `placeId` → 400; `latitude`
+  without `longitude` (or vice versa) → 400; `address` without coordinates → 400. Blank/null fields count as absent. Stored in nullable `Event.latitude`,
+  `longitude` (`Decimal(9,6)`), `address`; a PUT that sets `placeId` clears them. Reads are lenient: a row with a `placeId` ignores its own columns, so a
+  hand-edited row cannot break the lists. If the place is deleted, `placeId` becomes null (SET NULL) and the event has no location.
+- **Responses** (list, detail, POST/PUT/PATCH and favorites) always carry the resolved `latitude`, `longitude`, `address` (place's point when linked,
+  else own, else null) and `place: PlaceSummary | null` (read model `EventListItem` = event + place + location, built by `toEventListItem`). The
+  coordinates come from the place **whatever its status**; only the `place` summary is hidden (`withVisiblePlace`) from non-privileged callers when the
+  place is not PUBLISHED. Clients must not send the response coordinates back in a PUT when `placeId` is set (400).
 - **Rules**: `endsAt >= startsAt` is enforced in Zod (400) and by the `EventSchedule` value object (`DataException`, so the service/MCP path is protected too).
   Unknown `placeId` (any status) / `categoryId` / `sourceId` give 422 `InvalidPlaceError` / `InvalidCategoryError` / `InvalidSourceError`
   (the last two are reused from `application/places/errors`).
-- **Detail** (`EventDetail` read model): `place: PlaceSummary | null` (`id, name, cantonId, latitude, longitude, address, status`). For non-privileged
-  callers the place is `null` when it is not PUBLISHED (`placeId` is still returned); done in `EventService.get` through the same `statuses` option.
+- **Detail** (`EventDetail` read model, extends `EventListItem`): `place: PlaceSummary | null` (`id, name, cantonId, latitude, longitude, address, status`).
+  For non-privileged callers the place is `null` when it is not PUBLISHED (`placeId` and the resolved location are still returned); done in
+  `EventService.get` / `EventService.list` through the same `statuses` option. Authenticated callers also get `isFavorite` (see Favorites).
 - **Photos**: events have their own gallery (same `Photo` table); `GET /:id` embeds `photos` (ordered by `position`).
 - **Rating**: `GET /:id` adds `averageRating`, `reviewCount` and `ratingDistribution` over the event's PUBLISHED reviews
   (same as places; see Reviews).
 - **Community fields**: same as places (`hiddenReason`, verification summary, `isMine`, author visibility).
-- **Delete** is a plain `event.delete`; notifications, photos, reviews, verifications and reports cascade at DB level.
+- **Delete** is a plain `event.delete`; notifications, favorites, photos, reviews, verifications and reports cascade at DB level.
 
 ## Favorites
 
-- `GET /api/v1/me/favorites` (under `profileRouter`, so `jwtAuth`): paginated `{ place: PlaceResponse, createdAt }`.
-  Only favorites whose place is currently `PUBLISHED` are listed and counted; unpublishing hides a favorite
-  (the row stays) and re-publishing brings it back. Sort whitelist is `createdAt` only, default **desc** (most
-  recently favorited first), tie-breaker `placeId`.
-- `PUT /api/v1/places/:placeId/favorite` and `DELETE /api/v1/places/:placeId/favorite` (`jwtAuth`, 204, no body) live in
-  `placeFavoriteRouter` (`Router({ mergeParams: true })`, mounted in `router.ts` BEFORE `/places` so it is not shadowed).
-- **PUT is idempotent**: the place must exist and be `PUBLISHED`, else 404 `PlaceNotFoundError`. The repository
-  `upsert`s on `userId_placeId` with `update: {}`, so repeated/concurrent PUTs never 409 and keep the original `createdAt`.
-- **DELETE is idempotent**: `deleteMany`, 204 whether or not the favorite existed and regardless of the place's
+Saved places **and events** (#37; the app's "Guardados" screen). One `Favorite` table: own `id`, exactly one of `placeId` /
+`eventId` (enforced by the application, `PrismaFavoriteMapper` throws on a row that breaks it; no CHECK, see Photo), unique
+`(userId, placeId)` and `(userId, eventId)`, both foreign keys cascade. The migration `20261110120000_add_event_location_and_event_favorites`
+is hand-written: Prisma's generated one fails on a table with rows (error 1553 on MySQL 8, duplicate empty PK on MariaDB).
+
+- `GET /api/v1/me/favorites` (under `profileRouter`, so `jwtAuth`): paginated `{ type: "PLACE" | "EVENT", place: PlaceResponse | null,
+  event: EventResponse | null, createdAt }` (exactly one of `place` / `event` is set). Optional `type=PLACE|EVENT` filter (the app's tabs;
+  both when omitted). Only favorites whose place/event is currently `PUBLISHED` are listed and counted; unpublishing hides a favorite
+  (the row stays) and re-publishing brings it back. Past events stay listed. Event items follow the public visibility rule for their
+  `place` summary (resolved coordinates kept). Sort whitelist is `createdAt` only, default **desc** (most recently saved first), tie-breaker `id`.
+- `PUT` / `DELETE` on `/api/v1/places/:placeId/favorite` and `/api/v1/events/:eventId/favorite` (`jwtAuth`, 204, no body) are built by
+  `createTargetFavoriteRouter(type)` (`Router({ mergeParams: true })`, mounted in `router.ts` BEFORE `/places` / `/events` so they are not
+  shadowed); the controller's `target(type)` gives the handlers, as in reviews.
+- **PUT is idempotent**: the place/event must exist and be `PUBLISHED`, else 404 `PlaceNotFoundError` / `EventNotFoundError`. The
+  repository writes a raw `INSERT ... ON DUPLICATE KEY UPDATE id = id` (not Prisma's `upsert`, which is a read plus a write on
+  MariaDB/MySQL; see Devices), so repeated/concurrent PUTs never 409/500 and keep the original `id` and `createdAt`.
+- **DELETE is idempotent**: `deleteMany`, 204 whether or not the favorite existed and regardless of the target's
   status or existence (never 404, hence no `FavoriteNotFoundError`).
-- **isFavorite**: `PlaceController.get` calls `IFavoriteService.isFavorite(userId, placeId)` when `req.user` is set and
-  adds `isFavorite` to the detail response; anonymous callers do not get the field.
+- **isFavorite**: `PlaceController.get` and `EventController.get` call `IFavoriteService.isFavorite(userId, { type, id })` when
+  `req.user` is set and add `isFavorite` to the detail response; anonymous callers do not get the field.
+- Push reminders for saved events ("Te avisamos 1 día antes") are not implemented (#44).
 
 ## Reviews
 
@@ -576,7 +622,8 @@ expected to use this same API as regular authenticated clients (discovering it t
 - **Body** `{ type: "PLACE" | "EVENT", data }`: a Zod discriminated union (`validators/createSubmission.ts`, rendered
   as `oneOf`). `data` is the `POST /places` or `POST /events` body **without `sourceId`**; unknown keys (`sourceId`,
   `aiScore`, `aiReason`, `status`, ...) are stripped. The event variant reuses `CreateEventBaseSchema` +
-  `endsAtNotBeforeStartsAt` (Zod 4 forbids `.omit()` on refined objects). The domain re-validates the payload with
+  `endsAtNotBeforeStartsAt` + `eventLocationRule` (Zod 4 forbids `.omit()` on refined objects), so it also takes the event's own
+  `latitude` / `longitude` / `address` (#37); they are stored flat in the JSON and become the event's location on approval. The domain re-validates the payload with
   `normalizePlaceData` / `normalizeEventData` (`domain/submissions/entities/SubmissionPayload.ts`); event dates are
   stored in the JSON column as ISO strings. Unknown canton/category/place → 422 (on create and again on approve).
 - **Approve** runs in one transaction (`ISubmissionApprovalUnitOfWork` / `PrismaSubmissionApprovalUnitOfWork`, same
@@ -691,9 +738,11 @@ when the response ends, so there is no in-memory session state. `GET /mcp` and `
 - **Tools**: `list_categories` (`search?`, `page` = 1, `pageSize` = 100 max 100; sorted by name, read-only).
   `list_places` (`cantonId?`, `provinceId?`, `categoryId?`, `targetAudience?`, `status?`, `page`, `pageSize` = 20; by name, read-only) and
   `search_places` (required `query`, optional radius `lat`+`lng`+`radiusKm` all together else `isError`, `categoryId?`, `cantonId?`, `status?`, paging; read-only).
-  `list_events` (`from?` defaults to now, `to?`, `categoryId?`, `placeId?`, `cantonId?`, `targetAudience?`, `status?`, paging; by `startsAt` asc, `from > to` is an `isError`)
-  and `search_events` (same plus required `query` on title/description; read-only). `create_place` and `create_event`
-  (same fields as the POST bodies; created as `PENDING`; datetimes ISO 8601 with offset; `endsAt < startsAt` surfaces as `isError` via the domain value object).
+  `list_events` (`from?` defaults to now, `to?`, `categoryId?`, `placeId?`, `cantonId?`, `targetAudience?`, `status?`, optional radius `lat`+`lng`+`radiusKm`
+  all together else `isError`, paging; by `startsAt` asc, `from > to` is an `isError`) and `search_events` (same plus required `query` on title/description;
+  read-only); their items carry the resolved `latitude`/`longitude`/`address` and `place`. `create_place` and `create_event`
+  (same fields as the POST bodies, including the event's own `latitude`/`longitude`/`address`; created as `PENDING`; datetimes ISO 8601 with offset;
+  `endsAt < startsAt` or `placeId` plus own location surface as `isError` via the domain value objects).
   The MCP caller is privileged, so list/search include every status unless `status` is given. Input uses raw Zod shapes (no object-level refinements), so
   cross-field rules live in the handler / domain.
 - **Try it**: `npx @modelcontextprotocol/inspector` → Streamable HTTP, `http://localhost:<PORT>/mcp`, with the

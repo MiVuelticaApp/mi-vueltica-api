@@ -1,12 +1,12 @@
 import { VerificationSummary } from "@/domain/community/entities/Verification";
 import CommunityDtoMapper from "@/presentation/http/community/mappers/Community.mapper";
-import { Event } from "@/domain/events/entities/Event";
-import { EventDetail } from "@/domain/events/entities/EventDetail";
-import { EventDetailResponse, EventResponse } from "../responses/EventResponse";
+import { EventDetail, EventListItem, PlaceSummary } from "@/domain/events/entities/EventDetail";
+import { EventDetailResponse, EventResponse, PlaceSummaryResponse } from "../responses/EventResponse";
 import RatingSummaryDtoMapper from "@/presentation/http/reviews/mappers/RatingSummary.mapper";
 
 export default class EventDtoMapper {
-  static toResponse(event: Event): EventResponse {
+  /** Lists, favorites and write responses. Expects the visibility rule already applied to `place`. */
+  static toResponse({ event, place, location }: EventListItem): EventResponse {
     return {
       id: event.id,
       placeId: event.placeId,
@@ -16,6 +16,10 @@ export default class EventDtoMapper {
       description: event.description,
       startsAt: event.startsAt.toISOString(),
       endsAt: event.endsAt ? event.endsAt.toISOString() : null,
+      latitude: location?.latitude ?? null,
+      longitude: location?.longitude ?? null,
+      address: location?.address ?? null,
+      place: place ? EventDtoMapper.toPlaceSummaryResponse(place) : null,
       targetAudience: event.targetAudience,
       pricePerPerson: event.pricePerPerson,
       priceTier: event.priceTier,
@@ -31,21 +35,22 @@ export default class EventDtoMapper {
 
   static toDetailResponse(detail: EventDetail, verification: VerificationSummary): EventDetailResponse {
     return {
-      ...EventDtoMapper.toResponse(detail.event),
-      place: detail.place
-        ? {
-            id: detail.place.id,
-            name: detail.place.name,
-            cantonId: detail.place.cantonId,
-            latitude: detail.place.latitude,
-            longitude: detail.place.longitude,
-            address: detail.place.address,
-            status: detail.place.status,
-          }
-        : null,
+      ...EventDtoMapper.toResponse(detail),
       photos: detail.photos.map((photo) => ({ id: photo.id, url: photo.url, position: photo.position })),
       ...RatingSummaryDtoMapper.toDetailFields(detail.rating),
       ...CommunityDtoMapper.toVerificationFields(verification),
+    };
+  }
+
+  private static toPlaceSummaryResponse(place: PlaceSummary): PlaceSummaryResponse {
+    return {
+      id: place.id,
+      name: place.name,
+      cantonId: place.cantonId,
+      latitude: place.latitude,
+      longitude: place.longitude,
+      address: place.address,
+      status: place.status,
     };
   }
 }
