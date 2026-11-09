@@ -19,7 +19,12 @@ export interface SubmissionApprovalResult {
 export interface ISubmissionService {
   // Author side: a user only ever sees their own submissions.
   create(userId: string, payload: SubmissionPayloadInput): Promise<Submission>;
-  listMine(userId: string, params: PaginationParams<SubmissionSortField>): Promise<PaginatedResult<Submission>>;
+  /** Only the author's own; `filters` narrows by status / type (no filter = all of them). */
+  listMine(
+    userId: string,
+    params: PaginationParams<SubmissionSortField>,
+    filters?: SubmissionQueueFilters,
+  ): Promise<PaginatedResult<Submission>>;
   getMine(userId: string, id: string): Promise<Submission>;
   deleteMine(userId: string, id: string): Promise<void>;
 

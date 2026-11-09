@@ -26,7 +26,10 @@ export default class MySubmissionsController {
   async list(req: Request, res: Response): Promise<void> {
     const { id: userId } = getAuthUser(req);
     const query = getValidated<ListQuery>(req, "query");
-    const result = await this.submissionService.listMine(userId, toPaginationParams(query));
+    const result = await this.submissionService.listMine(userId, toPaginationParams(query), {
+      status: query.status,
+      type: query.type,
+    });
     res.json(toPaginatedResponse(result, SubmissionDtoMapper.toResponse));
   }
 

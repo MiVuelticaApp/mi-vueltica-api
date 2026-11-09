@@ -1568,7 +1568,7 @@ const paths: Record<string, Record<string, unknown>> = {
     get: {
       tags: ["Submissions"],
       summary: "List my submissions",
-      description: "Only the caller's own submissions, any status. Default order is `createdAt` descending (newest first).",
+      description: "Only the caller's own submissions. Every status unless `status` is given. Default order is `createdAt` descending (newest first).",
       security: bearer,
       parameters: [
         { $ref: "#/components/parameters/Page" },
@@ -1579,6 +1579,13 @@ const paths: Record<string, Record<string, unknown>> = {
           description: "Field to sort by: `field` ascending, `-field` descending. Default: `-createdAt`.",
           schema: { type: "string", enum: SUBMISSION_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
         },
+        {
+          name: "status",
+          in: "query",
+          description: "Only this status (e.g. `PENDING` for the app's pending pins); all statuses when omitted",
+          schema: { type: "string", enum: [...CONTENT_STATUSES] },
+        },
+        { name: "type", in: "query", description: "Only places or only events; both when omitted", schema: { type: "string", enum: [...SUBMISSION_TYPES] } },
       ],
       responses: {
         200: { description: "Page of submissions", content: { "application/json": { schema: paginated("Submission") } } },

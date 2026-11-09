@@ -52,8 +52,9 @@ export class SubmissionService implements ISubmissionService {
     });
   }
 
-  async listMine(userId: string, params: Params): Promise<PaginatedResult<Submission>> {
-    return this.submissionRepository.list(withDefaultSort(params, "desc"), { userId });
+  async listMine(userId: string, params: Params, filters: SubmissionQueueFilters = {}): Promise<PaginatedResult<Submission>> {
+    // `userId` last, so a filter object can never widen the list to other authors.
+    return this.submissionRepository.list(withDefaultSort(params, "desc"), { ...filters, userId });
   }
 
   async getMine(userId: string, id: string): Promise<Submission> {
