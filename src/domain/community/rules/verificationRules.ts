@@ -10,8 +10,10 @@ export const HIDDEN_REASON_OVER_LIMIT = "Cuesta más de ₡5.000";
 /** A verification as the outcome sees it. */
 export interface CountedVerification {
   stillHappening: StillHappening;
-  /** Null when not answered or when it does not count (guests; see `countsPrice`). */
+  /** Null when not answered or when it does not count (below level 2; see `countsPrice` in reputationRules). */
   pricePaid: PricePaid | null;
+  /** 1, or 2 for level 4+ (see `verificationWeight` in reputationRules). */
+  weight: number;
 }
 
 export type VerificationOutcome =
@@ -22,16 +24,17 @@ export type VerificationOutcome =
 /**
  * Port of the app's `outcomeOfVerifications`: 3 matching verifications update the listing. All three
  * say the plan is gone → hide; three paid over ₡5.000 → hide; three paid the same tier → that tier.
+ * Each verification counts its `weight` (level 4+ counts double).
  */
 export function outcomeOfVerifications(verifications: CountedVerification[]): VerificationOutcome {
-  const gone = verifications.filter((v) => v.stillHappening === "no").length;
+  const gone = verifications.filter((v) => v.stillHappening === "no").reduce((sum, v) => sum + v.weight, 0);
   if (gone >= VERIFICATIONS_TO_UPDATE) return { kind: "hide", reason: HIDDEN_REASON_GONE };
 
   const counts = new Map<PriceTier | "mas5000", number>();
   for (const v of verifications) {
     if (!v.pricePaid) continue;
     const tier = pricePaidToTier(v.pricePaid);
-    counts.set(tier, (counts.get(tier) ?? 0) + 1);
+    counts.set(tier, (counts.get(tier) ?? 0) + v.weight);
   }
   for (const [tier, n] of counts) {
     if (n < VERIFICATIONS_TO_UPDATE) continue;
@@ -54,14 +57,6 @@ export function priceForTier(current: number | null, tier: PriceTier): number {
     case "hasta5000":
       return current !== null && current >= 2501 && current <= 5000 ? current : 5000;
   }
-}
-
-/**
- * Whether a price answer counts. The app only counts them from reputation level 2; the API has no
- * reputation yet, so they count only from signed-in users (guests' answers are stored but ignored).
- */
-export function countsPrice(isSignedIn: boolean): boolean {
-  return isSignedIn;
 }
 
 /** Costa Rica has no daylight saving time: UTC-6 all year. */

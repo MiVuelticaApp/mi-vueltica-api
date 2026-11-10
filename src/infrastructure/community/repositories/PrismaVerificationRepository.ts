@@ -62,12 +62,13 @@ export default class PrismaVerificationRepository implements IVerificationReposi
     try {
       const rows = await this.client.verification.findMany({
         where: { ...targetColumns(target), consumedAt: null },
-        select: { stillHappening: true, pricePaid: true, userId: true },
+        select: { stillHappening: true, pricePaid: true, userId: true, user: { select: { reputationPoints: true } } },
       });
       return rows.map((row) => ({
         stillHappening: stillHappeningFromDb(row.stillHappening),
         pricePaid: pricePaidFromDb(row.pricePaid),
         userId: row.userId,
+        userPoints: row.user?.reputationPoints ?? null,
       }));
     } catch (error) {
       console.error("Error listing verifications:", error);

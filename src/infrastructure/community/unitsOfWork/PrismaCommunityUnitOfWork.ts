@@ -3,6 +3,7 @@ import { prisma } from "@/infrastructure/prisma/client";
 import PrismaPlanStateRepository from "../repositories/PrismaPlanStateRepository";
 import PrismaVerificationRepository from "../repositories/PrismaVerificationRepository";
 import PrismaReportRepository from "../repositories/PrismaReportRepository";
+import PrismaReputationRepository from "@/infrastructure/reputation/repositories/PrismaReputationRepository";
 
 /** Same pattern as PrismaSubmissionApprovalUnitOfWork: the repositories share the transaction client. */
 export class PrismaCommunityUnitOfWork implements ICommunityUnitOfWork {
@@ -12,6 +13,7 @@ export class PrismaCommunityUnitOfWork implements ICommunityUnitOfWork {
         getPlanStateRepository: () => new PrismaPlanStateRepository(tx),
         getVerificationRepository: () => new PrismaVerificationRepository(tx),
         getReportRepository: () => new PrismaReportRepository(tx),
+        getReputationRepository: () => new PrismaReputationRepository(tx),
       }),
     );
   }

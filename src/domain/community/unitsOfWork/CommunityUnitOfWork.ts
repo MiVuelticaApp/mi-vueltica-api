@@ -1,4 +1,5 @@
 import { IPlanStateRepository, IReportRepository, IVerificationRepository } from "../repositories/ICommunityRepositories";
+import { IReputationRepository } from "@/domain/reputation/repositories/IReputationRepository";
 
 /**
  * Runs a verification, a report or a moderator's decision in one transaction, after locking the
@@ -15,4 +16,5 @@ export interface ICommunityContext {
   getPlanStateRepository(): IPlanStateRepository;
   getVerificationRepository(): IVerificationRepository;
   getReportRepository(): IReportRepository;
+  getReputationRepository(): IReputationRepository;
 }
