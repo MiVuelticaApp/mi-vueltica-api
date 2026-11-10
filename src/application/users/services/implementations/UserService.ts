@@ -1,13 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { SsoProvider, User, UserProfileChanges } from "@/domain/users/entities/User";
-import { IUserRepository } from "@/domain/users/repositories/IUserRepository";
-import { IUserService } from "../interfaces/IUserService";
+import { SsoProvider, User, UserProvince } from "@/domain/users/entities/User";
+import { IUserRepository, UserActivityCounts } from "@/domain/users/repositories/IUserRepository";
+import { IProvinceRepository } from "@/domain/geography/repositories/IProvinceRepository";
+import { InvalidProvinceError } from "@/application/geography/errors/InvalidProvinceError";
+import { IUserService, UpdateProfileInput } from "../interfaces/IUserService";
 import { UserCreationError } from "../../errors/UserCreationError";
 import { UserNotFoundError } from "../../errors/UserNotFoundError";
 
 export class UserService implements IUserService {
     constructor(
         private readonly userRepository: IUserRepository,
+        private readonly provinceRepository: IProvinceRepository,
     ) {
     }
 
@@ -31,15 +34,27 @@ export class UserService implements IUserService {
         return this.userRepository.findBySso(provider, subject);
     }
 
-    async updateProfile(id: string, changes: UserProfileChanges): Promise<User> {
+    async updateProfile(id: string, { provinceId, ...changes }: UpdateProfileInput): Promise<User> {
         const user = await this.userRepository.find(id, "id");
         if (!user) throw new UserNotFoundError();
 
-        user.updateProfile(changes);
+        const province = provinceId === undefined ? undefined : await this.resolveProvince(provinceId);
+        user.updateProfile({ ...changes, province });
         await this.userRepository.update(user);
 
         const updatedUser = await this.userRepository.find(id, "id");
         if (!updatedUser) throw new UserNotFoundError();
         return updatedUser;
+    }
+
+    async activityCounts(userId: string): Promise<UserActivityCounts> {
+        return this.userRepository.activityCounts(userId);
+    }
+
+    private async resolveProvince(provinceId: number | null): Promise<UserProvince | null> {
+        if (provinceId === null) return null;
+        const province = await this.provinceRepository.find(provinceId);
+        if (!province) throw new InvalidProvinceError();
+        return { id: province.id, name: province.name };
     }
 }
