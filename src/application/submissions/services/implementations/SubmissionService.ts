@@ -33,6 +33,9 @@ const withDefaultSort = (params: Params, direction: SortDirection): Params => ({
   sort: params.sort ?? { field: "createdAt", direction },
 });
 
+import { ReputationLedger } from "@/application/reputation/services/ReputationLedger";
+import { reputationCause } from "@/domain/reputation/entities/ReputationEvent";
+
 export class SubmissionService implements ISubmissionService {
   constructor(
     private readonly submissionRepository: ISubmissionRepository,
@@ -125,7 +128,11 @@ export class SubmissionService implements ISubmissionService {
       const placeRepository = ctx.getPlaceRepository();
 
       // Locks the row: a concurrent approval waits here, then sees the committed status
-      // and gets a clean 409 before creating anything.
+      // and gets a clean 409 before creating anything. The author is locked right after, before any
+      // plain read and before the Place/Event that references them is created (see ReputationLedger).
+      const authorId = await submissionRepository.lockAuthor(id);
+      if (!authorId) throw new SubmissionNotFoundError();
+      await ctx.getReputationRepository().lockPoints(authorId);
       const submission = await submissionRepository.findForUpdate(id);
       if (!submission) throw new SubmissionNotFoundError();
       if (!submission.isPending()) throw new SubmissionNotPendingError();
@@ -175,16 +182,41 @@ export class SubmissionService implements ISubmissionService {
       // otherwise this throws and the transaction rolls back the Place/Event created above.
       if (!(await submissionRepository.markReviewed(submission))) throw new SubmissionNotPendingError();
 
+      // +10 for the author, in the same transaction: no points without the plan, and never twice.
+      await ReputationLedger.award(ctx.getReputationRepository(), {
+        userId: submission.userId,
+        kind: "aportePublicado",
+        causeKey: reputationCause.submissionApproved(submission.id),
+        at: now,
+      });
+
       return { submission, created };
     });
   }
 
   async reject(id: string, reviewerId: string, { reason, note }: SubmissionRejection): Promise<Submission> {
-    const submission = await this.get(id);
-    if (!submission.isPending()) throw new SubmissionNotPendingError();
-    submission.reject(reviewerId, reason, note ?? null, new Date());
-    if (!(await this.submissionRepository.markReviewed(submission))) throw new SubmissionNotPendingError();
-    return submission;
+    // Same lock as approve: a concurrent approve/reject waits and then gets a clean 409, and the
+    // −10 is written together with the rejection.
+    return this.approvalUOW.runInTransaction(async (ctx) => {
+      const submissionRepository = ctx.getSubmissionRepository();
+      const authorId = await submissionRepository.lockAuthor(id);
+      if (!authorId) throw new SubmissionNotFoundError();
+      await ctx.getReputationRepository().lockPoints(authorId);
+      const submission = await submissionRepository.findForUpdate(id);
+      if (!submission) throw new SubmissionNotFoundError();
+      if (!submission.isPending()) throw new SubmissionNotPendingError();
+      const now = new Date();
+      submission.reject(reviewerId, reason, note ?? null, now);
+      if (!(await submissionRepository.markReviewed(submission))) throw new SubmissionNotPendingError();
+
+      await ReputationLedger.award(ctx.getReputationRepository(), {
+        userId: submission.userId,
+        kind: "aporteRechazado",
+        causeKey: reputationCause.submissionRejected(submission.id),
+        at: now,
+      });
+      return submission;
+    });
   }
 
   /**

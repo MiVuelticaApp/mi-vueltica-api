@@ -10,6 +10,7 @@ import PrismaCategoryRepository from "@/infrastructure/categories/repositories/P
 import PrismaCantonRepository from "@/infrastructure/geography/repositories/PrismaCantonRepository";
 import PrismaSourceRepository from "@/infrastructure/sources/repositories/PrismaSourceRepository";
 import PrismaPhotoRepository from "@/infrastructure/photos/repositories/PrismaPhotoRepository";
+import PrismaReputationRepository from "@/infrastructure/reputation/repositories/PrismaReputationRepository";
 
 /** Same pattern as PrismaUserDeletionUnitOfWork: every repository shares the transaction client. */
 export class PrismaSubmissionApprovalUnitOfWork implements ISubmissionApprovalUnitOfWork {
@@ -23,6 +24,7 @@ export class PrismaSubmissionApprovalUnitOfWork implements ISubmissionApprovalUn
         getCategoryRepository: () => new PrismaCategoryRepository(tx),
         getSourceRepository: () => new PrismaSourceRepository(tx),
         getPhotoRepository: () => new PrismaPhotoRepository(tx),
+        getReputationRepository: () => new PrismaReputationRepository(tx),
       };
       return work(context);
     });

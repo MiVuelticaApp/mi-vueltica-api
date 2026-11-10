@@ -50,6 +50,16 @@ export default class PrismaSubmissionRepository implements ISubmissionRepository
     }
   }
 
+  async lockAuthor(id: string): Promise<string | null> {
+    try {
+      const rows = await this.client.$queryRaw<{ userId: string }[]>`SELECT userId FROM Submission WHERE id = ${id} FOR UPDATE`;
+      return rows[0]?.userId ?? null;
+    } catch (error) {
+      console.error("Error locking submission:", error);
+      throw new DatabaseError("Could not find submission", error);
+    }
+  }
+
   async findForUpdate(id: string): Promise<Submission | null> {
     try {
       // The locking read must come first: InnoDB takes the transaction's snapshot at its first
