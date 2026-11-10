@@ -58,6 +58,10 @@ import MyDevicesController from "@/presentation/http/devices/controllers/MyDevic
 import MyNotificationsController from "@/presentation/http/notifications/controllers/MyNotifications.controller";
 import SubmissionsController from "@/presentation/http/submissions/controllers/Submissions.controller";
 import ResendEmailProvider from "@/infrastructure/email/providers/ResendEmailProvider";
+import { PrismaReviewVoteUnitOfWork } from "@/infrastructure/reviews/unitsOfWork/PrismaReviewVoteUnitOfWork";
+import PrismaReputationRepository from "@/infrastructure/reputation/repositories/PrismaReputationRepository";
+import { ReputationService } from "@/application/reputation/services/implementations/ReputationService";
+import { IReputationService } from "@/application/reputation/services/interfaces/IReputationService";
 import MyProfileController from "@/presentation/http/users/controllers/MyProfile.controller";
 import { IEmailService } from "@/domain/core/services/IEmailService";
 import AdminUsersController from "@/presentation/http/users/controllers/AdminUsers.controller";
@@ -104,11 +108,13 @@ export const deviceRepository = new PrismaDeviceRepository();
 export const notificationRepository = new PrismaNotificationRepository();
 export const uploadRepository = new PrismaUploadRepository();
 export const photoRepository = new PrismaPhotoRepository();
+export const reputationRepository = new PrismaReputationRepository();
 
 // unit of work
 export const userDeletionUOW = new PrismaUserDeletionUnitOfWork();
 export const submissionApprovalUOW = new PrismaSubmissionApprovalUnitOfWork();
 export const photoGalleryUOW = new PrismaPhotoGalleryUnitOfWork();
+export const reviewVoteUOW = new PrismaReviewVoteUnitOfWork();
 
 // providers
 export const idGenerator = new UuidIDGenerator();
@@ -142,7 +148,8 @@ export const jwtService = new JwtTokenService();
 // ==================== APPLICATION ====================
 
 // services
-export const userService = new UserService(userRepository);
+export const userService = new UserService(userRepository, provinceRepository);
+export const reputationService: IReputationService = new ReputationService(userRepository, reputationRepository);
 export const categoryService = new CategoryService(categoryRepository);
 export const provinceService = new ProvinceService(provinceRepository);
 export const cantonService = new CantonService(cantonRepository, provinceRepository);
@@ -163,7 +170,7 @@ export const uploadService: IUploadService = new UploadService(
     orphanGraceMs: ENV.UPLOAD_ORPHAN_GRACE_HOURS * 60 * 60 * 1000,
   },
 );
-export const reviewService: IReviewService = new ReviewService(reviewRepository, placeRepository, eventRepository, uploadService);
+export const reviewService: IReviewService = new ReviewService(reviewRepository, placeRepository, eventRepository, uploadService, reviewVoteUOW);
 export const communityService: ICommunityService = new CommunityService(
   new PrismaCommunityUnitOfWork(),
   new PrismaVerificationRepository(),
@@ -202,6 +209,7 @@ export const myProfileController = new MyProfileController(
   accountDeletionService,
   accountDeletionExternalCleanup,
   userInterestService,
+  reputationService,
 );
 
 export const myInterestsController = new MyInterestsController(userInterestService);
