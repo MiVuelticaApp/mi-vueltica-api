@@ -1,9 +1,13 @@
 import { User } from "@/domain/users/entities/User";
-import { User as PrismaUser } from "@/infrastructure/prisma/generated/prisma/client";
+import { Prisma, User as PrismaUser } from "@/infrastructure/prisma/generated/prisma/client";
+
+/** Every user read loads the province name (`GET /me`, auth responses). */
+export const USER_INCLUDE = { province: { select: { id: true, name: true } } } satisfies Prisma.UserInclude;
+type UserRow = PrismaUser & { province: { id: number; name: string } | null };
 import { UserUncheckedCreateInput, UserUncheckedUpdateInput } from "@/infrastructure/prisma/generated/prisma/models";
 
 export class PrismaUserMapper {
-  static toDomain(row: PrismaUser): User {
+  static toDomain(row: UserRow): User {
     return new User({
       id: row.id,
       name: row.name,
@@ -13,6 +17,8 @@ export class PrismaUserMapper {
       ssoSubject: row.ssoSubject,
       ageRange: row.ageRange,
       role: row.role,
+      province: row.province,
+      reputationPoints: row.reputationPoints,
       deletedAt: row.deletedAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -34,13 +40,15 @@ export class PrismaUserMapper {
     };
   }
 
-  // Email and SSO identity are deliberately excluded: an update must never rewrite them.
+  // Email and SSO identity are deliberately excluded: an update must never rewrite them. Nor
+  // `reputationPoints`: only the reputation ledger changes it (a profile edit would overwrite a concurrent award).
   static toUpdateData(user: User): UserUncheckedUpdateInput {
     return {
       name: user.name,
       surnames: user.surnames,
       ageRange: user.ageRange,
       role: user.role,
+      provinceId: user.provinceId,
       updatedAt: user.updatedAt,
     };
   }

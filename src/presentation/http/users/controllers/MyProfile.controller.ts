@@ -6,6 +6,7 @@ import { IUserService } from "@/application/users/services/interfaces/IUserServi
 import { IUserInterestService } from "@/application/users/services/interfaces/IUserInterestService";
 import { IAccountDeletionService } from "@/application/users/services/interfaces/IAccountDeletionService";
 import { IAccountDeletionExternalCleanup } from "@/application/users/services/interfaces/IAccountDeletionExternalCleanup";
+import { IReputationService } from "@/application/reputation/services/interfaces/IReputationService";
 
 export default class MyProfileController {
 
@@ -14,12 +15,13 @@ export default class MyProfileController {
     private readonly accountDeletionService: IAccountDeletionService,
     private readonly accountDeletionExternalCleanup: IAccountDeletionExternalCleanup,
     private readonly userInterestService: IUserInterestService,
+    private readonly reputationService: IReputationService,
   ) {}
 
   async update(req: Request, res: Response): Promise<void> {
     const { id } = getAuthUser(req);
-    const { name, surnames, ageRange }: UpdateUserRequest = req.body;
-    const updatedUser = await this.userService.updateProfile(id, { name, surnames, ageRange });
+    const { name, surnames, ageRange, provinceId }: UpdateUserRequest = req.body;
+    const updatedUser = await this.userService.updateProfile(id, { name, surnames, ageRange, provinceId });
     res.json(UserDtoMapper.toResponse(updatedUser));
   }
 
@@ -30,7 +32,13 @@ export default class MyProfileController {
       res.status(404).json({ message: "User not found" });
       return;
     }
-    res.json(UserDtoMapper.toMyProfileResponse(user, await this.userInterestService.list(id)));
+    const [interests, counts] = await Promise.all([this.userInterestService.list(id), this.userService.activityCounts(id)]);
+    res.json(UserDtoMapper.toMyProfileResponse(user, interests, counts));
+  }
+
+  async reputation(req: Request, res: Response): Promise<void> {
+    const { id } = getAuthUser(req);
+    res.json(UserDtoMapper.toReputationResponse(await this.reputationService.summary(id)));
   }
 
   async deleteAccount(req: Request, res: Response): Promise<void> {
