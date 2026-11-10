@@ -5,6 +5,7 @@ import { ICategoryRepository } from "@/domain/categories/repositories/ICategoryR
 import { ICantonRepository } from "@/domain/geography/repositories/ICantonRepository";
 import { ISourceRepository } from "@/domain/sources/repositories/ISourceRepository";
 import { IPhotoRepository } from "@/domain/photos/repositories/IPhotoRepository";
+import { IReputationRepository } from "@/domain/reputation/repositories/IReputationRepository";
 
 /**
  * Runs a submission approval in one transaction: creating the Place/Event and marking the
@@ -26,4 +27,5 @@ export interface ISubmissionApprovalContext {
   getCategoryRepository(): ICategoryRepository;
   getSourceRepository(): ISourceRepository;
   getPhotoRepository(): IPhotoRepository;
+  getReputationRepository(): IReputationRepository;
 }
