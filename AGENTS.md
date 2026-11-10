@@ -8,6 +8,16 @@ repo, tell the user about every item below that is still open, whatever the task
 sure the user has confirmed each step. Remove an item (in its own commit) only after the user confirms it is done
 in production.
 
+- **`20261113120000_add_reputation_and_user_province` (#42) changes `User` and backfills points.** It runs on its own at
+  container start. It only adds columns (`provinceId` nullable, `reputationPoints` NOT NULL DEFAULT 0) and the new
+  `ReputationEvent` table, then inserts the points earned before the deploy (+10 per approved submission, +2 per plan a
+  signed-in user verified, +1 per "útil" vote received) and sets each user's total. Tested on MySQL 8.4 and MariaDB 11
+  with existing rows. Before deploying it:
+  1. Back up the `User` table (`mysqldump <db> User > user-backup.sql`).
+  2. Optionally check what it will award: `SELECT COUNT(*) FROM Submission WHERE status = 'PUBLISHED';`,
+     `SELECT COUNT(*) FROM Verification WHERE userId IS NOT NULL;`, `SELECT COUNT(*) FROM ReviewUsefulVote;`.
+  If it fails after the DDL, the columns and table stay applied: drop `ReputationEvent` and the two columns (or finish the
+  backfill by hand), then `npx prisma migrate resolve --rolled-back|--applied 20261113120000_add_reputation_and_user_province`.
 - **`20261112120000_delete_reviews_with_account` deletes data and cannot be undone.** It runs on its own at container
   start. It deletes every review already left without an author by earlier account deletions (with their photos and
   "útil" votes) and makes future account deletions delete the account's reviews. Before deploying it:
@@ -173,7 +183,7 @@ iOS client; unknown keys → 400. The response is **204** with no body. Service 
 1. Load the user; throw `UserNotFoundError` (404) if missing.
 2. Capture `email` and `name` **before** deleting (the confirmation email needs a recipient).
 3. Hard delete the `User` row. Everything that belongs to the user is removed by the database:
-   `UserInterest`, `Submission` (as author), `Favorite`, `ReviewUsefulVote`, `Device` and `Notification` cascade;
+   `UserInterest`, `Submission` (as author), `Favorite`, `ReviewUsefulVote`, `Device`, `Notification` and `ReputationEvent` cascade;
    `Submission.reviewedById` is set to null for submissions the user moderated. **Reviews are deleted** with the
    account (`Review.userId` is `ON DELETE CASCADE`; their photos and "útil" votes cascade, their uploads go to the orphan
    cleanup), as the app's `anonymizeOnDelete` rule says: published plans stay as "Anónimo", reviews and pending plans go.
@@ -523,7 +533,8 @@ account (see "Account deletion"); a review without an author (only possible for 
   idempotent and answering 200 with the review (`usefulCount`, `markedUsefulByMe`). `ReviewUsefulVote` has the primary
   key `(reviewId, userId)`; the vote is a raw `INSERT ... ON DUPLICATE KEY UPDATE` (not Prisma `upsert`, not `INSERT
   IGNORE`; see Devices). Only PUBLISHED reviews (404 otherwise) and never your own (403). `markedUsefulByMe` is false for
-  anonymous callers. The author's reputation for useful votes is not implemented (there is no reputation model yet).
+  anonymous callers. Each vote gives the review's author +1 reputation and undoing it takes the point back (see Reputation);
+  vote and point are written in one transaction (`PrismaReviewVoteUnitOfWork`).
 - **Rules**: `rating` integer 1-5 and `comment` <= 2000 chars (trimmed, blank → null) are checked in Zod
   (`validators/reviewBody.ts`) **and** by the `Rating` / `ReviewComment` value objects; `wentWith` / `spent` / `photos`
   by `reviewExperience.valueObject.ts` / `reviewPhotos.valueObject.ts`. Ratings (`averageRating`, `reviewCount`,
@@ -544,19 +555,20 @@ strings (`StillHappening`, `PricePaid`, `ReportReason` in mi-vueltica-app), stor
   A guest can mint device ids, so these limits are the only brake on fake guest reports.
 - **Verify** `POST /places/:placeId/verifications` (and `/events/:eventId/verifications`) `{ stillHappening: si|no|nose,
   pricePaid?: gratis|menos2500|entre2500y5000|mas5000, scheduleCorrect?, correctedTime? (<=100), photo? }` → 200
-  `{ queued: false, points: 0, hidden }` (no reputation model yet, so no points). One row per person and plan
+  `{ queued: false, points, hidden }` (`points` is 2 the first time a signed-in person verifies the plan, else 0; see
+  Reputation). One row per person and plan
   (`@@unique([placeId, personKey])` / `[eventId, personKey]`): a newer answer replaces the previous one. `si` sets
   `Place.verifiedAt = now`. **Outcome** (`outcomeOfVerifications`) over the rows with `consumedAt IS NULL`: 3 × `no` →
   hide "Ya no existe"; 3 × `mas5000` → hide "Cuesta más de ₡5.000"; 3 × another tier → `pricePerPerson` = current price if
   already in that tier, else the tier's max (0 / 2500 / 5000, `priceForTier`). The rows that produced an outcome get
   `consumedAt` (like the app clearing them) but still count in `verificationCount`. **Price answers only count from
-  signed-in users** (the app's "level 2" rule, `countsPrice`; guests' prices are stored and ignored). Level-4 double
-  weight is not implemented.
+  reputation level 2** (`countsPrice` in `reputationRules.ts`; guests' and level-1 prices are stored and ignored) and
+  **level 4+ verifications count double** (`verificationWeight`), both read from the verifier's current points.
 - **Report** `POST /places/:placeId/reports` (and events) `{ reason: cerro|noGratis|masDe5000|horario|inapropiado|spam|otro,
   details? (<=1000), photo? }` → 201 (`Report` + `hidden`, never the reporter). One per person and plan, also after a
   decision: a second one → 409 `ReportAlreadyExistsError`. 3 unresolved reports with the same reason (`reportsHide`) hide
   the plan "En revisión por reportes" with `reportedAt = now`.
-- **Moderation** (MODERATOR, ADMIN): `GET /reports` — one item per plan with unresolved reports, ordered `needsReview`
+- **Moderation** (MODERATOR, ADMIN; a `hide` decision costs the plan's author 5 points, see Reputation): `GET /reports` — one item per plan with unresolved reports, ordered `needsReview`
   (hidden by reports > 72 h, `needsReview`) first, then hidden ones, then oldest report (raw grouped SQL in
   `PrismaReportRepository.queue`). `POST /places/:placeId/reports/decision` (and events) `{ decision: keep|hide }`:
   `keep` → PUBLISHED and clears `hiddenReason` / `reportedAt`; `hide` → ARCHIVED "Ocultada por moderación"; both set
@@ -575,6 +587,43 @@ strings (`StillHappening`, `PricePaid`, `ReportReason` in mi-vueltica-app), stor
   who verified), `myVerifiedToday` (the caller by token or `X-Device-Id` verified it since 00:00 Costa Rica time, UTC-6;
   a malformed header is ignored here) and `isMine` for authenticated callers.
 - Verifications and reports cascade with their Place/Event; their `userId` is `SET NULL` on account deletion.
+
+## Profile & reputation
+
+`GET /api/v1/me` returns the user plus `interests`, `counts: { vuelticas, reviews, verifications }` (approved suggestions,
+reviews in any status, plans verified; `IUserRepository.activityCounts`), `province: { id, name } | null`, `createdAt`,
+`points` and `level`. Every `UserResponse` (login responses, `GET /auth/me`, `PUT /me`, admin users) carries the last four
+too, all read from the `User` row (no extra queries). `PUT /me` accepts `provinceId` (the default map region): omitted
+keeps it, `null` clears it, an unknown id is 422 `InvalidProvinceError`. `User.provinceId` is `ON DELETE SET NULL`.
+
+**Reputation** (#42, module `reputation`): the single config is `src/domain/reputation/reputationRules.ts` (the app's
+PLAN §8 values, confirmed by product): levels N1 0, N2 50, N3 120, N4 200, N5 400; points `aportePublicado` +10,
+`aporteRechazado` −10, `verificacion` +2, `resenaUtil` +1, `planOcultado` −5, `votoModeracion` +1, `minoriaModeracion` −2
+(the last two are applied by community moderation, #43); floor 0. Perks: N2 price answers count, N3 moderation (#43), N4
+verifications count double, N5 moderation votes count double (#43). Role and level are independent: a MODERATOR gets no
+level and a level-3 user no moderator routes until #43.
+
+- **Storage**: ledger `ReputationEvent` (`kind`, `delta`, unique `causeKey`) plus the cached total `User.reputationPoints`.
+  Only `ReputationLedger` (`application/reputation/services/ReputationLedger.ts`) writes them, always inside the
+  transaction of what caused the change: approve / reject (approval unit of work), verification and `hide` decision
+  (`PrismaCommunityUnitOfWork`), "útil" vote and its undo (`PrismaReviewVoteUnitOfWork`). `PrismaUserMapper.toUpdateData`
+  never writes the points.
+- **Idempotent**: the `causeKey` (`reputationCause` in `domain/reputation/entities/ReputationEvent.ts`) is unique per cause:
+  one per submission decision, one per person and plan verified (answering again gives nothing), one per voter and review
+  (deleted on undo, so voting again gives the point back), one per `hide` decision. Repeated or concurrent requests never
+  award twice (tested with 10 concurrent requests on MariaDB 11 and MySQL 8.4).
+- **Floor**: `delta` stores what was applied (`appliedDelta`: with 3 points a −10 stores −3), so the ledger adds up to the
+  total. Exception: undoing a vote when the author is already at 0 leaves the total at 0.
+- **Locking** (read before changing it): `ReputationLedger` locks the user row (`SELECT ... FOR UPDATE`). Lock the plan /
+  submission first, then the users (two users in id order), and do it **before the transaction's first plain read and
+  before inserting rows that reference the user**. Otherwise concurrent requests failed: a foreign key check takes a
+  shared lock on the user and two transactions upgrading it deadlock (1213), and MariaDB's snapshot isolation fails a lock
+  taken after a plain read with 1020. That is why `PlanStateRepository.lock` reads the state with the locking query itself
+  and `ISubmissionRepository.lockAuthor` exists.
+- `GET /api/v1/me/reputation` (`profileRouter`): `{ points, level, nextLevel, pointsToNext, progress, perks, recent }`,
+  `recent` = the latest 20 `{ kind, delta, createdAt }` (newest first); `nextLevel` null and `progress` 1 at N5.
+- The migration backfilled the positive points earned before #42 (approved submissions, verifications by signed-in users,
+  "útil" votes); penalties count from the deploy.
 
 ## User interests
 
@@ -670,7 +719,9 @@ expected to use this same API as regular authenticated clients (discovering it t
   `null` with a warning if an admin deleted that source), then `markReviewed`. The row lock is required: MariaDB 11's
   `innodb_snapshot_isolation` makes a concurrent conditional `UPDATE` fail with "Record has changed since last read"
   (500) instead of matching zero rows; with the lock, concurrent approvals get a clean 409 and create nothing.
-  `markReviewed` / `deletePendingOwned` still only write while the row is `PENDING` (second guard).
+  `markReviewed` / `deletePendingOwned` still only write while the row is `PENDING` (second guard). The author gets +10
+  reputation in the same transaction. **Reject** runs in the same unit of work and lock (−10 to the author), so an
+  approve and a reject of the same submission never both succeed.
 - **Photos**: `data.photos` (optional, max 5, no duplicates) holds URLs returned by `POST /uploads`. Each must be one of
   the **author's own** uploads (`UploadService.resolveOwnUploads`, else 422 `InvalidUploadError`); they are stored in
   canonical form and linked through `SubmissionUpload` so the orphan cleanup keeps them while the submission exists.
