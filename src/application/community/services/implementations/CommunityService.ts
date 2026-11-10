@@ -12,7 +12,6 @@ import {
 } from "@/domain/community/valueObjects/verificationAnswers.valueObject";
 import { parseReportDetails, parseReportReason } from "@/domain/community/valueObjects/reportReason.valueObject";
 import {
-  countsPrice,
   outcomeOfVerifications,
   priceForTier,
   startOfCostaRicaDay,
@@ -23,6 +22,9 @@ import {
   ReportDecision,
   reportsHide,
 } from "@/domain/community/rules/reportRules";
+import { countsPrice, verificationWeight } from "@/domain/reputation/reputationRules";
+import { reputationCause } from "@/domain/reputation/entities/ReputationEvent";
+import { ReputationLedger } from "@/application/reputation/services/ReputationLedger";
 import DataException from "@/domain/core/errors/DataError";
 import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
 import { PlaceNotFoundError } from "@/application/places/errors/PlaceNotFoundError";
@@ -65,6 +67,9 @@ export class CommunityService implements ICommunityService {
 
     return this.unitOfWork.runInTransaction(async (ctx) => {
       const state = await this.lockPublished(ctx, target);
+      // Lock the verifier right after the plan: before any plain read and before inserting the row that
+      // references them (see ReputationLedger; without it concurrent verifications deadlocked).
+      if (person.userId !== null) await ctx.getReputationRepository().lockPoints(person.userId);
       const verifications = ctx.getVerificationRepository();
       await verifications.save({
         target,
@@ -80,13 +85,25 @@ export class CommunityService implements ICommunityService {
       const plans = ctx.getPlanStateRepository();
       if (stillHappening === "si") await plans.markVerified(target, now);
 
-      // Price answers only count from signed-in users (the app's "level 2" rule; no reputation yet).
+      // +2 the first time a signed-in person verifies this plan (answering again gives nothing).
+      const points =
+        person.userId === null
+          ? 0
+          : await ReputationLedger.award(ctx.getReputationRepository(), {
+              userId: person.userId,
+              kind: "verificacion",
+              causeKey: reputationCause.verification(target.type, target.id, person.userId),
+              at: now,
+            });
+
+      // Price answers count from level 2 and level 4+ counts double (read after this verifier's points).
       const counting = (await verifications.listCounting(target)).map((v) => ({
         stillHappening: v.stillHappening,
-        pricePaid: countsPrice(v.userId !== null) ? v.pricePaid : null,
+        pricePaid: countsPrice(v.userPoints) ? v.pricePaid : null,
+        weight: verificationWeight(v.userPoints),
       }));
       const outcome = outcomeOfVerifications(counting);
-      if (outcome.kind === "none") return { queued: false, points: 0, hidden: false };
+      if (outcome.kind === "none") return { queued: false, points, hidden: false };
 
       if (outcome.kind === "hide") {
         await plans.hide(target, outcome.reason, null);
@@ -95,7 +112,7 @@ export class CommunityService implements ICommunityService {
       }
       // Like the app: the answers that produced an outcome do not count towards the next one.
       await verifications.consumeAll(target, now);
-      return { queued: false, points: 0, hidden: outcome.kind === "hide" };
+      return { queued: false, points, hidden: outcome.kind === "hide" };
     });
   }
 
@@ -130,12 +147,27 @@ export class CommunityService implements ICommunityService {
       const plans = ctx.getPlanStateRepository();
       const state = await plans.lock(target);
       if (!state) throw notFound(target);
+      // Lock the author before any plain read (they may lose points below; see ReputationLedger).
+      if (state.authorId) await ctx.getReputationRepository().lockPoints(state.authorId);
       const reports = ctx.getReportRepository();
       if ((await reports.unresolvedReasons(target)).length === 0) throw new NoPendingReportsError();
 
-      if (decision === "keep") await plans.publish(target);
-      else await plans.hide(target, HIDDEN_REASON_MODERATION, null);
-      const resolvedReports = await reports.resolveAll(target, new Date());
+      const now = new Date();
+      if (decision === "keep") {
+        await plans.publish(target);
+      } else {
+        await plans.hide(target, HIDDEN_REASON_MODERATION, null);
+        // Confirmed reports cost the author 5 points (team content has no author).
+        if (state.authorId) {
+          await ReputationLedger.award(ctx.getReputationRepository(), {
+            userId: state.authorId,
+            kind: "planOcultado",
+            causeKey: reputationCause.planHidden(target.type, target.id, now),
+            at: now,
+          });
+        }
+      }
+      const resolvedReports = await reports.resolveAll(target, now);
       return {
         target,
         status: decision === "keep" ? "PUBLISHED" : "ARCHIVED",

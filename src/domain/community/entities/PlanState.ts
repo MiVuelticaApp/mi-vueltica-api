@@ -8,4 +8,6 @@ export interface PlanState {
   pricePerPerson: number | null;
   hiddenReason: string | null;
   reportedAt: Date | null;
+  /** The submitter it was approved from; null for team content (and plans approved before #39). */
+  authorId: string | null;
 }
