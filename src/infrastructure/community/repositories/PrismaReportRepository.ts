@@ -1,4 +1,4 @@
-import { CreateReportData, IReportRepository } from "@/domain/community/repositories/ICommunityRepositories";
+import { CreateReportData, IReportRepository, ReportQueueOptions } from "@/domain/community/repositories/ICommunityRepositories";
 import { Report, ReportQueueItem } from "@/domain/community/entities/Report";
 import { PlanTarget } from "@/domain/community/valueObjects/planTarget.valueObject";
 import { ReportReason } from "@/domain/community/valueObjects/reportReason.valueObject";
@@ -88,10 +88,14 @@ export default class PrismaReportRepository implements IReportRepository {
     }
   }
 
-  async queue(params: PaginationParams, now: Date): Promise<PaginatedResult<ReportQueueItem>> {
+  async queue(params: PaginationParams, now: Date, options: ReportQueueOptions = {}): Promise<PaginatedResult<ReportQueueItem>> {
     const take = params.pageSize;
     const skip = (params.page - 1) * params.pageSize;
     const reviewCutoff = new Date(now.getTime() - NEEDS_REVIEW_HOURS * 60 * 60 * 1000);
+    // Community voters never see the plans they authored (team plans have no author).
+    const notAuthoredBy = options.excludeAuthorId
+      ? Prisma.sql`AND (COALESCE(p.authorId, e.authorId) IS NULL OR COALESCE(p.authorId, e.authorId) <> ${options.excludeAuthorId})`
+      : Prisma.empty;
     try {
       // One row per reported plan. Order: needs review, then hidden by reports, then oldest report first.
       // Full expressions (not aliases) in ORDER BY so MySQL's ONLY_FULL_GROUP_BY and MariaDB agree.
@@ -101,7 +105,7 @@ export default class PrismaReportRepository implements IReportRepository {
           FROM Report r
           LEFT JOIN Place p ON p.id = r.placeId
           LEFT JOIN Event e ON e.id = r.eventId
-          WHERE r.resolvedAt IS NULL
+          WHERE r.resolvedAt IS NULL ${notAuthoredBy}
           GROUP BY r.placeId, r.eventId, p.reportedAt, e.reportedAt
           ORDER BY
             (COALESCE(p.reportedAt, e.reportedAt) IS NOT NULL AND COALESCE(p.reportedAt, e.reportedAt) < ${reviewCutoff}) DESC,
@@ -113,7 +117,11 @@ export default class PrismaReportRepository implements IReportRepository {
         `,
         this.client.$queryRaw<{ total: bigint | number }[]>`
           SELECT COUNT(*) AS total FROM (
-            SELECT 1 AS one FROM Report WHERE resolvedAt IS NULL GROUP BY placeId, eventId
+            SELECT 1 AS one FROM Report r
+            LEFT JOIN Place p ON p.id = r.placeId
+            LEFT JOIN Event e ON e.id = r.eventId
+            WHERE r.resolvedAt IS NULL ${notAuthoredBy}
+            GROUP BY r.placeId, r.eventId
           ) AS reported
         `,
       ]);

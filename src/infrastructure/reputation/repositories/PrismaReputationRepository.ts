@@ -70,6 +70,17 @@ export default class PrismaReputationRepository implements IReputationRepository
     }
   }
 
+  async pointsOf(userIds: string[]): Promise<Map<string, number>> {
+    if (userIds.length === 0) return new Map();
+    try {
+      const rows = await this.client.user.findMany({ where: { id: { in: userIds } }, select: { id: true, reputationPoints: true } });
+      return new Map(rows.map((row) => [row.id, row.reputationPoints]));
+    } catch (error) {
+      console.error("Error reading user points:", error);
+      throw new DatabaseError("Could not read the users' points", error);
+    }
+  }
+
   async recent(userId: string, limit: number): Promise<ReputationEvent[]> {
     try {
       const rows = await this.client.reputationEvent.findMany({

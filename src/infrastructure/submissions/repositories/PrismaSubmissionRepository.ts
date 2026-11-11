@@ -81,7 +81,7 @@ export default class PrismaSubmissionRepository implements ISubmissionRepository
   ): Promise<PaginatedResult<Submission>> {
     try {
       const where: Prisma.SubmissionWhereInput = {
-        ...(filters.userId ? { userId: filters.userId } : {}),
+        ...(filters.userId ? { userId: filters.userId } : filters.excludeUserId ? { userId: { not: filters.excludeUserId } } : {}),
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.type ? { type: filters.type } : {}),
       };
