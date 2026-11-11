@@ -25,6 +25,25 @@ import {
 import { countsPrice, verificationWeight } from "@/domain/reputation/reputationRules";
 import { reputationCause } from "@/domain/reputation/entities/ReputationEvent";
 import { ReputationLedger } from "@/application/reputation/services/ReputationLedger";
+import { ForbiddenError } from "@/application/core/errors/ForbiddenError";
+import {
+  REPORTED_VOTES_NEEDED,
+  VoteChoice,
+  canModerate,
+  decideReported,
+  losingChoice,
+  parseVoteChoice,
+} from "@/domain/moderation/moderationRules";
+import { ModerationVoteResult, tallyVotes } from "@/domain/moderation/entities/ModerationVote";
+import {
+  MODERATION_LEVEL_ERROR,
+  VOTE_TRANSACTION,
+  Voter,
+  castVote,
+  lockUsersInOrder,
+  penalizeMinority,
+  withdrawVote,
+} from "@/application/moderation/services/moderationVoting";
 import DataException from "@/domain/core/errors/DataError";
 import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
 import { PlaceNotFoundError } from "@/application/places/errors/PlaceNotFoundError";
@@ -149,32 +168,90 @@ export class CommunityService implements ICommunityService {
       if (!state) throw notFound(target);
       // Lock the author before any plain read (they may lose points below; see ReputationLedger).
       if (state.authorId) await ctx.getReputationRepository().lockPoints(state.authorId);
-      const reports = ctx.getReportRepository();
-      if ((await reports.unresolvedReasons(target)).length === 0) throw new NoPendingReportsError();
+      if ((await ctx.getReportRepository().unresolvedReasons(target)).length === 0) throw new NoPendingReportsError();
+      return this.applyDecision(ctx, target, state, decision, new Date());
+    });
+  }
+
+  async voteReport(voter: Voter, target: PlanTarget, choice: VoteChoice): Promise<ModerationVoteResult> {
+    const parsed = parseVoteChoice(choice);
+    return this.unitOfWork.runInTransaction(async (ctx) => {
+      const votes = ctx.getModerationVoteRepository();
+      const reputation = ctx.getReputationRepository();
+
+      // Plan, then every user whose points may change (voters, author) in id order, before any plain read.
+      const state = await ctx.getPlanStateRepository().lock(target);
+      if (!state) throw notFound(target);
+      if (state.authorId === voter.id) throw new ForbiddenError("No puedes votar tu propio plan");
+      const points = await lockUsersInOrder(reputation, [voter.id, state.authorId, ...(await votes.lockVoterIds(target))]);
+      const voterPoints = points.get(voter.id);
+      if (voterPoints === undefined) throw new UnauthorizedError();
+      if (!canModerate(voter.role, voterPoints)) throw new ForbiddenError(MODERATION_LEVEL_ERROR);
+      if ((await ctx.getReportRepository().unresolvedReasons(target)).length === 0) throw new NoPendingReportsError();
 
       const now = new Date();
-      if (decision === "keep") {
-        await plans.publish(target);
-      } else {
-        await plans.hide(target, HIDDEN_REASON_MODERATION, null);
-        // Confirmed reports cost the author 5 points (team content has no author).
-        if (state.authorId) {
-          await ReputationLedger.award(ctx.getReputationRepository(), {
-            userId: state.authorId,
-            kind: "reported",
-            causeKey: reputationCause.planHidden(target.type, target.id, now),
-            at: now,
-          });
-        }
+      await castVote(votes, reputation, target, voter, voterPoints, parsed, now);
+      const all = await votes.list(target);
+      const tally = tallyVotes(all, voter.id);
+      const decision = decideReported(tally, REPORTED_VOTES_NEEDED);
+      if (decision !== "pending") {
+        await penalizeMinority(reputation, all, losingChoice(tally), now);
+        await this.applyDecision(ctx, target, state, decision, now);
       }
-      const resolvedReports = await reports.resolveAll(target, now);
-      return {
-        target,
-        status: decision === "keep" ? "PUBLISHED" : "ARCHIVED",
-        hiddenReason: decision === "keep" ? null : HIDDEN_REASON_MODERATION,
-        resolvedReports,
-      };
-    });
+      return { target, kind: "reportada", ...tally, votesNeeded: REPORTED_VOTES_NEEDED, decision };
+    }, VOTE_TRANSACTION);
+  }
+
+  async undoReportVote(voter: Voter, target: PlanTarget): Promise<ModerationVoteResult> {
+    return this.unitOfWork.runInTransaction(async (ctx) => {
+      const votes = ctx.getModerationVoteRepository();
+      const reputation = ctx.getReputationRepository();
+      const state = await ctx.getPlanStateRepository().lock(target);
+      if (!state) throw notFound(target);
+      await lockUsersInOrder(reputation, [voter.id]);
+      // Decided plans have no pending reports (and their votes are gone): nothing to undo.
+      if ((await ctx.getReportRepository().unresolvedReasons(target)).length === 0) throw new NoPendingReportsError();
+      await withdrawVote(votes, reputation, target, voter.id);
+      const tally = tallyVotes(await votes.list(target), voter.id);
+      return { target, kind: "reportada", ...tally, votesNeeded: REPORTED_VOTES_NEEDED, decision: "pending" };
+    }, VOTE_TRANSACTION);
+  }
+
+  /**
+   * `keep` publishes the plan, `hide` hides it and costs its author 5 points; both resolve the pending
+   * reports and clear the round's votes. The plan and its author must already be locked.
+   */
+  private async applyDecision(
+    ctx: ICommunityContext,
+    target: PlanTarget,
+    state: PlanState,
+    decision: ReportDecision,
+    now: Date,
+  ): Promise<ReportDecisionResult> {
+    const plans = ctx.getPlanStateRepository();
+    if (decision === "keep") {
+      await plans.publish(target);
+    } else {
+      await plans.hide(target, HIDDEN_REASON_MODERATION, null);
+      // Confirmed reports cost the author 5 points (team content has no author).
+      if (state.authorId) {
+        await ReputationLedger.award(ctx.getReputationRepository(), {
+          userId: state.authorId,
+          kind: "reported",
+          causeKey: reputationCause.planHidden(target.type, target.id, now),
+          at: now,
+        });
+      }
+    }
+    const resolvedReports = await ctx.getReportRepository().resolveAll(target, now);
+    // A later round of reports starts with no votes.
+    await ctx.getModerationVoteRepository().removeAll(target);
+    return {
+      target,
+      status: decision === "keep" ? "PUBLISHED" : "ARCHIVED",
+      hiddenReason: decision === "keep" ? null : HIDDEN_REASON_MODERATION,
+      resolvedReports,
+    };
   }
 
   /** Only PUBLISHED plans can be verified or reported; anything else is reported as not found. */
