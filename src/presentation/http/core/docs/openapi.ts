@@ -66,6 +66,15 @@ import { SUBMISSION_SORT_FIELDS } from "@/presentation/http/submissions/validato
 import { SUBMISSION_CREATE_RATE_LIMIT } from "@/presentation/http/submissions/submissionLimits";
 import { SUBMISSION_TYPES } from "@/domain/submissions/valueObjects/submissionType.valueObject";
 import { AGE_RANGES, USER_ROLES } from "@/domain/users/entities/User";
+import {
+  MODERATION_QUEUE_LIMIT,
+  NEW_VOTES_NEEDED,
+  REPORTED_VOTES_NEEDED,
+  TRUSTED_AUTHOR_VOTES_NEEDED,
+  VOTE_CHOICES,
+} from "@/domain/moderation/moderationRules";
+import { VoteSchema } from "@/presentation/http/moderation/validators/vote";
+import { MODERATION_VOTE_RATE_LIMIT } from "@/presentation/http/moderation/moderationLimits";
 import { LEVEL_PERKS, LEVEL_THRESHOLDS, REPUTATION_KINDS, REPUTATION_LEVELS, REPUTATION_POINTS } from "@/domain/reputation/reputationRules";
 import { RECENT_REPUTATION_EVENTS } from "@/application/reputation/services/implementations/ReputationService";
 import { DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/domain/core/pagination/Pagination";
@@ -448,6 +457,57 @@ const communityPaths = (kind: "place" | "event") => {
           404: responseRef("NotFound"),
           409: responseRef("Conflict"),
         },
+      },
+    },
+  };
+};
+
+/** Community moderation votes (#43) on a suggestion or a reported place / event. */
+const moderationVotePaths = (kind: "submission" | "place" | "event") => {
+  const path = kind === "submission" ? "/moderation/submissions/{id}/vote" : `/moderation/${kind}s/{${kind}Id}/vote`;
+  const param = { $ref: `#/components/parameters/${kind === "submission" ? "UuidId" : kind === "place" ? "PlaceId" : "EventId"}` };
+  const what = kind === "submission" ? "a pending suggestion" : `a reported ${kind}`;
+  const rules =
+    kind === "submission"
+      ? `\`for\` publishes, \`against\` rejects. Decided once the weighted votes reach ${NEW_VOTES_NEEDED} (${TRUSTED_AUTHOR_VOTES_NEEDED} when ` +
+        "the author is level 3+): the majority wins, a tie rejects. Publishing works like `POST /submissions/{id}/approve` " +
+        "(the Place/Event is created, author +10); rejecting stores reason `otro` with \"La comunidad no la aprobó\" (author -10). " +
+        "409 once it is no longer PENDING."
+      : `\`for\` hides, \`against\` keeps. Decided at ${REPORTED_VOTES_NEEDED} weighted votes, majority wins, a tie keeps it; it then ` +
+        "works like `POST /places/{placeId}/reports/decision` (hide costs the author 5 points) and the round's votes are cleared. " +
+        "409 when it has no pending reports.";
+  const common =
+    "Voters: reputation level 3+, or MODERATOR / ADMIN (who vote at least as level 3); never the author (403). Level 5 votes " +
+    "count 2. +1 point the first time a voter votes on the item (changing the choice gives nothing). When it is decided, " +
+    `every vote on the losing side costs 2 points. Rate limit: ${MODERATION_VOTE_RATE_LIMIT.max} votes / undos per 15 min per user.`;
+  const responses = {
+    200: jsonResponse("Tally after the vote", "ModerationVoteResult"),
+    400: responseRef("BadRequest"),
+    401: responseRef("Unauthorized"),
+    403: responseRef("Forbidden"),
+    404: responseRef("NotFound"),
+    409: responseRef("Conflict"),
+    429: { description: "Too many requests" },
+  };
+  return {
+    [path]: {
+      post: {
+        tags: ["Moderation"],
+        summary: `Vote on ${what}`,
+        description: `${rules} ${common}`,
+        security: bearer,
+        parameters: [param],
+        requestBody: jsonBody(VoteSchema),
+        responses,
+      },
+      delete: {
+        tags: ["Moderation"],
+        summary: `Take back my vote on ${what}`,
+        description:
+          "Removes the caller's vote and its point while the item is undecided (200 also without a vote); 409 once decided.",
+        security: bearer,
+        parameters: [param],
+        responses,
       },
     },
   };
@@ -1821,6 +1881,25 @@ const paths: Record<string, Record<string, unknown>> = {
   ...reviewTargetPaths("event"),
   ...communityPaths("place"),
   ...communityPaths("event"),
+  "/moderation/queue": {
+    get: {
+      tags: ["Moderation"],
+      summary: "Community moderation queue",
+      description:
+        `\`nuevas\`: PENDING suggestions, oldest first; \`reportadas\`: plans with pending reports, in the \`GET /reports\` order. At most ` +
+        `${MODERATION_QUEUE_LIMIT} per list (\`totals\` has the full counts); the caller's own items are left out and suggestions ` +
+        "come without `userId`. Each item has the weighted tally, `votesNeeded` and `myVote`. 403 below level 3 (MODERATOR / ADMIN always).",
+      security: bearer,
+      responses: {
+        200: jsonResponse("Queue", "ModerationQueue"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+      },
+    },
+  },
+  ...moderationVotePaths("submission"),
+  ...moderationVotePaths("place"),
+  ...moderationVotePaths("event"),
   "/reports": {
     get: {
       tags: ["Community"],
@@ -2684,6 +2763,69 @@ const openApiDocument = {
           },
         ],
       },
+      ModerationTally: {
+        type: "object",
+        properties: {
+          votesFor: { type: "integer", description: "Weighted (level 5 counts 2)" },
+          votesAgainst: { type: "integer" },
+          votesNeeded: { type: "integer" },
+          myVote: { type: ["string", "null"], enum: [...VOTE_CHOICES, null] },
+        },
+        required: ["votesFor", "votesAgainst", "votesNeeded", "myVote"],
+      },
+      ModerationVoteResult: {
+        allOf: [
+          { $ref: "#/components/schemas/ModerationTally" },
+          {
+            type: "object",
+            properties: {
+              type: { type: "string", enum: ["SUBMISSION", "PLACE", "EVENT"] },
+              id: { type: "string", format: "uuid" },
+              kind: { type: "string", enum: ["nueva", "reportada"] },
+              decision: {
+                type: "string",
+                enum: ["pending", "publish", "reject", "hide", "keep"],
+                description: "`pending` until the needed votes are in (always after an undo)",
+              },
+            },
+            required: ["type", "id", "kind", "decision"],
+          },
+        ],
+      },
+      ModerationQueue: {
+        type: "object",
+        properties: {
+          nuevas: {
+            type: "array",
+            items: {
+              allOf: [
+                { $ref: "#/components/schemas/ModerationTally" },
+                {
+                  type: "object",
+                  properties: { submission: { $ref: "#/components/schemas/QueueSubmission" } },
+                  required: ["submission"],
+                },
+              ],
+            },
+          },
+          reportadas: {
+            type: "array",
+            items: {
+              allOf: [
+                { $ref: "#/components/schemas/ModerationTally" },
+                { type: "object", properties: { report: { $ref: "#/components/schemas/ReportQueueItem" } }, required: ["report"] },
+              ],
+            },
+          },
+          totals: {
+            type: "object",
+            properties: { nuevas: { type: "integer" }, reportadas: { type: "integer" } },
+            required: ["nuevas", "reportadas"],
+          },
+          total: { type: "integer" },
+        },
+        required: ["nuevas", "reportadas", "totals", "total"],
+      },
       ApproveSubmissionResponse: {
         type: "object",
         properties: {
@@ -2771,5 +2913,12 @@ const openApiDocument = {
     },
   },
 };
+
+// A suggestion as community voters see it: the author's `Submission` without `userId`.
+{
+  const schemas = openApiDocument.components.schemas as unknown as Record<string, { properties: Record<string, unknown>; required: string[] }>;
+  const { userId: _userId, ...properties } = schemas.Submission.properties;
+  schemas.QueueSubmission = { ...schemas.Submission, properties, required: schemas.Submission.required.filter((f) => f !== "userId") };
+}
 
 export default openApiDocument;
