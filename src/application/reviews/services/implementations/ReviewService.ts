@@ -128,7 +128,7 @@ export class ReviewService implements IReviewService {
       if (authorId) {
         await ReputationLedger.award(reputation, {
           userId: authorId,
-          kind: "resenaUtil",
+          kind: "reviewUseful",
           causeKey: reputationCause.usefulVote(id, userId),
           at: new Date(),
         });

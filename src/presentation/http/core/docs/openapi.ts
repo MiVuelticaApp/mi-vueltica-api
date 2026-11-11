@@ -392,7 +392,7 @@ const communityPaths = (kind: "place" | "event") => {
           "Hiding makes it ARCHIVED with `hiddenReason`; its author still sees it. Price answers only count from signed-in " +
           "users from reputation level 2, and level 4+ answers count double (see `GET /me/reputation`). `photo` is a URL from `POST /uploads` " +
           `(signed-in users only, 401 for guests; 422 if not the caller's own upload). 404 unless the ${noun} is PUBLISHED. ` +
-          `Rate limit: ${perMinutes(VERIFICATION_RATE_LIMIT)} per user or IP. \`queued\` is always false; \`points\` is ${REPUTATION_POINTS.verificacion} the first time a signed-in person verifies the ${noun}, else 0.`,
+          `Rate limit: ${perMinutes(VERIFICATION_RATE_LIMIT)} per user or IP. \`queued\` is always false; \`points\` is ${REPUTATION_POINTS.verified} the first time a signed-in person verifies the ${noun}, else 0.`,
         security: optionalBearer,
         parameters: [param, deviceIdHeader],
         requestBody: jsonBody(VerifySchema),
@@ -684,7 +684,7 @@ const paths: Record<string, Record<string, unknown>> = {
         REPUTATION_LEVELS.map((level) => `${level} from ${LEVEL_THRESHOLDS[level]}`).join(", ") +
         ". Points: " +
         REPUTATION_KINDS.map((kind) => `${kind} ${REPUTATION_POINTS[kind] > 0 ? "+" : ""}${REPUTATION_POINTS[kind]}`).join(", ") +
-        " (`votoModeracion` and `minoriaModeracion` arrive with community moderation). Points never go below 0; " +
+        " (`moderationVote` and `minorityModerator` arrive with community moderation). Points never go below 0; " +
         "`delta` is what was applied.",
       security: bearer,
       responses: {

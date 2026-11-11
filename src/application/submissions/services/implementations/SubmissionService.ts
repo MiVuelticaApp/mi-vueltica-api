@@ -185,7 +185,7 @@ export class SubmissionService implements ISubmissionService {
       // +10 for the author, in the same transaction: no points without the plan, and never twice.
       await ReputationLedger.award(ctx.getReputationRepository(), {
         userId: submission.userId,
-        kind: "aportePublicado",
+        kind: "published",
         causeKey: reputationCause.submissionApproved(submission.id),
         at: now,
       });
@@ -211,7 +211,7 @@ export class SubmissionService implements ISubmissionService {
 
       await ReputationLedger.award(ctx.getReputationRepository(), {
         userId: submission.userId,
-        kind: "aporteRechazado",
+        kind: "rejected",
         causeKey: reputationCause.submissionRejected(submission.id),
         at: now,
       });
