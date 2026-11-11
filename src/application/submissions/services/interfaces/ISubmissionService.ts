@@ -6,6 +6,10 @@ import { RejectionReason } from "@/domain/submissions/valueObjects/rejectionReas
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
 
+import { VoteChoice } from "@/domain/moderation/moderationRules";
+import { ModerationVoteResult } from "@/domain/moderation/entities/ModerationVote";
+import { Voter } from "@/application/moderation/services/moderationVoting";
+
 export interface SubmissionQueueFilters {
   status?: ContentStatus;
   type?: SubmissionType;
@@ -45,4 +49,12 @@ export interface ISubmissionService {
   get(id: string): Promise<Submission>;
   approve(id: string, reviewerId: string): Promise<SubmissionApprovalResult>;
   reject(id: string, reviewerId: string, rejection: SubmissionRejection): Promise<Submission>;
+  /**
+   * Community vote on a PENDING suggestion (`for` = publish). Level 3+ (or MODERATOR / ADMIN), never the
+   * author (403). Once the needed votes are in it is published or rejected like approve / reject. 409 if
+   * no longer pending.
+   */
+  vote(voter: Voter, id: string, choice: VoteChoice): Promise<ModerationVoteResult>;
+  /** Takes the caller's vote back while the suggestion is PENDING (409 once decided). */
+  undoVote(voter: Voter, id: string): Promise<ModerationVoteResult>;
 }
