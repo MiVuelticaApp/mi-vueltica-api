@@ -5,25 +5,25 @@
 
 /** Why a user won or lost points. Values are the strings the app receives in `recent[].kind`. */
 export const REPUTATION_KINDS = [
-  "aportePublicado",
-  "aporteRechazado",
-  "verificacion",
-  "resenaUtil",
-  "planOcultado",
-  "votoModeracion",
-  "minoriaModeracion",
+  "published",
+  "rejected",
+  "verified",
+  "reviewUseful",
+  "reported",
+  "moderationVote",
+  "minorityModerator",
 ] as const;
 export type ReputationKind = (typeof REPUTATION_KINDS)[number];
 
-/** Points per kind. `votoModeracion` / `minoriaModeracion` are applied by community moderation (#43). */
+/** Points per kind. `moderationVote` / `minorityModerator` are applied by community moderation (#43). */
 export const REPUTATION_POINTS: Readonly<Record<ReputationKind, number>> = {
-  aportePublicado: 10,
-  aporteRechazado: -10,
-  verificacion: 2,
-  resenaUtil: 1,
-  planOcultado: -5,
-  votoModeracion: 1,
-  minoriaModeracion: -2,
+  published: 10,
+  rejected: -10,
+  verified: 2,
+  reviewUseful: 1,
+  reported: -5,
+  moderationVote: 1,
+  minorityModerator: -2,
 };
 
 export const REPUTATION_LEVELS = [1, 2, 3, 4, 5] as const;

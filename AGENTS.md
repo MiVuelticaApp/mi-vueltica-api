@@ -597,8 +597,8 @@ too, all read from the `User` row (no extra queries). `PUT /me` accepts `provinc
 keeps it, `null` clears it, an unknown id is 422 `InvalidProvinceError`. `User.provinceId` is `ON DELETE SET NULL`.
 
 **Reputation** (#42, module `reputation`): the single config is `src/domain/reputation/reputationRules.ts` (the app's
-PLAN §8 values, confirmed by product): levels N1 0, N2 50, N3 120, N4 200, N5 400; points `aportePublicado` +10,
-`aporteRechazado` −10, `verificacion` +2, `resenaUtil` +1, `planOcultado` −5, `votoModeracion` +1, `minoriaModeracion` −2
+PLAN §8 values, confirmed by product): levels N1 0, N2 50, N3 120, N4 200, N5 400; points `published` +10,
+`rejected` −10, `verified` +2, `reviewUseful` +1, `reported` −5, `moderationVote` +1, `minorityModerator` −2
 (the last two are applied by community moderation, #43); floor 0. Perks: N2 price answers count, N3 moderation (#43), N4
 verifications count double, N5 moderation votes count double (#43). Role and level are independent: a MODERATOR gets no
 level and a level-3 user no moderator routes until #43.

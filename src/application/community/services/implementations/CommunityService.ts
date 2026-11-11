@@ -91,7 +91,7 @@ export class CommunityService implements ICommunityService {
           ? 0
           : await ReputationLedger.award(ctx.getReputationRepository(), {
               userId: person.userId,
-              kind: "verificacion",
+              kind: "verified",
               causeKey: reputationCause.verification(target.type, target.id, person.userId),
               at: now,
             });
@@ -161,7 +161,7 @@ export class CommunityService implements ICommunityService {
         if (state.authorId) {
           await ReputationLedger.award(ctx.getReputationRepository(), {
             userId: state.authorId,
-            kind: "planOcultado",
+            kind: "reported",
             causeKey: reputationCause.planHidden(target.type, target.id, now),
             at: now,
           });

@@ -3,13 +3,13 @@ import { ReputationKind as DbReputationKind } from "@/infrastructure/prisma/gene
 
 // The API speaks the app's strings; the database keeps uppercase enums like the rest of the schema.
 const KIND_TO_DB: Record<ReputationKind, DbReputationKind> = {
-  aportePublicado: "SUBMISSION_APPROVED",
-  aporteRechazado: "SUBMISSION_REJECTED",
-  verificacion: "VERIFICATION",
-  resenaUtil: "REVIEW_USEFUL",
-  planOcultado: "PLAN_HIDDEN",
-  votoModeracion: "MODERATION_VOTE",
-  minoriaModeracion: "MODERATION_MINORITY",
+  published: "SUBMISSION_APPROVED",
+  rejected: "SUBMISSION_REJECTED",
+  verified: "VERIFICATION",
+  reviewUseful: "REVIEW_USEFUL",
+  reported: "PLAN_HIDDEN",
+  moderationVote: "MODERATION_VOTE",
+  minorityModerator: "MODERATION_MINORITY",
 };
 
 const KIND_FROM_DB = Object.fromEntries(Object.entries(KIND_TO_DB).map(([k, v]) => [v, k])) as Record<
