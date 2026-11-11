@@ -1,3 +1,4 @@
+import { TransactionOptions } from "@/domain/core/transactions/TransactionOptions";
 import { ISubmissionRepository } from "@/domain/submissions/repositories/ISubmissionRepository";
 import { IPlaceRepository } from "@/domain/places/repositories/IPlaceRepository";
 import { IEventRepository } from "@/domain/events/repositories/IEventRepository";
@@ -6,6 +7,7 @@ import { ICantonRepository } from "@/domain/geography/repositories/ICantonReposi
 import { ISourceRepository } from "@/domain/sources/repositories/ISourceRepository";
 import { IPhotoRepository } from "@/domain/photos/repositories/IPhotoRepository";
 import { IReputationRepository } from "@/domain/reputation/repositories/IReputationRepository";
+import { IModerationVoteRepository } from "@/domain/moderation/repositories/IModerationVoteRepository";
 
 /**
  * Runs a submission approval in one transaction: creating the Place/Event and marking the
@@ -15,7 +17,7 @@ import { IReputationRepository } from "@/domain/reputation/repositories/IReputat
  * @see src/infrastructure/submissions/unitsOfWork/PrismaSubmissionApprovalUnitOfWork.ts
  */
 export interface ISubmissionApprovalUnitOfWork {
-  runInTransaction<T>(work: (context: ISubmissionApprovalContext) => Promise<T>): Promise<T>;
+  runInTransaction<T>(work: (context: ISubmissionApprovalContext) => Promise<T>, options?: TransactionOptions): Promise<T>;
 }
 
 /** Repositories bound to the transaction. */
@@ -28,4 +30,5 @@ export interface ISubmissionApprovalContext {
   getSourceRepository(): ISourceRepository;
   getPhotoRepository(): IPhotoRepository;
   getReputationRepository(): IReputationRepository;
+  getModerationVoteRepository(): IModerationVoteRepository;
 }

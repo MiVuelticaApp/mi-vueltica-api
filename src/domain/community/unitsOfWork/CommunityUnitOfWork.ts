@@ -1,5 +1,7 @@
+import { TransactionOptions } from "@/domain/core/transactions/TransactionOptions";
 import { IPlanStateRepository, IReportRepository, IVerificationRepository } from "../repositories/ICommunityRepositories";
 import { IReputationRepository } from "@/domain/reputation/repositories/IReputationRepository";
+import { IModerationVoteRepository } from "@/domain/moderation/repositories/IModerationVoteRepository";
 
 /**
  * Runs a verification, a report or a moderator's decision in one transaction, after locking the
@@ -9,7 +11,7 @@ import { IReputationRepository } from "@/domain/reputation/repositories/IReputat
  * @see src/infrastructure/community/unitsOfWork/PrismaCommunityUnitOfWork.ts
  */
 export interface ICommunityUnitOfWork {
-  runInTransaction<T>(work: (context: ICommunityContext) => Promise<T>): Promise<T>;
+  runInTransaction<T>(work: (context: ICommunityContext) => Promise<T>, options?: TransactionOptions): Promise<T>;
 }
 
 export interface ICommunityContext {
@@ -17,4 +19,5 @@ export interface ICommunityContext {
   getVerificationRepository(): IVerificationRepository;
   getReportRepository(): IReportRepository;
   getReputationRepository(): IReputationRepository;
+  getModerationVoteRepository(): IModerationVoteRepository;
 }
