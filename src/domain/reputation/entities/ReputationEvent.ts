@@ -20,4 +20,8 @@ export const reputationCause = {
   usefulVote: (reviewId: string, voterId: string) => `useful:${reviewId}:${voterId}`,
   /** One per moderator decision (a plan can be hidden again after being republished). */
   planHidden: (type: "PLACE" | "EVENT", planId: string, at: Date) => `plan-hidden:${type}:${planId}:${at.toISOString()}`,
+  /** One per vote row: changing the choice keeps it, undoing removes it, a new round of reports is a new row. */
+  moderationVote: (voteId: string) => `moderation-vote:${voteId}`,
+  /** The vote ended on the losing side of a decided item. */
+  moderationMinority: (voteId: string) => `moderation-minority:${voteId}`,
 };

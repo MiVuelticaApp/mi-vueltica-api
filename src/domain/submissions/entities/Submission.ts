@@ -71,7 +71,8 @@ export class Submission {
     this.props.payload = next;
   }
 
-  approve(reviewerId: string, now: Date, created: SubmissionCreated) {
+  /** `reviewerId` is null when the community decided it by vote (#43). */
+  approve(reviewerId: string | null, now: Date, created: SubmissionCreated) {
     this.props.status = "PUBLISHED";
     this.props.reviewedById = reviewerId;
     this.props.reviewedAt = now;
@@ -81,7 +82,7 @@ export class Submission {
   }
 
   /** `otro` needs a note; for the other reasons the note is optional. */
-  reject(reviewerId: string, reason: RejectionReason, note: string | null, now: Date) {
+  reject(reviewerId: string | null, reason: RejectionReason, note: string | null, now: Date) {
     const parsed = parseRejectionReason(reason);
     const trimmed = note?.trim() || null;
     if (parsed === "otro" && !trimmed) throw new DataException(REJECTION_NOTE_REQUIRED_ERROR);
