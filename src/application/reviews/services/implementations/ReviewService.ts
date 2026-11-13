@@ -61,6 +61,7 @@ export class ReviewService implements IReviewService {
           includePendingOf: options.viewerId,
           wentWith: options.audience ? WENT_WITH_BY_AUDIENCE[options.audience] : undefined,
           withPhotos: options.withPhotos,
+          excludeUserIds: options.excludeUserIds,
         },
         options.viewerId,
       ),

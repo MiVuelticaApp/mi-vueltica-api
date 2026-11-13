@@ -29,6 +29,8 @@ export class EventService implements IEventService {
   async get(id: string, options: EventVisibilityOptions = {}): Promise<EventDetail> {
     const detail = await this.eventRepository.findDetail(id);
     if (!detail) throw new EventNotFoundError();
+    const authorId = detail.event.authorId;
+    if (authorId && options.excludeAuthorIds?.includes(authorId)) throw new EventNotFoundError();
     const { statuses } = options;
     const isAuthor = options.viewerId !== undefined && detail.event.isAuthoredBy(options.viewerId);
     if (statuses && !statuses.includes(detail.event.status) && !isAuthor) {

@@ -65,9 +65,16 @@ export default class PrismaReviewRepository implements IReviewRepository {
         photos: filters.withPhotos ? { some: {} } : undefined,
       };
       const byStatus: Prisma.ReviewWhereInput = filters.statuses ? { status: { in: filters.statuses } } : {};
-      const where: Prisma.ReviewWhereInput = filters.includePendingOf
-        ? { ...base, OR: [byStatus, { userId: filters.includePendingOf, status: "PENDING" }] }
-        : { ...base, ...byStatus };
+      // `userId NOT IN (...)` is NULL (so the row is dropped) when userId is NULL: keep authorless reviews explicitly.
+      const notBlocked: Prisma.ReviewWhereInput[] = filters.excludeUserIds?.length
+        ? [{ OR: [{ userId: null }, { userId: { notIn: filters.excludeUserIds } }] }]
+        : [];
+      const where: Prisma.ReviewWhereInput = {
+        ...(filters.includePendingOf
+          ? { ...base, OR: [byStatus, { userId: filters.includePendingOf, status: "PENDING" }] }
+          : { ...base, ...byStatus }),
+        ...(notBlocked.length > 0 ? { AND: notBlocked } : {}),
+      };
 
       const sort = params.sort ?? { field: "createdAt", direction: "desc" };
       const orderBy: Prisma.ReviewOrderByWithRelationInput[] = [

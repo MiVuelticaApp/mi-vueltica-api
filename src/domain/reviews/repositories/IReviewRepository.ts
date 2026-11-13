@@ -25,6 +25,8 @@ export interface ReviewListFilters {
   wentWith?: WentWith[];
   /** Only reviews with at least one photo. */
   withPhotos?: boolean;
+  /** Hides the reviews written by these users (the viewer's blocked people, #17). */
+  excludeUserIds?: string[];
 }
 
 /** A photo already resolved to one of the author's uploads (canonical URL). */

@@ -36,6 +36,7 @@ import { UpdateEventSchema } from "@/presentation/http/events/validators/updateE
 import { ChangeEventStatusSchema } from "@/presentation/http/events/validators/changeEventStatus";
 import { EVENT_SORT_FIELDS } from "@/presentation/http/events/validators/listEvents";
 import { FAVORITE_SORT_FIELDS } from "@/presentation/http/favorites/validators/listFavorites";
+import { BLOCK_SORT_FIELDS } from "@/presentation/http/blocks/validators/listBlocks";
 import { CreateReviewSchema, UpdateReviewSchema } from "@/presentation/http/reviews/validators/reviewBody";
 import { ChangeReviewStatusSchema } from "@/presentation/http/reviews/validators/changeReviewStatus";
 import { REVIEW_SORT_FIELDS } from "@/presentation/http/reviews/validators/listReviews";
@@ -547,6 +548,37 @@ const favoriteTargetPaths = (kind: "place" | "event") => {
   };
 };
 
+/** POST that blocks the author of a plan or review (`/places/{placeId}/author/block`, `/events/{eventId}/author/block`, `/reviews/{reviewId}/author/block`). */
+const blockTargetPaths = (kind: "place" | "event" | "review") => {
+  const param =
+    kind === "review"
+      ? { name: "reviewId", in: "path", required: true, description: "Review id", schema: { type: "string", format: "uuid" } }
+      : { $ref: `#/components/parameters/${kind === "place" ? "PlaceId" : "EventId"}` };
+  const noun = kind === "review" ? "review" : kind === "place" ? "place" : "event";
+  return {
+    [`/${kind}s/{${kind}Id}/author/block`]: {
+      post: {
+        tags: ["Blocks"],
+        summary: `Block the author of a${kind === "event" ? "n" : ""} ${noun}`,
+        description:
+          `App Store guideline 1.2 ("Bloquear a esta persona"). From then on the caller does not see that person's plans ` +
+          `(lists, detail, saved items) or reviews. Idempotent: blocking someone already blocked is a no-op (204). ` +
+          `404 unless the ${noun} exists and is PUBLISHED, or when nobody is behind it (curated content, or an author who ` +
+          `deleted their account: \`message\` says so). 422 if the ${noun} is the caller's own.`,
+        security: bearer,
+        parameters: [param],
+        responses: {
+          204: { description: "The author is blocked" },
+          400: responseRef("BadRequest"),
+          401: responseRef("Unauthorized"),
+          404: responseRef("NotFound"),
+          422: responseRef("UnprocessableEntity"),
+        },
+      },
+    },
+  };
+};
+
 const reviewTargetPaths = (kind: "place" | "event") => {
   const param = kind === "place" ? "PlaceId" : "EventId";
   const noun = kind === "place" ? "place" : "event";
@@ -819,6 +851,46 @@ const paths: Record<string, Record<string, unknown>> = {
       },
     },
   },
+  "/me/blocks": {
+    get: {
+      tags: ["Blocks"],
+      summary: "List the people I blocked",
+      description:
+        "\"Personas bloqueadas\" (App Store guideline 1.2): each item is the block (`id` is what `DELETE /me/blocks/{id}` takes) and " +
+        "the blocked person's first name. Default order is `createdAt` descending (most recently blocked first).",
+      security: bearer,
+      parameters: [
+        { $ref: "#/components/parameters/Page" },
+        { $ref: "#/components/parameters/PageSize" },
+        {
+          name: "sort",
+          in: "query",
+          description: "Field to sort by: `field` ascending, `-field` descending. Default: `-createdAt`.",
+          schema: { type: "string", enum: BLOCK_SORT_FIELDS.flatMap((f) => [f, `-${f}`]) },
+        },
+      ],
+      responses: {
+        200: { description: "Page of blocked people", content: { "application/json": { schema: paginated("Block") } } },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+      },
+    },
+  },
+  "/me/blocks/{id}": {
+    delete: {
+      tags: ["Blocks"],
+      summary: "Unblock a person",
+      description: "Idempotent: 204 whether or not the block existed or was the caller's (never 404). Their content shows again.",
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      responses: {
+        204: { description: "The person is not blocked" },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+      },
+    },
+  },
+  ...blockTargetPaths("review"),
   "/me/reviews": {
     get: {
       tags: ["Reviews"],
@@ -1425,6 +1497,7 @@ const paths: Record<string, Record<string, unknown>> = {
     },
   },
   ...favoriteTargetPaths("place"),
+  ...blockTargetPaths("place"),
   ...reviewTargetPaths("place"),
   "/places/{id}/status": {
     patch: {
@@ -1878,6 +1951,7 @@ const paths: Record<string, Record<string, unknown>> = {
   ...galleryPaths("place"),
   ...galleryPaths("event"),
   ...favoriteTargetPaths("event"),
+  ...blockTargetPaths("event"),
   ...reviewTargetPaths("event"),
   ...communityPaths("place"),
   ...communityPaths("event"),
@@ -2176,6 +2250,7 @@ const openApiDocument = {
     { name: "Photos" },
     { name: "Uploads" },
     { name: "Favorites" },
+    { name: "Blocks", description: "Block people whose plans and reviews you do not want to see (App Store guideline 1.2)" },
     { name: "Reviews" },
     { name: "Community", description: "Verifications (\"¿Sigue siendo gratis?\"), reports and their moderation" },
     { name: "Devices" },
@@ -2475,6 +2550,16 @@ const openApiDocument = {
           distribution: ratingDistributionSchema,
         },
         required: ["averageRating", "reviewCount", "distribution"],
+      },
+      Block: {
+        type: "object",
+        description: "One person the caller blocked (App Store guideline 1.2).",
+        properties: {
+          id: { type: "string", format: "uuid", description: "The block's id (`DELETE /me/blocks/{id}`), not the blocked person's" },
+          name: { type: "string", description: "The blocked person's first name" },
+          createdAt: { type: "string", format: "date-time", description: "When the caller blocked them" },
+        },
+        required: ["id", "name", "createdAt"],
       },
       Favorite: {
         type: "object",

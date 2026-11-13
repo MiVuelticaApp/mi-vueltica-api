@@ -23,6 +23,8 @@ import filesRouter from "@/presentation/http/uploads/routes/files.routes";
 import photosRouter from "@/presentation/http/photos/routes/photos.routes";
 import { eventPhotosRouter, placePhotosRouter } from "@/presentation/http/photos/routes/galleryRouter";
 import moderationRouter from "@/presentation/http/moderation/routes/moderation.routes";
+import myBlocksRouter from "@/presentation/http/blocks/routes/myBlocks.routes";
+import { eventBlockRouter, placeBlockRouter, reviewBlockRouter } from "@/presentation/http/blocks/routes/targetBlock.routes";
 import { Router } from "express";
 const router = Router();
 
@@ -32,6 +34,7 @@ router.use("/auth", authRouter);
 router.use("/me/submissions", mySubmissionsRouter);
 router.use("/me/devices", myDevicesRouter);
 router.use("/me/notifications", myNotificationsRouter);
+router.use("/me/blocks", myBlocksRouter);
 router.use('/me', profileRouter);
 router.use("/moderation", moderationRouter);
 router.use("/categories", categoriesRouter);
@@ -42,17 +45,20 @@ router.use("/cantons", cantonsRouter);
 router.use("/sources", sourcesRouter);
 // Before /places so the favorite, photos and reviews sub-resources are never shadowed.
 router.use("/places/:placeId/favorite", placeFavoriteRouter);
+router.use("/places/:placeId/author/block", placeBlockRouter);
 router.use("/places/:placeId/photos", placePhotosRouter);
 router.use("/places/:placeId/reviews", placeReviewsRouter);
 router.use("/places/:placeId", placeCommunityRouter);
 router.use("/places", placesRouter);
 // Before /events so the favorite, photos and reviews sub-resources are never shadowed.
 router.use("/events/:eventId/favorite", eventFavoriteRouter);
+router.use("/events/:eventId/author/block", eventBlockRouter);
 router.use("/events/:eventId/photos", eventPhotosRouter);
 router.use("/events/:eventId/reviews", eventReviewsRouter);
 router.use("/events/:eventId", eventCommunityRouter);
 router.use("/events", eventsRouter);
 router.use("/photos", photosRouter);
+router.use("/reviews/:reviewId/author/block", reviewBlockRouter);
 router.use("/reviews", reviewsRouter);
 router.use("/reports", reportsRouter);
 router.use("/uploads", uploadsRouter);

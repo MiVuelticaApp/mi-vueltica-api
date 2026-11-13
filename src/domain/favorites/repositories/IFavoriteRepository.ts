@@ -6,6 +6,8 @@ export const FAVORITE_SORT_FIELDS = ["createdAt"] as const;
 export interface FavoriteListFilters {
   /** Only places or only events; both when omitted. */
   type?: FavoriteType;
+  /** Hides the saved plans authored by these users (the viewer's blocked people, #17). Authorless plans stay. */
+  excludeAuthorIds?: string[];
 }
 
 export interface IFavoriteRepository {
