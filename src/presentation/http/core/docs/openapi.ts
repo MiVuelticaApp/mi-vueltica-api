@@ -1753,6 +1753,7 @@ const paths: Record<string, Record<string, unknown>> = {
         "Full replace of a PENDING suggestion: same body and rules as `POST /me/submissions` (400 / 422), and `data.photos` " +
         "replaces the attached photos. The `type` cannot change (422). 404 if it does not exist or belongs to another user; " +
         "409 once it is no longer PENDING (an edit and a concurrent review run one after the other). " +
+        "Editing clears the community votes already cast on it (they were cast on the previous text). " +
         `Rate-limited like creating: ${SUBMISSION_CREATE_RATE_LIMIT.max} requests per ${SUBMISSION_CREATE_RATE_LIMIT.windowMs / 60000} minutes per user (429).`,
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
@@ -2182,6 +2183,7 @@ const openApiDocument = {
     { name: "Notifications" },
     { name: "Users" },
     { name: "Submissions" },
+    { name: "Moderation", description: "Community moderation queue and votes on suggestions and reported plans" },
     { name: "System" },
   ],
   paths,

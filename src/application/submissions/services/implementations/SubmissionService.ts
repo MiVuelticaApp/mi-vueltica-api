@@ -77,12 +77,20 @@ export class SubmissionService implements ISubmissionService {
   async updateMine(userId: string, id: string, input: SubmissionPayloadInput): Promise<Submission> {
     // Validation (400/422) and the upload checks first, outside the transaction.
     const { payload, uploadIds } = await this.prepare(userId, input);
+    const target: ModerationTarget = { type: "SUBMISSION", id };
     return this.approvalUOW.runInTransaction(async (ctx) => {
       const submissionRepository = ctx.getSubmissionRepository();
+      const votes = ctx.getModerationVoteRepository();
+      const reputation = ctx.getReputationRepository();
+      // Same lock order as a vote (submission, then every user whose points may change, by id) and before any
+      // plain read, so an edit, a vote and an approval run one after the other and never deadlock.
+      const authorId = await submissionRepository.lockAuthor(id);
+      // Someone else's submission is reported as missing, so its existence is not leaked.
+      if (!authorId || authorId !== userId) throw new SubmissionNotFoundError();
+      await lockUsersInOrder(reputation, [userId, ...(await votes.lockVoterIds(target))]);
       // Same row lock as approval: an edit and a concurrent approval run one after the other, so a
       // moderator never approves a half-edited suggestion and an edit never lands after approval.
       const submission = await submissionRepository.findForUpdate(id);
-      // Someone else's submission is reported as missing, so its existence is not leaked.
       if (!submission || !submission.belongsTo(userId)) throw new SubmissionNotFoundError();
       if (!submission.isPending()) throw new SubmissionNotPendingError("Solo se pueden editar sugerencias pendientes");
       if (submission.type !== payload.type) throw new SubmissionTypeChangeError();
@@ -90,8 +98,11 @@ export class SubmissionService implements ISubmissionService {
       if (!(await submissionRepository.updatePendingOwned(submission, uploadIds))) {
         throw new SubmissionNotPendingError("Solo se pueden editar sugerencias pendientes");
       }
+      // The votes were cast on the previous text: clear them (and the +1 each earned) so the community votes on
+      // what it is shown now, instead of an author collecting votes on harmless content and then swapping it.
+      for (const vote of await votes.list(target)) await withdrawVote(votes, reputation, target, vote.userId);
       return submission;
-    });
+    }, VOTE_TRANSACTION);
   }
 
   /**
