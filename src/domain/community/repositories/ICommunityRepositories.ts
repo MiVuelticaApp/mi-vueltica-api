@@ -58,6 +58,11 @@ export interface CreateReportData {
   photo: CommunityPhoto | null;
 }
 
+export interface ReportQueueOptions {
+  /** Leaves out the plans this user is the author of (community voters). */
+  excludeAuthorId?: string;
+}
+
 export interface IReportRepository {
   existsForPerson(target: PlanTarget, personKey: string): Promise<boolean>;
   /** A duplicate (target, person) fails with a P2002 cause (409). */
@@ -69,5 +74,5 @@ export interface IReportRepository {
    * Plans with unresolved reports: the ones needing review first, then hidden ones, then by oldest
    * unresolved report. `now` decides `needsReview`.
    */
-  queue(params: PaginationParams, now: Date): Promise<PaginatedResult<ReportQueueItem>>;
+  queue(params: PaginationParams, now: Date, options?: ReportQueueOptions): Promise<PaginatedResult<ReportQueueItem>>;
 }

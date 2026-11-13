@@ -62,6 +62,10 @@ import { PrismaReviewVoteUnitOfWork } from "@/infrastructure/reviews/unitsOfWork
 import PrismaReputationRepository from "@/infrastructure/reputation/repositories/PrismaReputationRepository";
 import { ReputationService } from "@/application/reputation/services/implementations/ReputationService";
 import { IReputationService } from "@/application/reputation/services/interfaces/IReputationService";
+import PrismaModerationVoteRepository from "@/infrastructure/moderation/repositories/PrismaModerationVoteRepository";
+import { ModerationService } from "@/application/moderation/services/implementations/ModerationService";
+import { IModerationService } from "@/application/moderation/services/interfaces/IModerationService";
+import ModerationController from "@/presentation/http/moderation/controllers/Moderation.controller";
 import MyProfileController from "@/presentation/http/users/controllers/MyProfile.controller";
 import { IEmailService } from "@/domain/core/services/IEmailService";
 import AdminUsersController from "@/presentation/http/users/controllers/AdminUsers.controller";
@@ -109,6 +113,8 @@ export const notificationRepository = new PrismaNotificationRepository();
 export const uploadRepository = new PrismaUploadRepository();
 export const photoRepository = new PrismaPhotoRepository();
 export const reputationRepository = new PrismaReputationRepository();
+export const moderationVoteRepository = new PrismaModerationVoteRepository();
+export const reportRepository = new PrismaReportRepository();
 
 // unit of work
 export const userDeletionUOW = new PrismaUserDeletionUnitOfWork();
@@ -174,7 +180,7 @@ export const reviewService: IReviewService = new ReviewService(reviewRepository,
 export const communityService: ICommunityService = new CommunityService(
   new PrismaCommunityUnitOfWork(),
   new PrismaVerificationRepository(),
-  new PrismaReportRepository(),
+  reportRepository,
   uploadService,
 );
 export const photoService: IPhotoService = new PhotoService(photoRepository, photoGalleryUOW, placeRepository, eventRepository, uploadService);
@@ -223,6 +229,14 @@ export const eventController = new EventController(eventService, favoriteService
 export const favoriteController = new FavoriteController(favoriteService);
 export const reviewController = new ReviewController(reviewService);
 export const communityController = new CommunityController(communityService);
+export const moderationService: IModerationService = new ModerationService(
+  userRepository,
+  submissionRepository,
+  reportRepository,
+  moderationVoteRepository,
+  reputationRepository,
+);
+export const moderationController = new ModerationController(moderationService, submissionService, communityService);
 export const mySubmissionsController = new MySubmissionsController(submissionService);
 export const myDevicesController = new MyDevicesController(deviceService);
 export const myNotificationsController = new MyNotificationsController(notificationService);

@@ -26,6 +26,8 @@ export interface IReputationRepository {
   add(entry: NewReputationEntry): Promise<void>;
   /** Deletes the entry and adds `totalChange` (usually minus its delta) to the user's total. */
   remove(causeKey: string, userId: string, totalChange: number): Promise<void>;
+  /** Current points of several users (plain read; missing users are left out). */
+  pointsOf(userIds: string[]): Promise<Map<string, number>>;
   /** Latest entries first. */
   recent(userId: string, limit: number): Promise<ReputationEvent[]>;
 }

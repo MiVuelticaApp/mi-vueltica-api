@@ -183,7 +183,7 @@ iOS client; unknown keys → 400. The response is **204** with no body. Service 
 1. Load the user; throw `UserNotFoundError` (404) if missing.
 2. Capture `email` and `name` **before** deleting (the confirmation email needs a recipient).
 3. Hard delete the `User` row. Everything that belongs to the user is removed by the database:
-   `UserInterest`, `Submission` (as author), `Favorite`, `ReviewUsefulVote`, `Device`, `Notification` and `ReputationEvent` cascade;
+   `UserInterest`, `Submission` (as author), `Favorite`, `ReviewUsefulVote`, `Device`, `Notification`, `ReputationEvent` and `ModerationVote` cascade;
    `Submission.reviewedById` is set to null for submissions the user moderated. **Reviews are deleted** with the
    account (`Review.userId` is `ON DELETE CASCADE`; their photos and "útil" votes cascade, their uploads go to the orphan
    cleanup), as the app's `anonymizeOnDelete` rule says: published plans stay as "Anónimo", reviews and pending plans go.
@@ -250,6 +250,10 @@ router.get("/", jwtAuth, requireRole("ADMIN"), asyncHandler(controller.list.bind
 - No `req.user` or user missing / `deletedAt` set → **401**; role not in the list → **403**
   (`UnauthorizedError` / `ForbiddenError`, formatted by `errorHandler`). On success
   `req.user.role` is populated. `requireRole()` with no roles throws at route definition time.
+- **Roles vs. levels**: `MODERATOR` / `ADMIN` are team roles, given only by an admin (`PATCH /users/:id/role`), for the
+  editorial routes (content CRUD, sources, galleries, queues, direct decisions, MCP). The app's "moderators" are community
+  users of reputation level 3+, who vote through `/moderation` (see "Community moderation"). Team roles vote there too, at
+  least as level 3.
 - In controllers read the authenticated user with `getAuthUser(req)`
   (`src/presentation/http/auth/utils/getAuthUser.ts`); never `@ts-expect-error` on `req.user`.
   `req.user` is typed through the `Express.User` augmentation in `src/types/express.d.ts`.
@@ -572,7 +576,8 @@ strings (`StillHappening`, `PricePaid`, `ReportReason` in mi-vueltica-app), stor
   (hidden by reports > 72 h, `needsReview`) first, then hidden ones, then oldest report (raw grouped SQL in
   `PrismaReportRepository.queue`). `POST /places/:placeId/reports/decision` (and events) `{ decision: keep|hide }`:
   `keep` → PUBLISHED and clears `hiddenReason` / `reportedAt`; `hide` → ARCHIVED "Ocultada por moderación"; both set
-  `resolvedAt` on the pending reports. No pending reports → 409 `NoPendingReportsError`.
+  `resolvedAt` on the pending reports. No pending reports → 409 `NoPendingReportsError`. Community voters decide the
+  same way through `/moderation` (`applyDecision` is shared); any decision clears that round's votes.
 - **Only PUBLISHED plans** can be verified or reported (404 otherwise). Every write runs in
   `PrismaCommunityUnitOfWork` after `SELECT ... FOR UPDATE` on the Place/Event row (`PrismaPlanStateRepository.lock`),
   so concurrent answers are applied one at a time and an outcome is never missed or applied twice (tested with
@@ -599,14 +604,15 @@ keeps it, `null` clears it, an unknown id is 422 `InvalidProvinceError`. `User.p
 **Reputation** (#42, module `reputation`): the single config is `src/domain/reputation/reputationRules.ts` (the app's
 PLAN §8 values, confirmed by product): levels N1 0, N2 50, N3 120, N4 200, N5 400; points `published` +10,
 `rejected` −10, `verified` +2, `reviewUseful` +1, `reported` −5, `moderationVote` +1, `minorityModerator` −2
-(the last two are applied by community moderation, #43); floor 0. Perks: N2 price answers count, N3 moderation (#43), N4
-verifications count double, N5 moderation votes count double (#43). Role and level are independent: a MODERATOR gets no
-level and a level-3 user no moderator routes until #43.
+(the last two by community moderation); floor 0. Perks: N2 price answers count, N3 community moderation, N4 verifications
+count double, N5 moderation votes count double. Role and level stay independent: a MODERATOR's `level` is still its
+points' level, it only votes as at least N3 (`moderatorLevel`), and a level-3 user gets no team routes.
 
 - **Storage**: ledger `ReputationEvent` (`kind`, `delta`, unique `causeKey`) plus the cached total `User.reputationPoints`.
   Only `ReputationLedger` (`application/reputation/services/ReputationLedger.ts`) writes them, always inside the
   transaction of what caused the change: approve / reject (approval unit of work), verification and `hide` decision
-  (`PrismaCommunityUnitOfWork`), "útil" vote and its undo (`PrismaReviewVoteUnitOfWork`). `PrismaUserMapper.toUpdateData`
+  (`PrismaCommunityUnitOfWork`), "útil" vote and its undo (`PrismaReviewVoteUnitOfWork`), moderation votes and their
+  outcome (same units of work as approval and reports). `PrismaUserMapper.toUpdateData`
   never writes the points.
 - **Idempotent**: the `causeKey` (`reputationCause` in `domain/reputation/entities/ReputationEvent.ts`) is unique per cause:
   one per submission decision, one per person and plan verified (answering again gives nothing), one per voter and review
@@ -624,6 +630,38 @@ level and a level-3 user no moderator routes until #43.
   `recent` = the latest 20 `{ kind, delta, createdAt }` (newest first); `nextLevel` null and `progress` 1 at N5.
 - The migration backfilled the positive points earned before #42 (approved submissions, verifications by signed-in users,
   "útil" votes); penalties count from the deploy.
+
+## Community moderation
+
+Module `moderation` (#43): the app's screen 20. Voting is the normal path; the team's direct routes (`POST
+/submissions/:id/approve|reject`, `POST /places/:id/reports/decision`) stay for MODERATOR / ADMIN as the emergency path.
+Rules are ports of the app's `rules.ts` in `domain/moderation/moderationRules.ts`.
+
+- **Routes** (`moderationRouter`, `jwtAuth` + `requireRole(...USER_ROLES)` only to load the role): `GET /moderation/queue`,
+  `POST` / `DELETE /moderation/submissions/:id/vote`, `/moderation/places/:placeId/vote`, `/moderation/events/:eventId/vote`.
+  Body `{ choice: "for" | "against" }` (strict). Votes and undos: 60 / 15 min per user (`moderationLimits.ts`).
+- **Who**: `canModerate(role, points)`: level 3+, or MODERATOR / ADMIN (`moderatorLevel` = at least 3). Never on your own
+  suggestion or plan (403). Below level 3 → 403 "Necesitas nivel 3 para moderar".
+- **Weights and thresholds**: level 5 votes weigh 2 (stored in `ModerationVote.weight` when cast or changed). A suggestion is
+  decided at 5 weighted votes, 3 if its author is level 3+ (`votesNeededForSubmission`); majority publishes or rejects, a
+  tie rejects. A reported plan is decided at 3; `for` = hide, a tie keeps it.
+- **Outcome**: publish = `approveLocked` (Place/Event created, author +10), reject = `rejectLocked` with `otro` + "La comunidad
+  no la aprobó" (author −10), both with `reviewedById = null`; hide / keep = `applyDecision` (hide: author −5). Voters get
+  +1 the first time they vote on an item (key = the vote row, so changing the choice gives nothing; undo takes it back) and
+  −2 for each vote on the losing side once decided (nobody on a tie).
+- **Undo** only while the item is undecided (409 after: a published suggestion already created its Place/Event). A decided
+  item takes no more votes (409).
+- **Votes** live in `ModerationVote` (exactly one of `submissionId` / `placeId` / `eventId`, no CHECK, unique per user and
+  item). A plan's votes are deleted when its reports are decided (by vote or directly), so a later round starts empty; a
+  submission's votes stay with it.
+- **Queue**: `{ nuevas, reportadas, totals, total }`, at most `MODERATION_QUEUE_LIMIT` (50) per list, oldest suggestions first and
+  reported plans in the `GET /reports` order, the caller's own items left out, suggestions without `userId`. Tallies come from
+  one query per page (`tallies`).
+- **Concurrency**: each vote locks the item (submission / plan row), then every user whose points may change (voter, author,
+  existing voters, via `lockVoterIds`) in id order (`lockUsersInOrder`). Vote transactions run in **READ COMMITTED**
+  (`VOTE_TRANSACTION`, `TransactionOptions`): under REPEATABLE READ the locking read of an item's votes also locks index gaps,
+  and votes on two different items at once deadlocked (1213). Tested with concurrent votes on one item (decided once, one
+  Place/Event) and the same voters on two items at once, on MariaDB 11 and MySQL 8.4.
 
 ## User interests
 
@@ -721,7 +759,8 @@ expected to use this same API as regular authenticated clients (discovering it t
   (500) instead of matching zero rows; with the lock, concurrent approvals get a clean 409 and create nothing.
   `markReviewed` / `deletePendingOwned` still only write while the row is `PENDING` (second guard). The author gets +10
   reputation in the same transaction. **Reject** runs in the same unit of work and lock (−10 to the author), so an
-  approve and a reject of the same submission never both succeed.
+  approve and a reject of the same submission never both succeed. Both share `approveLocked` / `rejectLocked` with the
+  community vote (see "Community moderation"), which decides with `reviewedById = null`.
 - **Photos**: `data.photos` (optional, max 5, no duplicates) holds URLs returned by `POST /uploads`. Each must be one of
   the **author's own** uploads (`UploadService.resolveOwnUploads`, else 422 `InvalidUploadError`); they are stored in
   canonical form and linked through `SubmissionUpload` so the orphan cleanup keeps them while the submission exists.
