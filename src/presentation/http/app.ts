@@ -23,7 +23,8 @@ app.use(
     origin: origins,
     credentials: true,
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
-    allowedHeaders: "Content-Type, Authorization",
+    // `X-Device-Id` identifies guests on verifications and reports; without it browsers reject the preflight (web app).
+    allowedHeaders: "Content-Type, Authorization, X-Device-Id",
   })
 );
 
