@@ -2049,6 +2049,9 @@ const openApiDocument = {
   info: {
     title: "Mi Vueltica API",
     version: "1.0.0",
+    description:
+      "Browser clients must be served from an origin listed in the server's `CORS_ORIGINS`; native apps are not " +
+      "subject to CORS. Allowed request headers: `Content-Type`, `Authorization` and `X-Device-Id`.",
   },
   servers: [{ url: "/api/v1" }],
   tags: [

@@ -79,7 +79,8 @@ Env vars (see `.env.example`):
   `GOOGLE_ANDROID_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID` for Google login (see "Auth"). `GOOGLE_CLIENT_ID` is no longer read.
 - **Optional**: `S3_BUCKET` (`mi-vueltica`), `S3_REGION` (`us-east-1`), `S3_FORCE_PATH_STYLE` (true),
   `UPLOAD_ORPHAN_GRACE_HOURS` (24), `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (see "Account
-  deletion") and `TEST_LOGIN_ENABLED`, `TEST_LOGIN_EMAIL`, `TEST_LOGIN_PASSWORD` (see "Test login").
+  deletion"), `TEST_LOGIN_ENABLED`, `TEST_LOGIN_EMAIL`, `TEST_LOGIN_PASSWORD` (see "Test login") and
+  `CORS_ORIGINS` (see "CORS").
 
 ## Seed data
 
@@ -215,6 +216,24 @@ returns 404.
 - Some value object files have typos (e.g., `valouObject.ts`) — match existing naming when editing
 - `prisma.config.ts` uses `dotenv/config` import for env loading
 - All API routes mounted under `/api/v1`
+
+## CORS
+
+Only browser clients (the app's web build, a future web site) go through CORS; native apps send no `Origin`
+header and are not affected. Config is in `src/presentation/http/core/config/origins.ts` and `app.ts`:
+
+- Allowed origins come from `CORS_ORIGINS`, a comma-separated list of exact origins (scheme + host [+ port], no
+  path, no trailing slash; validated at boot, a malformed entry stops the server). When it is empty, production
+  allows **no** browser origin (fail closed, with a boot warning) and other environments allow the local dev servers
+  (`http://localhost:8081` / `127.0.0.1:8081` for Expo web, `localhost:19006`, `localhost:5173`). Setting it
+  replaces those defaults. `*` is not supported (the API sends `credentials: true`).
+- Allowed request headers: `Content-Type`, `Authorization` and `X-Device-Id` (guest identity on verifications,
+  reports and the place/event detail GETs, see "Verifications & reports"). **Add any new custom request header
+  here too**, or browsers fail the preflight.
+
+Check a preflight with:
+`curl -i -X OPTIONS -H 'Origin: http://localhost:8081' -H 'Access-Control-Request-Method: POST' -H 'Access-Control-Request-Headers: x-device-id,content-type' http://localhost:3000/api/v1/places/<id>/verifications`
+(expect `204` with `Access-Control-Allow-Origin` echoing the origin and `X-Device-Id` in `Access-Control-Allow-Headers`).
 
 ## API docs (Scalar)
 
