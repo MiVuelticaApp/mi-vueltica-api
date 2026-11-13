@@ -6,6 +6,8 @@ export interface CountingVerification {
   pricePaid: PricePaid | null;
   /** Null for guests and for deleted accounts. */
   userId: string | null;
+  /** The verifier's current reputation points; null when `userId` is null. */
+  userPoints: number | null;
 }
 
 /** Verification fields of a place / event detail. */

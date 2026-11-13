@@ -4,4 +4,5 @@ export interface UpdateUserRequest {
   name: string;
   surnames: string;
   ageRange?: AgeRange | null;
+  provinceId?: number | null;
 }

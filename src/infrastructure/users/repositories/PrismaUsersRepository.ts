@@ -1,10 +1,10 @@
 import { SsoProvider, User } from "@/domain/users/entities/User";
-import { IUserRepository, UserListFilters } from "@/domain/users/repositories/IUserRepository";
+import { IUserRepository, UserActivityCounts, UserListFilters } from "@/domain/users/repositories/IUserRepository";
 import { prisma } from "@/infrastructure/prisma/client";
 import { Prisma } from "@/infrastructure/prisma/generated/prisma/client";
 import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
 import { paginate } from "@/infrastructure/core/repositories/prismaPagination";
-import { PrismaUserMapper } from "../mappers/PrismaUserMapper";
+import { PrismaUserMapper, USER_INCLUDE } from "../mappers/PrismaUserMapper";
 import DatabaseError from "@/infrastructure/core/errors/DatabaseError";
 import DatabaseInsertError from "@/infrastructure/core/errors/DatabaseInsertError";
 
@@ -22,7 +22,7 @@ export default class PrismaUsersRepository implements IUserRepository {
    */
   async all(): Promise<User[]> {
     try {
-      const users = await this.client.user.findMany();
+      const users = await this.client.user.findMany({ include: USER_INCLUDE });
       return users.map((user) => PrismaUserMapper.toDomain(user));
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -51,7 +51,7 @@ export default class PrismaUsersRepository implements IUserRepository {
         this.client,
         params,
         {
-          findMany: (tx, page) => tx.user.findMany({ where, ...page }),
+          findMany: (tx, page) => tx.user.findMany({ where, ...page, include: USER_INCLUDE }),
           count: (tx) => tx.user.count({ where }),
         },
         (row) => PrismaUserMapper.toDomain(row),
@@ -74,6 +74,7 @@ export default class PrismaUsersRepository implements IUserRepository {
         where: {
           [field || "id"]: value,
         },
+        include: USER_INCLUDE,
       });
       return user ? PrismaUserMapper.toDomain(user) : null;
     } catch (error) {
@@ -94,6 +95,7 @@ export default class PrismaUsersRepository implements IUserRepository {
         where: {
           ssoProvider_ssoSubject: { ssoProvider: provider, ssoSubject: subject },
         },
+        include: USER_INCLUDE,
       });
       return user ? PrismaUserMapper.toDomain(user) : null;
     } catch (error) {
@@ -146,6 +148,20 @@ export default class PrismaUsersRepository implements IUserRepository {
     } catch (error) {
       console.error("Error deleting user:", error);
       throw new DatabaseInsertError("Could not delete user", error);
+    }
+  }
+
+  async activityCounts(userId: string): Promise<UserActivityCounts> {
+    try {
+      const [vuelticas, reviews, verifications] = await Promise.all([
+        this.client.submission.count({ where: { userId, status: "PUBLISHED" } }),
+        this.client.review.count({ where: { userId } }),
+        this.client.verification.count({ where: { userId } }),
+      ]);
+      return { vuelticas, reviews, verifications };
+    } catch (error) {
+      console.error("Error counting user activity:", error);
+      throw new DatabaseError("Could not count the user's activity", error);
     }
   }
 }

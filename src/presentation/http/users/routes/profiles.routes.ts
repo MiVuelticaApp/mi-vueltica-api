@@ -15,6 +15,7 @@ const profileRouter = Router();
 profileRouter.use(jwtAuth);
 profileRouter.put("/", validateSchema(UpdateUserSchema), asyncHandler(myProfileController.update.bind(myProfileController)));
 profileRouter.get("/", asyncHandler(myProfileController.me.bind(myProfileController)));
+profileRouter.get("/reputation", asyncHandler(myProfileController.reputation.bind(myProfileController)));
 profileRouter.get("/interests", asyncHandler(myInterestsController.list.bind(myInterestsController)));
 profileRouter.put("/interests", validateSchema(UpdateInterestsSchema), asyncHandler(myInterestsController.replace.bind(myInterestsController)));
 profileRouter.get("/favorites", validateSchema(ListFavoritesQuerySchema, "query"), asyncHandler(favoriteController.list.bind(favoriteController)));

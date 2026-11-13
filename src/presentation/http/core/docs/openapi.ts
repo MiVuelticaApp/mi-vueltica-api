@@ -66,6 +66,8 @@ import { SUBMISSION_SORT_FIELDS } from "@/presentation/http/submissions/validato
 import { SUBMISSION_CREATE_RATE_LIMIT } from "@/presentation/http/submissions/submissionLimits";
 import { SUBMISSION_TYPES } from "@/domain/submissions/valueObjects/submissionType.valueObject";
 import { AGE_RANGES, USER_ROLES } from "@/domain/users/entities/User";
+import { LEVEL_PERKS, LEVEL_THRESHOLDS, REPUTATION_KINDS, REPUTATION_LEVELS, REPUTATION_POINTS } from "@/domain/reputation/reputationRules";
+import { RECENT_REPUTATION_EVENTS } from "@/application/reputation/services/implementations/ReputationService";
 import { DEFAULT_PAGE, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "@/domain/core/pagination/Pagination";
 import { SUBMISSION_MAX_PHOTOS } from "@/domain/submissions/entities/SubmissionPayload";
 import { AddPhotoSchema } from "@/presentation/http/photos/validators/addPhoto";
@@ -388,9 +390,9 @@ const communityPaths = (kind: "place" | "event") => {
           `listing: \`stillHappening: "no"\` hides it ("Ya no existe"), \`pricePaid: "mas5000"\` hides it ("Cuesta más de ₡5.000") ` +
           "and any other `pricePaid` sets the price to that tier (kept if it already is in it, else the tier's maximum). " +
           "Hiding makes it ARCHIVED with `hiddenReason`; its author still sees it. Price answers only count from signed-in " +
-          "users (the app's \"level 2\" rule; the API has no reputation yet). `photo` is a URL from `POST /uploads` " +
+          "users from reputation level 2, and level 4+ answers count double (see `GET /me/reputation`). `photo` is a URL from `POST /uploads` " +
           `(signed-in users only, 401 for guests; 422 if not the caller's own upload). 404 unless the ${noun} is PUBLISHED. ` +
-          `Rate limit: ${perMinutes(VERIFICATION_RATE_LIMIT)} per user or IP. \`queued\` is always false and \`points\` always 0.`,
+          `Rate limit: ${perMinutes(VERIFICATION_RATE_LIMIT)} per user or IP. \`queued\` is always false; \`points\` is ${REPUTATION_POINTS.verified} the first time a signed-in person verifies the ${noun}, else 0.`,
         security: optionalBearer,
         parameters: [param, deviceIdHeader],
         requestBody: jsonBody(VerifySchema),
@@ -646,6 +648,8 @@ const paths: Record<string, Record<string, unknown>> = {
     put: {
       tags: ["Profile"],
       summary: "Update my profile",
+      description:
+        "`provinceId` is the default map region: omitted keeps the current one, null clears it, an unknown id is a 422.",
       security: bearer,
       requestBody: jsonBody(UpdateUserSchema),
       responses: {
@@ -653,6 +657,7 @@ const paths: Record<string, Record<string, unknown>> = {
         400: responseRef("BadRequest"),
         401: responseRef("Unauthorized"),
         404: responseRef("NotFound"),
+        422: responseRef("UnprocessableEntity"),
       },
     },
     post: {
@@ -666,6 +671,26 @@ const paths: Record<string, Record<string, unknown>> = {
         400: responseRef("BadRequest"),
         401: responseRef("Unauthorized"),
         429: errorResponse("Too many requests"),
+      },
+    },
+  },
+  "/me/reputation": {
+    get: {
+      tags: ["Profile"],
+      summary: "Get my reputation",
+      description:
+        `Points, level and progress to the next one, the perks of the current level and the latest ${RECENT_REPUTATION_EVENTS} ` +
+        "changes (newest first). Levels: " +
+        REPUTATION_LEVELS.map((level) => `${level} from ${LEVEL_THRESHOLDS[level]}`).join(", ") +
+        ". Points: " +
+        REPUTATION_KINDS.map((kind) => `${kind} ${REPUTATION_POINTS[kind] > 0 ? "+" : ""}${REPUTATION_POINTS[kind]}`).join(", ") +
+        " (`moderationVote` and `minorityModerator` arrive with community moderation). Points never go below 0; " +
+        "`delta` is what was applied.",
+      security: bearer,
+      responses: {
+        200: jsonResponse("Reputation", "ReputationResponse"),
+        401: responseRef("Unauthorized"),
+        404: responseRef("NotFound"),
       },
     },
   },
@@ -2042,6 +2067,15 @@ const userProperties = {
   surnames: { type: "string" },
   ageRange: { type: ["string", "null"], enum: [...AGE_RANGES, null] },
   role: { type: "string", enum: [...USER_ROLES] },
+  province: {
+    type: ["object", "null"],
+    description: "Default map region (`PUT /me` with `provinceId`)",
+    properties: { id: { type: "integer" }, name: { type: "string" } },
+    required: ["id", "name"],
+  },
+  createdAt: { type: "string", format: "date-time", description: "\"Miembro desde\"" },
+  points: { type: "integer", minimum: 0, description: "Reputation points (see `GET /me/reputation`)" },
+  level: { type: "integer", enum: [...REPUTATION_LEVELS] },
 };
 
 const openApiDocument = {
@@ -2520,7 +2554,7 @@ const openApiDocument = {
         description: "Same shape as the app's `VerifyResult`",
         properties: {
           queued: { type: "boolean", description: "Always false: the server applies verifications immediately" },
-          points: { type: "integer", description: "Reputation points earned; always 0 (no reputation model yet)" },
+          points: { type: "integer", description: "Reputation points earned by this verification (0 for guests and repeated answers)" },
           hidden: { type: "boolean", description: "This verification hid the plan" },
         },
         required: ["queued", "points", "hidden"],
@@ -2668,10 +2702,49 @@ const openApiDocument = {
           { $ref: "#/components/schemas/UserResponse" },
           {
             type: "object",
-            properties: { interests: { type: "array", items: { $ref: "#/components/schemas/Category" } } },
-            required: ["interests"],
+            properties: {
+              interests: { type: "array", items: { $ref: "#/components/schemas/Category" } },
+              counts: {
+                type: "object",
+                properties: {
+                  vuelticas: { type: "integer", description: "Approved suggestions" },
+                  reviews: { type: "integer", description: "Reviews in any status" },
+                  verifications: { type: "integer", description: "Plans verified" },
+                },
+                required: ["vuelticas", "reviews", "verifications"],
+              },
+            },
+            required: ["interests", "counts"],
           },
         ],
+      },
+      ReputationResponse: {
+        type: "object",
+        properties: {
+          points: { type: "integer", minimum: 0 },
+          level: { type: "integer", enum: [...REPUTATION_LEVELS] },
+          nextLevel: { type: ["integer", "null"], enum: [...REPUTATION_LEVELS, null] },
+          pointsToNext: { type: "integer", minimum: 0, description: "0 at the top level" },
+          progress: { type: "number", minimum: 0, maximum: 1, description: "Progress inside the current level (1 at the top level)" },
+          perks: {
+            type: "array",
+            description: Object.entries(LEVEL_PERKS).map(([perk, level]) => `${perk} from level ${level}`).join(", "),
+            items: { type: "string", enum: Object.keys(LEVEL_PERKS) },
+          },
+          recent: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                kind: { type: "string", enum: [...REPUTATION_KINDS] },
+                delta: { type: "integer" },
+                createdAt: { type: "string", format: "date-time" },
+              },
+              required: ["kind", "delta", "createdAt"],
+            },
+          },
+        },
+        required: ["points", "level", "nextLevel", "pointsToNext", "progress", "perks", "recent"],
       },
       AuthResponse: {
         type: "object",

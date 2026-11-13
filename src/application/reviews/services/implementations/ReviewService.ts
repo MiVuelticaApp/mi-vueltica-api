@@ -11,6 +11,10 @@ import { PlaceNotFoundError } from "@/application/places/errors/PlaceNotFoundErr
 import { EventNotFoundError } from "@/application/events/errors/EventNotFoundError";
 import { ForbiddenError } from "@/application/core/errors/ForbiddenError";
 import { IUploadService } from "@/application/uploads/services/interfaces/IUploadService";
+import { IReputationRepository } from "@/domain/reputation/repositories/IReputationRepository";
+import { IReviewVoteUnitOfWork } from "@/domain/reviews/unitsOfWork/ReviewVoteUnitOfWork";
+import { reputationCause } from "@/domain/reputation/entities/ReputationEvent";
+import { ReputationLedger } from "@/application/reputation/services/ReputationLedger";
 import { ReviewNotFoundError } from "../../errors/ReviewNotFoundError";
 import { ReviewAlreadyExistsError } from "../../errors/ReviewAlreadyExistsError";
 import {
@@ -21,6 +25,15 @@ import {
   TargetReviewList,
 } from "../interfaces/IReviewService";
 
+/**
+ * Locks the voter and the author, always in id order: a vote and its undo for the same author run one
+ * after the other, and two people voting each other's reviews at the same time cannot deadlock (the vote
+ * row's foreign key takes a shared lock on the voter; see ReputationLedger).
+ */
+async function lockVoterAndAuthor(reputation: IReputationRepository, voterId: string, authorId: string): Promise<void> {
+  for (const id of [voterId, authorId].sort()) await reputation.lockPoints(id);
+}
+
 const NEWEST_FIRST = { field: "createdAt", direction: "desc" as SortDirection };
 const OLDEST_FIRST = { field: "createdAt", direction: "asc" as SortDirection };
 
@@ -30,6 +43,7 @@ export class ReviewService implements IReviewService {
     private readonly placeRepository: IPlaceRepository,
     private readonly eventRepository: IEventRepository,
     private readonly uploadService: IUploadService,
+    private readonly voteUOW: IReviewVoteUnitOfWork,
   ) {}
 
   async listForTarget(
@@ -106,13 +120,33 @@ export class ReviewService implements IReviewService {
   async markUseful(userId: string, id: string): Promise<ReviewDetail> {
     const review = await this.getPublishedOrThrow(id);
     if (review.isOwnedBy(userId)) throw new ForbiddenError("No puedes marcar como útil tu propia reseña");
-    await this.reviewRepository.addUsefulVote(id, userId);
+    const authorId = review.userId;
+    await this.voteUOW.runInTransaction(async (ctx) => {
+      const reputation = ctx.getReputationRepository();
+      if (authorId) await lockVoterAndAuthor(reputation, userId, authorId);
+      await ctx.getReviewRepository().addUsefulVote(id, userId);
+      if (authorId) {
+        await ReputationLedger.award(reputation, {
+          userId: authorId,
+          kind: "reviewUseful",
+          causeKey: reputationCause.usefulVote(id, userId),
+          at: new Date(),
+        });
+      }
+    });
     return this.getDetailOrThrow(id, userId);
   }
 
   async unmarkUseful(userId: string, id: string): Promise<ReviewDetail> {
-    await this.getPublishedOrThrow(id);
-    await this.reviewRepository.removeUsefulVote(id, userId);
+    const review = await this.getPublishedOrThrow(id);
+    const authorId = review.userId;
+    await this.voteUOW.runInTransaction(async (ctx) => {
+      const reputation = ctx.getReputationRepository();
+      if (authorId) await lockVoterAndAuthor(reputation, userId, authorId);
+      await ctx.getReviewRepository().removeUsefulVote(id, userId);
+      // Taking the vote back takes the point back; voting again gives it again.
+      if (authorId) await ReputationLedger.revoke(reputation, authorId, reputationCause.usefulVote(id, userId));
+    });
     return this.getDetailOrThrow(id, userId);
   }
 
