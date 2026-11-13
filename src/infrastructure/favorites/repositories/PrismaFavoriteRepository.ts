@@ -33,6 +33,12 @@ export default class PrismaFavoriteRepository implements IFavoriteRepository {
       // Unpublished targets are hidden (not deleted): the row stays and reappears on re-publish.
       const publishedPlace: Prisma.FavoriteWhereInput = { place: { status: "PUBLISHED" } };
       const publishedEvent: Prisma.FavoriteWhereInput = { event: { status: "PUBLISHED" } };
+      // A favorite is about a place xor an event. Positive conditions only (`IS NULL` or "author not blocked"): a
+      // negated filter on a nullable column would drop the rows whose place / event / author is NULL (SQL NULL logic).
+      const ids = filters.excludeAuthorIds ?? [];
+      const authorNotBlocked = { OR: [{ authorId: null }, { authorId: { notIn: ids } }] };
+      const notBlocked: Prisma.FavoriteWhereInput[] =
+        ids.length > 0 ? [{ OR: [{ place: null }, { place: authorNotBlocked }] }, { OR: [{ event: null }, { event: authorNotBlocked }] }] : [];
       const where: Prisma.FavoriteWhereInput = {
         userId,
         ...(filters.type === "PLACE"
@@ -40,6 +46,7 @@ export default class PrismaFavoriteRepository implements IFavoriteRepository {
           : filters.type === "EVENT"
             ? publishedEvent
             : { OR: [publishedPlace, publishedEvent] }),
+        ...(notBlocked.length > 0 ? { AND: notBlocked } : {}),
       };
       // Most recently favorited first unless a direction is given; `id` keeps pages stable.
       const direction = params.sort?.direction ?? "desc";

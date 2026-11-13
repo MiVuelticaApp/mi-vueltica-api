@@ -29,6 +29,8 @@ export interface EventListFilters extends PlanConditionsFilters, GeoFilters {
   statuses?: ContentStatus[];
   /** Substring match on title or description. */
   search?: string;
+  /** Hides the events authored by these users (the viewer's blocked people, #17). Events without an author stay. */
+  excludeAuthorIds?: string[];
 }
 
 export interface IEventRepository {

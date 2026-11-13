@@ -21,6 +21,8 @@ export interface ListTargetReviewsOptions {
   audience?: ReviewAudience;
   /** Only reviews with photos. */
   withPhotos?: boolean;
+  /** Reviews written by these users (the viewer's blocked people, #17) are left out of the list. */
+  excludeUserIds?: string[];
 }
 
 export interface TargetReviewList {

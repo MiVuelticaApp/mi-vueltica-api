@@ -28,6 +28,8 @@ export class PlaceService implements IPlaceService {
   async get(id: string, options: PlaceVisibilityOptions = {}): Promise<PlaceDetail> {
     const detail = await this.placeRepository.findDetail(id);
     if (!detail) throw new PlaceNotFoundError();
+    const authorId = detail.place.authorId;
+    if (authorId && options.excludeAuthorIds?.includes(authorId)) throw new PlaceNotFoundError();
     const isAuthor = options.viewerId !== undefined && detail.place.isAuthoredBy(options.viewerId);
     if (options.statuses && !options.statuses.includes(detail.place.status) && !isAuthor) {
       throw new PlaceNotFoundError();
