@@ -21,7 +21,7 @@ export interface VerifyInput {
 export interface VerifyResult {
   /** Always false: the server applies verifications immediately (the app queues them offline). */
   queued: boolean;
-  /** Reputation points earned; always 0 until the API has a reputation model. */
+  /** Reputation points earned: 2 the first time a signed-in person verifies the plan, else 0. */
   points: number;
   /** The plan was hidden by this verification. */
   hidden: boolean;

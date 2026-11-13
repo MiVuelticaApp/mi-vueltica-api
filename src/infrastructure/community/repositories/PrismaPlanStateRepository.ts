@@ -5,7 +5,13 @@ import { Prisma } from "@/infrastructure/prisma/generated/prisma/client";
 import DatabaseError from "@/infrastructure/core/errors/DatabaseError";
 import DatabaseInsertError from "@/infrastructure/core/errors/DatabaseInsertError";
 
-const STATE_SELECT = { status: true, pricePerPerson: true, hiddenReason: true, reportedAt: true } as const;
+interface StateRow {
+  status: PlanState["status"];
+  pricePerPerson: number | null;
+  hiddenReason: string | null;
+  reportedAt: Date | null;
+  authorId: string | null;
+}
 
 /** Must run on a transaction client: `lock` holds the row until the transaction ends. */
 export default class PrismaPlanStateRepository implements IPlanStateRepository {
@@ -13,17 +19,25 @@ export default class PrismaPlanStateRepository implements IPlanStateRepository {
 
   async lock(target: PlanTarget): Promise<PlanState | null> {
     try {
-      const locked =
+      // The state comes from the locking read itself (always the latest committed values). It is not a
+      // plain read, so it does not take the transaction's snapshot: the caller can still lock users
+      // afterwards without MariaDB's "Record has changed since last read" (see ReputationLedger).
+      const rows =
         target.type === "PLACE"
-          ? await this.client.$queryRaw<{ id: string }[]>`SELECT id FROM Place WHERE id = ${target.id} FOR UPDATE`
-          : await this.client.$queryRaw<{ id: string }[]>`SELECT id FROM Event WHERE id = ${target.id} FOR UPDATE`;
-      if (locked.length === 0) return null;
-      // Read after the lock, so it sees the latest committed values.
-      const row =
-        target.type === "PLACE"
-          ? await this.client.place.findUnique({ where: { id: target.id }, select: STATE_SELECT })
-          : await this.client.event.findUnique({ where: { id: target.id }, select: STATE_SELECT });
-      return row ? { target, ...row } : null;
+          ? await this.client.$queryRaw<StateRow[]>`
+              SELECT status, pricePerPerson, hiddenReason, reportedAt, authorId FROM Place WHERE id = ${target.id} FOR UPDATE`
+          : await this.client.$queryRaw<StateRow[]>`
+              SELECT status, pricePerPerson, hiddenReason, reportedAt, authorId FROM Event WHERE id = ${target.id} FOR UPDATE`;
+      const row = rows[0];
+      if (!row) return null;
+      return {
+        target,
+        status: row.status,
+        pricePerPerson: row.pricePerPerson === null ? null : Number(row.pricePerPerson),
+        hiddenReason: row.hiddenReason,
+        reportedAt: row.reportedAt === null ? null : new Date(row.reportedAt),
+        authorId: row.authorId,
+      };
     } catch (error) {
       console.error("Error locking plan:", error);
       throw new DatabaseError("Could not lock the place / event", error);

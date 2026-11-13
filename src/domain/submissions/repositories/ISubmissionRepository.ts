@@ -31,6 +31,12 @@ export interface ISubmissionRepository {
    * Only meaningful inside a unit of work.
    */
   findForUpdate(id: string): Promise<Submission | null>;
+  /**
+   * Locks the row like `findForUpdate` but only returns its author (null if missing), with no plain
+   * read. Lets a unit of work lock the author too before anything takes the transaction's snapshot
+   * (see ReputationLedger); call `findForUpdate` afterwards for the full submission.
+   */
+  lockAuthor(id: string): Promise<string | null>;
   list(params: PaginationParams<SubmissionSortField>, filters?: SubmissionListFilters): Promise<PaginatedResult<Submission>>;
   /**
    * Persists the review fields (status, reviewer, date, note, rejection reason, created Place/Event)

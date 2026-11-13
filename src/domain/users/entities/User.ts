@@ -11,6 +11,12 @@ export type UserRole = (typeof USER_ROLES)[number];
 export const AGE_RANGES = ["AGE_18_25", "AGE_26_35", "AGE_36_50", "AGE_51_64", "AGE_65_PLUS"] as const;
 export type AgeRange = (typeof AGE_RANGES)[number];
 
+/** The province a user picked (default map region). */
+export interface UserProvince {
+  id: number;
+  name: string;
+}
+
 export class User {
   private props: UserProps;
   constructor(props: UserConstructorProps) {
@@ -23,6 +29,8 @@ export class User {
       ssoSubject: props.ssoSubject,
       ageRange: props.ageRange ?? null,
       role: props.role ?? "USER",
+      province: props.province ?? null,
+      reputationPoints: props.reputationPoints ?? 0,
       deletedAt: props.deletedAt ? new Date(props.deletedAt) : null,
       createdAt: new Date(props.createdAt),
       updatedAt: new Date(props.updatedAt),
@@ -38,6 +46,10 @@ export class User {
   get ssoSubject() { return this.props.ssoSubject; }
   get ageRange() { return this.props.ageRange; }
   get role() { return this.props.role; }
+  get province() { return this.props.province; }
+  get provinceId() { return this.props.province?.id ?? null; }
+  /** Read-only here: points only change through the reputation ledger. */
+  get reputationPoints() { return this.props.reputationPoints; }
   get deletedAt() { return this.props.deletedAt; }
   get createdAt() { return this.props.createdAt; }
   get updatedAt() { return this.props.updatedAt; }
@@ -47,6 +59,7 @@ export class User {
     this.props.name = changes.name;
     this.props.surnames = changes.surnames;
     if (changes.ageRange !== undefined) this.props.ageRange = changes.ageRange;
+    if (changes.province !== undefined) this.props.province = changes.province;
     this.props.updatedAt = new Date();
   }
 
@@ -66,6 +79,8 @@ export interface UserProps {
   ssoSubject: string;
   ageRange: AgeRange | null;
   role: UserRole;
+  province: UserProvince | null;
+  reputationPoints: number;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -80,6 +95,8 @@ export interface UserConstructorProps {
   ssoSubject: string;
   ageRange?: AgeRange | null;
   role?: UserRole;
+  province?: UserProvince | null;
+  reputationPoints?: number;
   deletedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -89,4 +106,6 @@ export interface UserProfileChanges {
   name: string;
   surnames: string;
   ageRange?: AgeRange | null;
+  /** Omitted keeps the current one, null clears it. */
+  province?: UserProvince | null;
 }

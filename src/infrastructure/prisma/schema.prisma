@@ -124,17 +124,31 @@ enum ReviewSpend {
 /// USERS
 /// ===============================
 
+// #42: why a user won or lost reputation points (mapped to the app's strings in reputationEnums.ts).
+enum ReputationKind {
+  SUBMISSION_APPROVED
+  SUBMISSION_REJECTED
+  VERIFICATION
+  REVIEW_USEFUL
+  PLAN_HIDDEN
+  MODERATION_VOTE
+  MODERATION_MINORITY
+}
+
 model User {
   id       String @id @default(uuid())
   email    String @unique
   name     String
   surnames String
 
-  ssoProvider SsoProvider
-  ssoSubject  String // stable user id returned by Google / Apple
-  ageRange    AgeRange?
-  role        UserRole    @default(USER)
-  deletedAt   DateTime? // "Delete account" (App Store requirement)
+  ssoProvider      SsoProvider
+  ssoSubject       String // stable user id returned by Google / Apple
+  ageRange         AgeRange?
+  role             UserRole    @default(USER)
+  deletedAt        DateTime? // "Delete account" (App Store requirement)
+  // #42: default map region, and the cached total of ReputationEvent (only the reputation ledger writes it).
+  provinceId       Int?
+  reputationPoints Int         @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -152,8 +166,26 @@ model User {
   devices             Device[]
   notifications       Notification[]
   uploads             Upload[]
+  reputationEvents    ReputationEvent[]
+  province            Province?          @relation(fields: [provinceId], references: [id], onDelete: SetNull)
 
   @@unique([ssoProvider, ssoSubject])
+  @@index([provinceId])
+}
+
+// #42: reputation ledger. `causeKey` is unique so the same cause never changes the points twice;
+// `delta` is what was applied (after the floor at 0), so the rows add up to User.reputationPoints (see AGENTS.md).
+model ReputationEvent {
+  id        String         @id @default(uuid())
+  userId    String
+  kind      ReputationKind
+  delta     Int
+  causeKey  String         @unique
+  createdAt DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model Category {
@@ -183,6 +215,7 @@ model Province {
   id      Int      @id // official INEC code
   name    String   @unique
   cantons Canton[]
+  users   User[]
 }
 
 model Canton {
