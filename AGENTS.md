@@ -726,8 +726,10 @@ expected to use this same API as regular authenticated clients (discovering it t
   Author responses do not include `reviewedById` (which moderator decided); only the moderation responses do.
 - **Edit** (#40): `PUT /me/submissions/:id`, same body and validation as `POST` (400/422, photos re-checked and replaced),
   only while `PENDING` (409), the `type` cannot change (422 `SubmissionTypeChangeError`). Runs in the approval unit of work
-  after `findForUpdate`, so an edit and a concurrent approve/reject are applied one after the other; `updatePendingOwned`
-  is the second guard. Its own per-user limiter with the creation budget.
+  (READ COMMITTED, same lock order as a vote: submission, then the voters by id) after `findForUpdate`, so an edit and a
+  concurrent approve/reject/vote are applied one after the other; `updatePendingOwned` is the second guard. **An edit clears
+  the submission's community votes** (and the +1 each voter earned), because they were cast on the previous text; the
+  community votes again on the new one. Its own per-user limiter with the creation budget.
 - **Moderation** — `/api/v1/submissions` (`jwtAuth` + `requireRole("MODERATOR", "ADMIN")` on the whole router):
   `GET /` (queue: `status` defaults to `PENDING`, optional `type`, default order `createdAt` asc), `GET /:id`,
   `POST /:id/approve` (200 `{ submission, created: { type, id } }`), `POST /:id/reject` (`{ reason, note? }`, see below).
