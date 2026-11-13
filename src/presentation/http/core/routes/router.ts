@@ -22,6 +22,7 @@ import uploadsRouter from "@/presentation/http/uploads/routes/uploads.routes";
 import filesRouter from "@/presentation/http/uploads/routes/files.routes";
 import photosRouter from "@/presentation/http/photos/routes/photos.routes";
 import { eventPhotosRouter, placePhotosRouter } from "@/presentation/http/photos/routes/galleryRouter";
+import moderationRouter from "@/presentation/http/moderation/routes/moderation.routes";
 import { Router } from "express";
 const router = Router();
 
@@ -32,6 +33,7 @@ router.use("/me/submissions", mySubmissionsRouter);
 router.use("/me/devices", myDevicesRouter);
 router.use("/me/notifications", myNotificationsRouter);
 router.use('/me', profileRouter);
+router.use("/moderation", moderationRouter);
 router.use("/categories", categoriesRouter);
 // Before /provinces so the cantons sub-resource is never shadowed.
 router.use("/provinces/:provinceId/cantons", provinceCantonsRouter);

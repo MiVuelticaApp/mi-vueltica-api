@@ -40,6 +40,10 @@ export interface ReportResult {
   hidden: boolean;
 }
 
+import { VoteChoice } from "@/domain/moderation/moderationRules";
+import { ModerationVoteResult } from "@/domain/moderation/entities/ModerationVote";
+import { Voter } from "@/application/moderation/services/moderationVoting";
+
 export interface ReportDecisionResult {
   target: PlanTarget;
   status: ContentStatus;
@@ -58,4 +62,11 @@ export interface ICommunityService {
   reportQueue(params: PaginationParams): Promise<PaginatedResult<ReportQueueItem>>;
   /** `keep` publishes the plan, `hide` hides it; both resolve its reports. 409 if it has none pending; 404 if missing. */
   decide(target: PlanTarget, decision: ReportDecision): Promise<ReportDecisionResult>;
+  /**
+   * Community vote on a reported plan (`for` = hide). Level 3+ (or MODERATOR / ADMIN), never the author
+   * (403). Decided once the needed votes are in, like `decide`. 404 if missing, 409 without pending reports.
+   */
+  voteReport(voter: Voter, target: PlanTarget, choice: VoteChoice): Promise<ModerationVoteResult>;
+  /** Takes the caller's vote back while the reports are pending (409 otherwise). */
+  undoReportVote(voter: Voter, target: PlanTarget): Promise<ModerationVoteResult>;
 }

@@ -135,6 +135,12 @@ enum ReputationKind {
   MODERATION_MINORITY
 }
 
+// #43: community moderation vote ("for" publishes a suggestion / hides a reported plan).
+enum VoteChoice {
+  FOR
+  AGAINST
+}
+
 model User {
   id       String @id @default(uuid())
   email    String @unique
@@ -167,10 +173,36 @@ model User {
   notifications       Notification[]
   uploads             Upload[]
   reputationEvents    ReputationEvent[]
+  moderationVotes     ModerationVote[]
   province            Province?          @relation(fields: [provinceId], references: [id], onDelete: SetNull)
 
   @@unique([ssoProvider, ssoSubject])
   @@index([provinceId])
+}
+
+// #43: one vote per user and item: a PENDING submission, or a Place / Event with pending reports (exactly
+// one of the three ids, enforced by the application; no CHECK, see Photo). `weight` is 2 for level 5.
+// Votes on a plan are deleted when its reports are decided; votes on a submission stay with it.
+model ModerationVote {
+  id           String     @id @default(uuid())
+  submissionId String?
+  placeId      String?
+  eventId      String?
+  userId       String
+  choice       VoteChoice
+  weight       Int        @default(1)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  submission Submission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  place      Place?      @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  event      Event?      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([submissionId, userId])
+  @@unique([placeId, userId])
+  @@unique([eventId, userId])
+  @@index([userId])
 }
 
 // #42: reputation ledger. `causeKey` is unique so the same cause never changes the points twice;
@@ -282,17 +314,18 @@ model Place {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  canton        Canton         @relation(fields: [cantonId], references: [id])
-  category      Category       @relation(fields: [categoryId], references: [id])
-  source        Source?        @relation(fields: [sourceId], references: [id])
-  author        User?          @relation("PlaceAuthor", fields: [authorId], references: [id], onDelete: SetNull)
-  events        Event[]
-  photos        Photo[]
-  favorites     Favorite[]
-  reviews       Review[]
-  verifications Verification[]
-  reports       Report[]
-  submissions   Submission[]   @relation("SubmissionCreatedPlace")
+  canton          Canton           @relation(fields: [cantonId], references: [id])
+  category        Category         @relation(fields: [categoryId], references: [id])
+  source          Source?          @relation(fields: [sourceId], references: [id])
+  author          User?            @relation("PlaceAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  events          Event[]
+  photos          Photo[]
+  favorites       Favorite[]
+  reviews         Review[]
+  verifications   Verification[]
+  reports         Report[]
+  moderationVotes ModerationVote[]
+  submissions     Submission[]     @relation("SubmissionCreatedPlace")
 
   @@index([cantonId, status])
   @@index([categoryId])
@@ -339,17 +372,18 @@ model Event {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  place         Place?         @relation(fields: [placeId], references: [id], onDelete: SetNull)
-  category      Category       @relation(fields: [categoryId], references: [id])
-  source        Source?        @relation(fields: [sourceId], references: [id])
-  author        User?          @relation("EventAuthor", fields: [authorId], references: [id], onDelete: SetNull)
-  notifications Notification[]
-  favorites     Favorite[]
-  photos        Photo[]
-  reviews       Review[]
-  verifications Verification[]
-  reports       Report[]
-  submissions   Submission[]   @relation("SubmissionCreatedEvent")
+  place           Place?           @relation(fields: [placeId], references: [id], onDelete: SetNull)
+  category        Category         @relation(fields: [categoryId], references: [id])
+  source          Source?          @relation(fields: [sourceId], references: [id])
+  author          User?            @relation("EventAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  notifications   Notification[]
+  favorites       Favorite[]
+  photos          Photo[]
+  reviews         Review[]
+  verifications   Verification[]
+  reports         Report[]
+  moderationVotes ModerationVote[]
+  submissions     Submission[]     @relation("SubmissionCreatedEvent")
 
   @@index([startsAt, status])
   @@index([latitude, longitude])
@@ -444,6 +478,7 @@ model Submission {
   createdPlace Place?             @relation("SubmissionCreatedPlace", fields: [createdPlaceId], references: [id], onDelete: SetNull)
   createdEvent Event?             @relation("SubmissionCreatedEvent", fields: [createdEventId], references: [id], onDelete: SetNull)
   uploads      SubmissionUpload[]
+  votes        ModerationVote[]
 
   @@index([status, createdAt])
 }

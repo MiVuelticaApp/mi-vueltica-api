@@ -10,6 +10,8 @@ export type SubmissionSortField = (typeof SUBMISSION_SORT_FIELDS)[number];
 export interface SubmissionListFilters {
   /** Restricts the list to one author (the "my submissions" view). */
   userId?: string;
+  /** Leaves out one author's submissions (a voter never sees their own in the moderation queue). */
+  excludeUserId?: string;
   status?: ContentStatus;
   type?: SubmissionType;
 }
