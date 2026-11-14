@@ -3084,7 +3084,9 @@ const openApiDocument = {
 // A suggestion as community voters see it: the author's `Submission` without `userId`.
 {
   const schemas = openApiDocument.components.schemas as unknown as Record<string, { properties: Record<string, unknown>; required: string[] }>;
-  const { userId: _userId, ...properties } = schemas.Submission.properties;
+  const { userId: _userId, ...rest } = schemas.Submission.properties;
+  // #5: the automatic check, so voters look twice at a flagged suggestion.
+  const properties = { ...rest, aiScore: { type: ["number", "null"], minimum: 0, maximum: 1 }, aiReason: { type: ["string", "null"] } };
   schemas.QueueSubmission = { ...schemas.Submission, properties, required: schemas.Submission.required.filter((f) => f !== "userId") };
 }
 
