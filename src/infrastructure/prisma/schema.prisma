@@ -158,6 +158,12 @@ model User {
   // #7: the privacy notice version the person accepted (Ley 8968 art. 5) and when; null until they accept.
   privacyVersion    String?   @db.VarChar(32)
   privacyAcceptedAt DateTime?
+  // #10: Ajustes › Notificaciones (reminders are local in the app; the API sends the other two) and the last weekly
+  // "Planes nuevos cerca" push, so it goes out at most once a week.
+  notifyReminders  Boolean   @default(true)
+  notifyNewNearby  Boolean   @default(true)
+  notifyMyStatus   Boolean   @default(true)
+  lastNearbyPushAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
