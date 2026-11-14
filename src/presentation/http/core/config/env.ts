@@ -24,7 +24,17 @@ const NODE_ENV = process.env.NODE_ENV || "development";
 const ENV = {
   NODE_ENV,
   PORT: process.env.PORT || 3000,
-  JWT_SECRET: process.env.JWT_SECRET || "your_jwt_secret",
+  // #4: required in production (a missing secret would sign tokens anyone can forge); a fixed default only for local dev.
+  JWT_SECRET: NODE_ENV === "production" ? required("JWT_SECRET") : process.env.JWT_SECRET || "dev-only-jwt-secret",
+  // #4: number of reverse proxies in front of the API (Coolify's Traefik = 1, + Cloudflare = 2). Express then takes
+  // the client IP from that many X-Forwarded-For hops, so a client cannot fake its IP to dodge per-IP rate limits.
+  TRUST_PROXY: (() => {
+    const raw = process.env.TRUST_PROXY;
+    if (raw === undefined || raw === "") return 1;
+    const n = Number(raw);
+    if (!Number.isInteger(n) || n < 0) throw new Error("TRUST_PROXY must be a non-negative integer (number of proxies)");
+    return n;
+  })(),
   RESEND_API_KEY: required("RESEND_API_KEY"),
   MAIL_FROM: required("MAIL_FROM"),
   // Test login for App Store / Google Play review. Deliberately NOT required(): a deployment
