@@ -1,3 +1,4 @@
+import ENV from "@/presentation/http/core/config/env";
 import { Request, Response } from "express";
 import { z } from "zod";
 import { ISubmissionService } from "@/application/submissions/services/interfaces/ISubmissionService";
@@ -21,6 +22,7 @@ export default class SubmissionsController {
     const result = await this.submissionService.listQueue(toPaginationParams(query), {
       status: query.status,
       type: query.type,
+      ...(query.flagged ? { minAiScore: ENV.AI_MODERATION_THRESHOLD } : {}),
     });
     res.json(toPaginatedResponse(result, SubmissionDtoMapper.toModerationResponse));
   }

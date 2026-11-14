@@ -20,4 +20,6 @@ export const ListMySubmissionsQuerySchema = createPaginationQuerySchema(SUBMISSI
 export const ListSubmissionsQuerySchema = createPaginationQuerySchema(SUBMISSION_SORT_FIELDS).extend({
   status: z.enum(CONTENT_STATUSES, { error: `status debe ser uno de: ${CONTENT_STATUSES.join(", ")}` }).default("PENDING"),
   type: z.enum(SUBMISSION_TYPES, { error: `type debe ser uno de: ${SUBMISSION_TYPES.join(", ")}` }).optional(),
+  // #5: only the ones the automatic check flagged (aiScore at least AI_MODERATION_THRESHOLD).
+  flagged: z.enum(["true", "false"], { error: "flagged debe ser true o false" }).transform((v) => v === "true").optional(),
 });
