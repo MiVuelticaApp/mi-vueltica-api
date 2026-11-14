@@ -21,7 +21,7 @@ export default class ModerationDtoMapper {
       nuevas: queue.nuevas.map((item) => {
         // Voters do not see who suggested it.
         const { userId: _authorId, ...submission } = SubmissionDtoMapper.toResponse(item.submission);
-        return { submission, ...toTally(item) };
+        return { submission: { ...submission, aiScore: item.submission.aiScore, aiReason: item.submission.aiReason }, ...toTally(item) };
       }),
       reportadas: queue.reportadas.map((item) => ({ report: CommunityDtoMapper.toQueueItemResponse(item.report), ...toTally(item) })),
       totals: queue.totals,
