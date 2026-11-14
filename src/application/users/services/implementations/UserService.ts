@@ -47,6 +47,15 @@ export class UserService implements IUserService {
         return updatedUser;
     }
 
+    async acceptPrivacy(id: string, version: string): Promise<User> {
+        const user = await this.userRepository.find(id, "id");
+        if (!user) throw new UserNotFoundError();
+        await this.userRepository.recordPrivacyConsent(id, version, new Date());
+        const updated = await this.userRepository.find(id, "id");
+        if (!updated) throw new UserNotFoundError();
+        return updated;
+    }
+
     async activityCounts(userId: string): Promise<UserActivityCounts> {
         return this.userRepository.activityCounts(userId);
     }

@@ -89,7 +89,7 @@ Env vars (see `.env.example`):
   `GOOGLE_ANDROID_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID` for Google login (see "Auth"). `GOOGLE_CLIENT_ID` is no longer read.
 - **Optional**: `S3_BUCKET` (`mi-vueltica`), `S3_REGION` (`us-east-1`), `S3_FORCE_PATH_STYLE` (true),
   `UPLOAD_ORPHAN_GRACE_HOURS` (24), `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (see "Account
-  deletion") and `TEST_LOGIN_ENABLED`, `TEST_LOGIN_EMAIL`, `TEST_LOGIN_PASSWORD` (see "Test login").
+  deletion") and `TEST_LOGIN_ENABLED`, `TEST_LOGIN_EMAIL`, `TEST_LOGIN_PASSWORD` (see "Test login"), `PRIVACY_VERSION` (privacy notice version the test login records; default `2026-11-13`, see "Auth").
 
 ## Seed data
 
@@ -138,6 +138,14 @@ rejects every Google login (fail closed, 401 `InvalidCredentialsError`). **Email
 decision on #35, 2026-11-08): users sign in with Google or Apple only, so do not add an email/password or
 email-code login without a new decision. The review-only test login (`POST /auth/qa`, see "Test login") stays.
 `POST /auth/refresh` only re-signs a still-valid token; there is no refresh-token flow.
+
+**Privacy consent (#7, Ley 8968 art. 5).** `User.privacyVersion` / `privacyAcceptedAt` (nullable) record the notice version the
+person accepted. `POST /auth/google` and `/auth/apple` take `privacyVersion`: creating a new account without it is a 400
+(`PrivacyConsentRequiredError`); an existing user who sends a different version has it recorded. Every user response has
+`privacyAccepted` / `privacyVersion` (existing users have `false` until the app asks them once), and
+`POST /me/privacy-consent { version }` accepts a newer version and answers like `GET /me`. The test login records
+`ENV.PRIVACY_VERSION` (default `2026-11-13`; keep it equal to the app's `PRIVACY_VERSION`) so reviewers skip the screen.
+Revoking consent = deleting the account (`POST /me`). The columns are written only by `recordPrivacyConsent`, never by a profile edit.
 
 ## Test login (App Store / Play review)
 

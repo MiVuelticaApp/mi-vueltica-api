@@ -19,6 +19,8 @@ export class PrismaUserMapper {
       role: row.role,
       province: row.province,
       reputationPoints: row.reputationPoints,
+      privacyVersion: row.privacyVersion,
+      privacyAcceptedAt: row.privacyAcceptedAt?.toISOString() ?? null,
       deletedAt: row.deletedAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -35,11 +37,14 @@ export class PrismaUserMapper {
       ssoSubject: user.ssoSubject,
       ageRange: user.ageRange,
       role: user.role,
+      privacyVersion: user.privacyVersion,
+      privacyAcceptedAt: user.privacyAcceptedAt,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
   }
 
+  // Consent is written only by `recordPrivacyConsent`, like the points: a profile edit must not overwrite it.
   // Email and SSO identity are deliberately excluded: an update must never rewrite them. Nor
   // `reputationPoints`: only the reputation ledger changes it (a profile edit would overwrite a concurrent award).
   static toUpdateData(user: User): UserUncheckedUpdateInput {
