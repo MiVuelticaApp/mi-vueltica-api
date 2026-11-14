@@ -84,8 +84,10 @@ Env vars (see `.env.example`):
   `MAIL_FROM`, `MIN_FRONTEND_VERSION` (semver, validated), `S3_ENDPOINT` (URL), `S3_ACCESS_KEY`,
   `S3_SECRET_KEY`, and in production `PUBLIC_API_URL` (`required()` in
   `src/presentation/http/core/config/env.ts`; see "Uploads & files").
-- **Needed in practice**: `JWT_SECRET` (`JwtTokenService` falls back to a hard-coded secret when it is unset,
-  so always set it outside local dev), `JWT_EXPIRES_IN` (default `7d`), and `GOOGLE_IOS_CLIENT_ID`,
+- **Needed in practice**: `JWT_SECRET` (required when `NODE_ENV=production`: the API fails at boot without it; only
+  local dev has a default), `TRUST_PROXY` (number of reverse proxies in front of the API, default 1: Coolify's Traefik
+  = 1, Traefik + Cloudflare = 2; `trust proxy` is never `true`, so a fake `X-Forwarded-For` cannot dodge per-IP rate
+  limits), `JWT_EXPIRES_IN` (default `7d`), and `GOOGLE_IOS_CLIENT_ID`,
   `GOOGLE_ANDROID_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID` for Google login (see "Auth"). `GOOGLE_CLIENT_ID` is no longer read.
 - **Optional**: `S3_BUCKET` (`mi-vueltica`), `S3_REGION` (`us-east-1`), `S3_FORCE_PATH_STYLE` (true),
   `UPLOAD_ORPHAN_GRACE_HOURS` (24), `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (see "Account
