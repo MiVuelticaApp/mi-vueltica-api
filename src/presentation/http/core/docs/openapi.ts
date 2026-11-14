@@ -10,6 +10,7 @@ import { NOTIFICATION_SORT_FIELDS } from "@/presentation/http/notifications/vali
 import { PLATFORMS } from "@/domain/devices/valueObjects/platform.valueObject";
 import { UpdateUserSchema } from "@/presentation/http/users/validators/updateUser";
 import { AcceptPrivacySchema } from "@/presentation/http/users/validators/acceptPrivacy";
+import { NotificationSettingsSchema } from "@/presentation/http/notifications/validators/notificationSettings";
 import { UpdateInterestsSchema } from "@/presentation/http/users/validators/updateInterests";
 import { DeleteAccountSchema } from "@/presentation/http/users/validators/deleteAccount";
 import { CreateCategorySchema } from "@/presentation/http/categories/validators/createCategory";
@@ -766,6 +767,29 @@ const paths: Record<string, Record<string, unknown>> = {
         400: responseRef("BadRequest"),
         401: responseRef("Unauthorized"),
         429: errorResponse("Too many requests"),
+      },
+    },
+  },
+  "/me/notification-settings": {
+    get: {
+      tags: ["Profile"],
+      summary: "Get my notification settings",
+      description: "The switches of Ajustes › Notificaciones. `reminders` are local in the app (only stored here); the API sends `myStatus` (a suggestion was published or rejected) and `newNearby` (weekly, by province).",
+      security: bearer,
+      responses: {
+        200: { description: "Settings", content: { "application/json": { schema: z.toJSONSchema(NotificationSettingsSchema) } } },
+        401: responseRef("Unauthorized"),
+      },
+    },
+    put: {
+      tags: ["Profile"],
+      summary: "Update my notification settings",
+      security: bearer,
+      requestBody: jsonBody(NotificationSettingsSchema),
+      responses: {
+        200: { description: "Settings", content: { "application/json": { schema: z.toJSONSchema(NotificationSettingsSchema) } } },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
       },
     },
   },

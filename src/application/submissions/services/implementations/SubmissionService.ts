@@ -1,3 +1,4 @@
+import { SubmissionDecision } from "@/application/notifications/services/PushNotifier";
 import { Submission } from "@/domain/submissions/entities/Submission";
 import {
   SubmissionPayloadInput,
@@ -67,7 +68,15 @@ export class SubmissionService implements ISubmissionService {
     private readonly categoryRepository: ICategoryRepository,
     private readonly approvalUOW: ISubmissionApprovalUnitOfWork,
     private readonly uploadService: IUploadService,
+    /** "Estado de mis vuelticas" push (#10), called after the decision is committed. */
+    private readonly onDecided?: (d: SubmissionDecision) => Promise<void>,
   ) {}
+
+  private decided(submission: Submission, created: SubmissionApprovalResult["created"] | null): void {
+    if (!this.onDecided) return;
+    const data = submission.payload.data as { name?: string; title?: string };
+    void this.onDecided({ authorId: submission.userId, name: data.name ?? data.title ?? "", published: !!created, created });
+  }
 
   async create(userId: string, input: SubmissionPayloadInput): Promise<Submission> {
     const { payload, uploadIds } = await this.prepare(userId, input);
@@ -157,25 +166,30 @@ export class SubmissionService implements ISubmissionService {
 
   async approve(id: string, reviewerId: string): Promise<SubmissionApprovalResult> {
     // Everything below runs in one transaction: if any step throws, nothing is written.
-    return this.approvalUOW.runInTransaction(async (ctx) => {
+    const result = await this.approvalUOW.runInTransaction(async (ctx) => {
       const submission = await this.lockPending(ctx, id);
       return this.approveLocked(ctx, submission, reviewerId, new Date());
     });
+    this.decided(result.submission, result.created);
+    return result;
   }
 
   async reject(id: string, reviewerId: string, rejection: SubmissionRejection): Promise<Submission> {
     // Same lock as approve: a concurrent approve/reject waits and then gets a clean 409, and the
     // −10 is written together with the rejection.
-    return this.approvalUOW.runInTransaction(async (ctx) => {
+    const rejected = await this.approvalUOW.runInTransaction(async (ctx) => {
       const submission = await this.lockPending(ctx, id);
       return this.rejectLocked(ctx, submission, reviewerId, rejection, new Date());
     });
+    this.decided(rejected, null);
+    return rejected;
   }
 
   async vote(voter: Voter, id: string, choice: VoteChoice): Promise<ModerationVoteResult> {
     const parsed = parseVoteChoice(choice);
     const target: ModerationTarget = { type: "SUBMISSION", id };
-    return this.approvalUOW.runInTransaction(async (ctx) => {
+    let outcome: { submission: Submission; created: SubmissionApprovalResult["created"] | null } | null = null;
+    const result = await this.approvalUOW.runInTransaction(async (ctx) => {
       const submissionRepository = ctx.getSubmissionRepository();
       const votes = ctx.getModerationVoteRepository();
       const reputation = ctx.getReputationRepository();
@@ -201,13 +215,17 @@ export class SubmissionService implements ISubmissionService {
       const votesNeeded = votesNeededForSubmission(points.get(authorId) ?? 0);
       const decision = decideNew(tally, votesNeeded);
 
-      if (decision === "publish") await this.approveLocked(ctx, submission, null, now);
+      if (decision === "publish") outcome = await this.approveLocked(ctx, submission, null, now);
       if (decision === "reject") {
         await this.rejectLocked(ctx, submission, null, { reason: "otro", note: COMMUNITY_REJECTION_NOTE }, now);
+        outcome = { submission, created: null };
       }
       if (decision !== "pending") await penalizeMinority(reputation, all, losingChoice(tally), now);
-      return { target, kind: "nueva", ...tally, votesNeeded, decision };
+      return { target, kind: "nueva" as const, ...tally, votesNeeded, decision };
     }, VOTE_TRANSACTION);
+    const done = outcome as { submission: Submission; created: SubmissionApprovalResult["created"] | null } | null;
+    if (done) this.decided(done.submission, done.created);
+    return result;
   }
 
   async undoVote(voter: Voter, id: string): Promise<ModerationVoteResult> {
