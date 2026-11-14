@@ -15,6 +15,7 @@ import {
 } from "../validators/listReviews";
 import { ReviewRequest } from "../requests/ReviewRequest";
 import { ChangeReviewStatusRequest } from "../requests/ChangeReviewStatusRequest";
+import { ReportReviewRequest } from "../validators/reportReview";
 import { TargetReviewListResponse } from "../responses/ReviewResponse";
 import ReviewDtoMapper from "../mappers/Review.mapper";
 import RatingSummaryDtoMapper from "../mappers/RatingSummary.mapper";
@@ -121,6 +122,15 @@ export default class ReviewController {
     const { status }: ChangeReviewStatusRequest = req.body;
     const review = await this.reviewService.changeStatus(id, status, req.user?.id);
     res.json(ReviewDtoMapper.toResponse(review));
+  }
+
+  /** POST /reviews/:id/reports — any signed-in user except the author; 201 `{ hidden }`. */
+  async report(req: Request, res: Response): Promise<void> {
+    const { id: userId } = getAuthUser(req);
+    const { id } = getValidated<IdParams>(req, "params");
+    const { reason, details }: ReportReviewRequest = req.body;
+    const result = await this.reviewService.report(userId, id, { reason, details: details || null });
+    res.status(201).json(result);
   }
 
   /** POST /reviews/:id/useful — idempotent "útil" vote. */

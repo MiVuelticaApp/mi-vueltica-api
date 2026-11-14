@@ -39,6 +39,8 @@ import { FAVORITE_SORT_FIELDS } from "@/presentation/http/favorites/validators/l
 import { BLOCK_SORT_FIELDS } from "@/presentation/http/blocks/validators/listBlocks";
 import { CreateReviewSchema, UpdateReviewSchema } from "@/presentation/http/reviews/validators/reviewBody";
 import { ChangeReviewStatusSchema } from "@/presentation/http/reviews/validators/changeReviewStatus";
+import { ReportReviewSchema } from "@/presentation/http/reviews/validators/reportReview";
+import { REVIEW_REPORTS_TO_HIDE } from "@/domain/reviews/rules/reviewReportRules";
 import { REVIEW_SORT_FIELDS } from "@/presentation/http/reviews/validators/listReviews";
 import { MAX_RATING, MIN_RATING } from "@/domain/reviews/valueObjects/rating.valueObject";
 import { REVIEW_COMMENT_MAX_LENGTH } from "@/domain/reviews/valueObjects/reviewComment.valueObject";
@@ -2086,13 +2088,48 @@ const paths: Record<string, Record<string, unknown>> = {
       },
     },
   },
+  "/reviews/{id}/reports": {
+    post: {
+      tags: ["Reviews"],
+      summary: "Report a review",
+      description:
+        "Signed-in users only (the reporter is stored, never shown). Reasons: `inapropiado`, `spam`, `otro`. One report per " +
+        "user and review: a second one is 409 (also after a moderator's decision). 403 on the caller's own review; 404 " +
+        `unless the review is PUBLISHED. ${REVIEW_REPORTS_TO_HIDE} unresolved reports (any reason) send it back to PENDING: ` +
+        "off the public lists and the rating, into the moderators' queue (`GET /reviews`), `hidden: true`. The " +
+        `moderator's status change resolves them. Rate limit: ${perMinutes(REPORT_RATE_LIMIT)} per user (shared limits with plan reports).`,
+      security: bearer,
+      parameters: [{ $ref: "#/components/parameters/UuidId" }],
+      requestBody: jsonBody(ReportReviewSchema),
+      responses: {
+        201: {
+          description: "Report created",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: { hidden: { type: "boolean", description: "This report sent the review back to PENDING" } },
+                required: ["hidden"],
+              },
+            },
+          },
+        },
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
+        403: responseRef("Forbidden"),
+        404: responseRef("NotFound"),
+        409: responseRef("Conflict"),
+        429: { description: "Too many requests" },
+      },
+    },
+  },
   "/reviews/{id}/status": {
     patch: {
       tags: ["Reviews"],
       summary: "Change a review's status (MODERATOR, ADMIN)",
       description:
         "PUBLISHED makes the review public and counts it in the place's / event's `averageRating`, `reviewCount` and " +
-        "`ratingDistribution`.",
+        "`ratingDistribution`. Also resolves the review's pending reports.",
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       requestBody: jsonBody(ChangeReviewStatusSchema),

@@ -6,6 +6,13 @@ import { ReviewTarget } from "@/domain/reviews/valueObjects/reviewTarget.valueOb
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { UserRole } from "@/domain/users/entities/User";
 import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
+import { ReviewReportReason } from "@/domain/reviews/rules/reviewReportRules";
+
+export interface ReviewReportInput {
+  reason: ReviewReportReason;
+  /** Trimmed; blank → null. */
+  details: string | null;
+}
 
 export interface ReviewActor {
   id: string;
@@ -56,7 +63,13 @@ export interface IReviewService {
   update(userId: string, id: string, data: ReviewData): Promise<ReviewDetail>;
   /** Owner, MODERATOR or ADMIN (403 otherwise). */
   delete(actor: ReviewActor, id: string): Promise<void>;
+  /** MODERATOR / ADMIN decision; also resolves the review's pending reports. */
   changeStatus(id: string, status: ContentStatus, viewerId?: string): Promise<ReviewDetail>;
+  /**
+   * Reports a PUBLISHED review (404 otherwise; 403 on the caller's own; 409 if already reported, also after a
+   * decision). At three unresolved reports it goes back to PENDING (`hidden: true`).
+   */
+  report(userId: string, id: string, input: ReviewReportInput): Promise<{ hidden: boolean }>;
   /**
    * "Útil" vote, idempotent. Only on PUBLISHED reviews (404 otherwise); 403 on the caller's own review.
    * Returns the review with the updated `usefulCount` / `markedUsefulByMe`.
