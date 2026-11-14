@@ -26,6 +26,11 @@ export function resolveEventLocation(event: Event, place: PlaceSummary | null): 
   return event.location;
 }
 
+/** The event's canton: its place's when it has one (whatever the place's status), otherwise its own, otherwise `null`. */
+export function resolveEventCantonId(event: Event, place: PlaceSummary | null): number | null {
+  return place ? place.cantonId : event.cantonId;
+}
+
 /** Read model for lists: the event, a summary of its place (if any) and its resolved location. */
 export interface EventListItem {
   event: Event;
@@ -33,6 +38,8 @@ export interface EventListItem {
   place: PlaceSummary | null;
   /** From `resolveEventLocation`; kept even when `place` is hidden. */
   location: EventLocationValue | null;
+  /** From `resolveEventCantonId`; kept even when `place` is hidden. */
+  cantonId: number | null;
 }
 
 /** Read model for event lists (and saved events): the list item plus what its card shows. */
@@ -50,12 +57,12 @@ export interface EventDetail extends EventListItem {
 
 /** Builds a list item from an event and its place (as loaded, before any visibility rule). */
 export function toEventListItem(event: Event, place: PlaceSummary | null): EventListItem {
-  return { event, place, location: resolveEventLocation(event, place) };
+  return { event, place, location: resolveEventLocation(event, place), cantonId: resolveEventCantonId(event, place) };
 }
 
 /**
  * Hides the place summary when its status is not in `statuses` (`undefined` = every status). The
- * resolved `location` stays: it describes where the event is, not the place's content.
+ * resolved `location` and `cantonId` stay: they describe where the event is, not the place's content.
  */
 export function withVisiblePlace<T extends EventListItem>(item: T, statuses?: ContentStatus[]): T {
   if (!statuses || !item.place || statuses.includes(item.place.status)) return item;

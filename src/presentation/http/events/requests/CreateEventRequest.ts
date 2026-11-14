@@ -15,6 +15,8 @@ export interface CreateEventRequest extends PlanConditionsData {
   latitude?: number | null;
   longitude?: number | null;
   address?: string | null;
+  /** Own canton, only when `placeId` is absent (with a place, the place's canton is used). */
+  cantonId?: number | null;
   /** Defaults to EVERYONE. */
   targetAudience?: TargetAudience;
 }

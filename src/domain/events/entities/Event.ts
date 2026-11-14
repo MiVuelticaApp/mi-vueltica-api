@@ -24,6 +24,8 @@ export interface EventData extends PlanConditionsData {
   latitude?: number | null;
   longitude?: number | null;
   address?: string | null;
+  /** Own canton (INEC code), only without a place (with one, the place's canton is used). */
+  cantonId?: number | null;
 }
 
 /** `EventData` after running every field through its value object. */
@@ -40,6 +42,8 @@ export interface NormalizedEventData extends PlanConditionsValue {
   latitude: number | null;
   longitude: number | null;
   address: string | null;
+  /** Own canton; always null when `placeId` is set. */
+  cantonId: number | null;
 }
 
 /** Validates and normalizes editable data (trim, empty -> null, defaults). Throws `DataException`. */
@@ -58,6 +62,7 @@ export function normalizeEventData(data: EventData): NormalizedEventData {
     latitude: location?.latitude ?? null,
     longitude: location?.longitude ?? null,
     address: location?.address ?? null,
+    cantonId: data.cantonId ?? null,
     ...PlanConditions.create(data).value,
   };
 }
@@ -77,6 +82,7 @@ export class Event {
       // Lenient on read: a row with a place never carries its own point (the place's is used), so a
       // hand-edited row with both cannot break every list. Writes go through the strict `normalizeEventData`.
       location: props.placeId ? null : normalizeEventLocation(props),
+      cantonId: props.placeId ? null : props.cantonId ?? null,
       targetAudience: parseTargetAudience(props.targetAudience),
       conditions: PlanConditions.create(props),
       status: parseContentStatus(props.status),
@@ -96,6 +102,8 @@ export class Event {
   get endsAt() { return this.props.schedule.endsAt; }
   /** The event's own location: null when it has a place or no location at all (see `resolveEventLocation`). */
   get location() { return this.props.location; }
+  /** The event's own canton: null when it has a place (see `resolveEventCantonId`) or none was set. */
+  get cantonId() { return this.props.cantonId; }
   get targetAudience() { return this.props.targetAudience; }
   get pricePerPerson() { return this.props.conditions.value.pricePerPerson; }
   get priceTier() { return this.props.conditions.priceTier; }
@@ -125,6 +133,7 @@ export class Event {
     this.props.description = EventDescription.create(normalized.description);
     this.props.schedule = EventSchedule.create(normalized.startsAt, normalized.endsAt);
     this.props.location = normalizeEventLocation(normalized);
+    this.props.cantonId = normalized.cantonId;
     this.props.targetAudience = normalized.targetAudience;
     this.props.conditions = PlanConditions.create(normalized);
   }
@@ -146,6 +155,7 @@ export interface EventProps {
   description: EventDescription;
   schedule: EventSchedule;
   location: EventLocationValue | null;
+  cantonId: number | null;
   targetAudience: TargetAudience;
   conditions: PlanConditions;
   status: ContentStatus;
@@ -166,6 +176,7 @@ export interface EventConstructorProps extends PlanCommunityProps {
   latitude?: number | null;
   longitude?: number | null;
   address?: string | null;
+  cantonId?: number | null;
   targetAudience: TargetAudience;
   pricePerPerson: number | null;
   freeFor: PlanConditionsValue["freeFor"];

@@ -7,7 +7,7 @@ import RatingSummaryDtoMapper from "@/presentation/http/reviews/mappers/RatingSu
 
 export default class EventDtoMapper {
   /** Lists, favorites and write responses. Expects the visibility rule already applied to `place`. */
-  static toResponse({ event, place, location }: EventListItem): EventResponse {
+  static toResponse({ event, place, location, cantonId }: EventListItem): EventResponse {
     return {
       id: event.id,
       placeId: event.placeId,
@@ -20,6 +20,7 @@ export default class EventDtoMapper {
       latitude: location?.latitude ?? null,
       longitude: location?.longitude ?? null,
       address: location?.address ?? null,
+      cantonId,
       place: place ? EventDtoMapper.toPlaceSummaryResponse(place) : null,
       targetAudience: event.targetAudience,
       pricePerPerson: event.pricePerPerson,

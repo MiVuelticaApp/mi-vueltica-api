@@ -1603,7 +1603,7 @@ const paths: Record<string, Record<string, unknown>> = {
         {
           name: "cantonId",
           in: "query",
-          description: "Filter by canton id (through the event's place; events without a place never match)",
+          description: "Filter by canton id: the event's place's canton, or the event's own `cantonId` when it has no place (events with neither never match)",
           schema: { type: "integer", minimum: 1 },
         },
         {
@@ -1639,7 +1639,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Events"],
       summary: "Create an event (MODERATOR, ADMIN)",
       description:
-        "New events start as PENDING. Datetimes must be ISO 8601 with offset and `endsAt` must not be earlier than `startsAt`. Location: either `placeId` (the place's point is used) or the event's own `latitude` + `longitude` (+ optional `address`), never both (400); an event with neither is allowed but never shown on the map. 422 when the place, category or source does not exist." + priceLimitNote,
+        "New events start as PENDING. Datetimes must be ISO 8601 with offset and `endsAt` must not be earlier than `startsAt`. Location: either `placeId` (the place's point is used) or the event's own `latitude` + `longitude` (+ optional `address`), never both (400); an event with neither is allowed but never shown on the map. An event without a place may also send its own `cantonId` (so the `cantonId` filter finds it); `cantonId` together with `placeId` is 400 (the place's canton is used). 422 when the place, canton, category or source does not exist." + priceLimitNote,
       security: bearer,
       requestBody: jsonBody(CreateEventSchema),
       responses: {
@@ -1669,7 +1669,7 @@ const paths: Record<string, Record<string, unknown>> = {
       tags: ["Events"],
       summary: "Replace an event (MODERATOR, ADMIN)",
       description:
-        "Full replace of the editable fields (omitted price/audience/location fields go back to their defaults); the status is kept (use `PATCH /events/{id}/status`). Same location rule as `POST /events`: do not send back the `latitude`/`longitude`/`address` of a response when `placeId` is set, they come from the place. 422 when the place, category or source does not exist." + priceLimitNote,
+        "Full replace of the editable fields (omitted price/audience/location fields go back to their defaults); the status is kept (use `PATCH /events/{id}/status`). Same location rule as `POST /events`: do not send back the `latitude`/`longitude`/`address`/`cantonId` of a response when `placeId` is set, they come from the place. 422 when the place, canton, category or source does not exist." + priceLimitNote,
       security: bearer,
       parameters: [{ $ref: "#/components/parameters/UuidId" }],
       requestBody: jsonBody(UpdateEventSchema),
@@ -2732,6 +2732,10 @@ const openApiDocument = {
           },
           longitude: { type: ["number", "null"], minimum: -180, maximum: 180, description: "See `latitude`" },
           address: { type: ["string", "null"], maxLength: 191, description: "The place's address, or the event's own (see `latitude`)" },
+          cantonId: {
+            type: ["integer", "null"],
+            description: "The place's canton when `placeId` is set (whatever the place's status), otherwise the event's own; null when it has neither",
+          },
           place: {
             oneOf: [{ $ref: "#/components/schemas/PlaceSummary" }, { type: "null" }],
             description: "Null when the event has no place or the caller may not see it (not PUBLISHED); the location fields stay",
@@ -2749,7 +2753,7 @@ const openApiDocument = {
         },
         required: [
           "id", "placeId", "categoryId", "sourceId", "title", "description", "startsAt", "endsAt",
-          "latitude", "longitude", "address", "place",
+          "latitude", "longitude", "address", "cantonId", "place",
           "targetAudience", "status", "hiddenReason", "authorName", "createdAt", "updatedAt",
           ...planConditionsRequired,
         ],

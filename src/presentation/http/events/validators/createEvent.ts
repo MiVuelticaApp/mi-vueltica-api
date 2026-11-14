@@ -32,7 +32,7 @@ export const eventDescriptionField = z
 
 export const eventTargetAudienceField = z.enum(TARGET_AUDIENCES, { error: "El público objetivo no es válido" });
 
-/** The event's own location: only without `placeId`; see `eventLocationRule`. */
+/** The event's own location and canton: only without `placeId`; see `eventLocationRule`. */
 export const eventLocationFields = {
   latitude: z
     .number({ error: "La latitud debe ser un número" })
@@ -49,10 +49,16 @@ export const eventLocationFields = {
     .trim()
     .max(PLACE_ADDRESS_MAX_LENGTH, { message: `La dirección no puede exceder ${PLACE_ADDRESS_MAX_LENGTH} caracteres` })
     .nullish(),
+  /** Own canton (INEC code), independent of the coordinates; unknown → 422 `InvalidCantonError`. */
+  cantonId: z
+    .number({ error: "El cantón debe ser un número" })
+    .int("El cantón debe ser un número entero")
+    .positive("El cantón debe ser un número positivo")
+    .nullish(),
 };
 
 /**
- * `placeId` **or** own `latitude` + `longitude` (+ optional `address`), or neither. Same rule as the
+ * `placeId` **or** own `latitude` + `longitude` (+ optional `address`) and/or `cantonId`, or neither. Same rule as the
  * domain (`eventLocationError`), so the HTTP, submission and MCP paths give the same message.
  */
 export const eventLocationRule = (event: EventLocationInput, ctx: z.RefinementCtx) => {

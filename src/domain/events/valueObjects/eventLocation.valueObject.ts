@@ -15,10 +15,14 @@ export interface EventLocationInput {
   latitude?: number | null;
   longitude?: number | null;
   address?: string | null;
+  /** Own canton (app #9): only without a place, whose canton is used instead. */
+  cantonId?: number | null;
 }
 
 export const EVENT_LOCATION_WITH_PLACE_ERROR =
   "Un evento con lugar usa la ubicación del lugar: no envíes latitude, longitude ni address junto con placeId";
+export const EVENT_CANTON_WITH_PLACE_ERROR =
+  "Un evento con lugar usa el cantón del lugar: no envíes cantonId junto con placeId";
 export const EVENT_COORDINATES_TOGETHER_ERROR = "latitude y longitude deben enviarse juntas";
 export const EVENT_ADDRESS_WITHOUT_COORDINATES_ERROR = "La dirección del evento requiere latitude y longitude";
 
@@ -27,14 +31,15 @@ const isSentAddress = (value: unknown) => typeof value === "string" ? value.trim
 
 /**
  * Rules shared by the Zod validators and the domain: returns the message of the first broken rule, or
- * `null`. An event either takes its location from its place (`placeId`) or carries its own point;
- * having neither is allowed (it is just not shown on the map).
+ * `null`. An event either takes its location and canton from its place (`placeId`) or carries its own
+ * point and/or `cantonId`; having neither is allowed (it is just not shown on the map).
  */
 export function eventLocationError(input: EventLocationInput): string | null {
   const hasLat = isSent(input.latitude);
   const hasLng = isSent(input.longitude);
   const hasAddress = isSentAddress(input.address);
   if (input.placeId && (hasLat || hasLng || hasAddress)) return EVENT_LOCATION_WITH_PLACE_ERROR;
+  if (input.placeId && isSent(input.cantonId)) return EVENT_CANTON_WITH_PLACE_ERROR;
   if (hasLat !== hasLng) return EVENT_COORDINATES_TOGETHER_ERROR;
   if (hasAddress && !hasLat) return EVENT_ADDRESS_WITHOUT_COORDINATES_ERROR;
   return null;

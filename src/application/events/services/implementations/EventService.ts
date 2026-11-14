@@ -2,6 +2,7 @@ import { Event, EventData, normalizeEventData } from "@/domain/events/entities/E
 import { EventCard, EventDetail, EventListItem, withVisiblePlace } from "@/domain/events/entities/EventDetail";
 import { IEventRepository, EventListFilters } from "@/domain/events/repositories/IEventRepository";
 import { IPlaceRepository } from "@/domain/places/repositories/IPlaceRepository";
+import { ICantonRepository } from "@/domain/geography/repositories/ICantonRepository";
 import { ICategoryRepository } from "@/domain/categories/repositories/ICategoryRepository";
 import { ISourceRepository } from "@/domain/sources/repositories/ISourceRepository";
 import { ContentStatus, parseContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
@@ -10,12 +11,14 @@ import { IEventService, EventInput, EventVisibilityOptions } from "../interfaces
 import { EventNotFoundError } from "../../errors/EventNotFoundError";
 import { InvalidPlaceError } from "../../errors/InvalidPlaceError";
 import { InvalidCategoryError } from "@/application/places/errors/InvalidCategoryError";
+import { InvalidCantonError } from "@/application/places/errors/InvalidCantonError";
 import { InvalidSourceError } from "@/application/places/errors/InvalidSourceError";
 
 export class EventService implements IEventService {
   constructor(
     private readonly eventRepository: IEventRepository,
     private readonly placeRepository: IPlaceRepository,
+    private readonly cantonRepository: ICantonRepository,
     private readonly categoryRepository: ICategoryRepository,
     private readonly sourceRepository: ISourceRepository,
   ) {}
@@ -81,8 +84,9 @@ export class EventService implements IEventService {
     return item;
   }
 
-  private async ensureReferencesExist(data: Pick<EventData, "placeId" | "categoryId" | "sourceId">): Promise<void> {
+  private async ensureReferencesExist(data: Pick<EventData, "placeId" | "cantonId" | "categoryId" | "sourceId">): Promise<void> {
     if (data.placeId && !(await this.placeRepository.find(data.placeId))) throw new InvalidPlaceError();
+    if (data.cantonId && !(await this.cantonRepository.find(data.cantonId))) throw new InvalidCantonError();
     if (!(await this.categoryRepository.find(data.categoryId))) throw new InvalidCategoryError();
     if (data.sourceId && !(await this.sourceRepository.find(data.sourceId))) throw new InvalidSourceError();
   }

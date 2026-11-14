@@ -13,7 +13,8 @@ export interface SubmissionReferenceRepositories {
 }
 
 /**
- * Same reference checks as creating a Place/Event (422 on unknown canton, category or place).
+ * Same reference checks as creating a Place/Event (422 on unknown canton, category or place; an event's
+ * canton is optional).
  * Runs when the submission is created and again inside the approval transaction, since a
  * referenced row may have been deleted in between.
  */
@@ -23,8 +24,9 @@ export async function ensureSubmissionReferencesExist(
 ): Promise<void> {
   if (payload.type === "PLACE") {
     if (!(await cantonRepository.find(payload.data.cantonId))) throw new InvalidCantonError();
-  } else if (payload.data.placeId && !(await placeRepository.find(payload.data.placeId))) {
-    throw new InvalidPlaceError();
+  } else {
+    if (payload.data.placeId && !(await placeRepository.find(payload.data.placeId))) throw new InvalidPlaceError();
+    if (payload.data.cantonId && !(await cantonRepository.find(payload.data.cantonId))) throw new InvalidCantonError();
   }
   if (!(await categoryRepository.find(payload.data.categoryId))) throw new InvalidCategoryError();
 }
