@@ -183,7 +183,7 @@ iOS client; unknown keys → 400. The response is **204** with no body. Service 
 1. Load the user; throw `UserNotFoundError` (404) if missing.
 2. Capture `email` and `name` **before** deleting (the confirmation email needs a recipient).
 3. Hard delete the `User` row. Everything that belongs to the user is removed by the database:
-   `UserInterest`, `Submission` (as author), `Favorite`, `ReviewUsefulVote`, `Device`, `Notification`, `ReputationEvent`, `ModerationVote` and `UserBlock` (as blocker or blocked) cascade;
+   `UserInterest`, `Submission` (as author), `Favorite`, `ReviewUsefulVote`, `Device`, `Notification`, `ReputationEvent`, `ModerationVote`, `UserBlock` (as blocker or blocked) and `ReviewReport` (as reporter) cascade;
    `Submission.reviewedById` is set to null for submissions the user moderated. **Reviews are deleted** with the
    account (`Review.userId` is `ON DELETE CASCADE`; their photos and "útil" votes cascade, their uploads go to the orphan
    cleanup), as the app's `anonymizeOnDelete` rule says: published plans stay as "Anónimo", reviews and pending plans go.
@@ -561,6 +561,15 @@ account (see "Account deletion"); a review without an author (only possible for 
   IGNORE`; see Devices). Only PUBLISHED reviews (404 otherwise) and never your own (403). `markedUsefulByMe` is false for
   anonymous callers. Each vote gives the review's author +1 reputation and undoing it takes the point back (see Reputation);
   vote and point are written in one transaction (`PrismaReviewVoteUnitOfWork`).
+- **Reports** (#16): `POST /api/v1/reviews/:id/reports` (`jwtAuth`, signed-in only) `{ reason: inapropiado|spam|otro,
+  details? (<=1000) }` → 201 `{ hidden }`. One per user and review (`ReviewReport`, `@@unique([reviewId, userId])`), also
+  after a decision: a second one → 409 `ReviewReportAlreadyExistsError`. 403 on your own review, 404 unless PUBLISHED.
+  `REVIEW_REPORTS_TO_HIDE` (3) unresolved reports of any reason send the review back to **PENDING** (off the public lists and
+  the rating, into `GET /reviews`); the moderator's `PATCH /reviews/:id/status` resolves them (`resolvedAt`), so publishing
+  it again does not re-hide it until three new people report it. Lock, insert, count and hide run in one transaction after
+  `SELECT ... FOR UPDATE` on the review (`PrismaReviewReportUnitOfWork`). Same rate limit as plan reports (10 / 15 min per
+  user). Reports cascade with the review and with the reporter's account. The queue does not say why a review is PENDING
+  (new, edited or reported) yet.
 - **Rules**: `rating` integer 1-5 and `comment` <= 2000 chars (trimmed, blank → null) are checked in Zod
   (`validators/reviewBody.ts`) **and** by the `Rating` / `ReviewComment` value objects; `wentWith` / `spent` / `photos`
   by `reviewExperience.valueObject.ts` / `reviewPhotos.valueObject.ts`. Ratings (`averageRating`, `reviewCount`,

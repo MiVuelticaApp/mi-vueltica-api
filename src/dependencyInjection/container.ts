@@ -63,6 +63,7 @@ import MyNotificationsController from "@/presentation/http/notifications/control
 import SubmissionsController from "@/presentation/http/submissions/controllers/Submissions.controller";
 import ResendEmailProvider from "@/infrastructure/email/providers/ResendEmailProvider";
 import { PrismaReviewVoteUnitOfWork } from "@/infrastructure/reviews/unitsOfWork/PrismaReviewVoteUnitOfWork";
+import { PrismaReviewReportUnitOfWork } from "@/infrastructure/reviews/unitsOfWork/PrismaReviewReportUnitOfWork";
 import PrismaReputationRepository from "@/infrastructure/reputation/repositories/PrismaReputationRepository";
 import { ReputationService } from "@/application/reputation/services/implementations/ReputationService";
 import { IReputationService } from "@/application/reputation/services/interfaces/IReputationService";
@@ -126,6 +127,7 @@ export const userDeletionUOW = new PrismaUserDeletionUnitOfWork();
 export const submissionApprovalUOW = new PrismaSubmissionApprovalUnitOfWork();
 export const photoGalleryUOW = new PrismaPhotoGalleryUnitOfWork();
 export const reviewVoteUOW = new PrismaReviewVoteUnitOfWork();
+export const reviewReportUOW = new PrismaReviewReportUnitOfWork();
 
 // providers
 export const idGenerator = new UuidIDGenerator();
@@ -181,7 +183,7 @@ export const uploadService: IUploadService = new UploadService(
     orphanGraceMs: ENV.UPLOAD_ORPHAN_GRACE_HOURS * 60 * 60 * 1000,
   },
 );
-export const reviewService: IReviewService = new ReviewService(reviewRepository, placeRepository, eventRepository, uploadService, reviewVoteUOW);
+export const reviewService: IReviewService = new ReviewService(reviewRepository, placeRepository, eventRepository, uploadService, reviewVoteUOW, reviewReportUOW);
 export const communityService: ICommunityService = new CommunityService(
   new PrismaCommunityUnitOfWork(),
   new PrismaVerificationRepository(),

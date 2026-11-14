@@ -165,6 +165,7 @@ model User {
   favorites           Favorite[]
   reviews             Review[]
   reviewUsefulVotes   ReviewUsefulVote[]
+  reviewReports       ReviewReport[]
   authoredPlaces      Place[]            @relation("PlaceAuthor")
   authoredEvents      Event[]            @relation("EventAuthor")
   verifications       Verification[]
@@ -541,6 +542,7 @@ model Review {
   event       Event?             @relation(fields: [eventId], references: [id], onDelete: Cascade)
   photos      ReviewPhoto[]
   usefulVotes ReviewUsefulVote[]
+  reports     ReviewReport[]
 
   @@unique([userId, placeId]) // one review per user per place
   @@unique([userId, eventId]) // one review per user per event
@@ -619,6 +621,25 @@ model Report {
   @@index([resolvedAt, createdAt])
   @@index([userId])
   @@index([uploadId])
+}
+
+/// Report on a review (#16): one per user and review, also after a decision. Three unresolved ones send the
+/// review back to PENDING (the moderators' review queue); a moderator's status change resolves them.
+model ReviewReport {
+  id         String       @id @default(uuid())
+  reviewId   String
+  userId     String
+  reason     ReportReason
+  details    String?      @db.Text
+  resolvedAt DateTime?
+  createdAt  DateTime     @default(now())
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, userId])
+  @@index([reviewId, resolvedAt])
+  @@index([userId])
 }
 
 /// "Útil" vote: one per user and review.
