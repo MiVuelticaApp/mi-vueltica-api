@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { z } from "zod";
+import { IBlockService } from "@/application/blocks/services/interfaces/IBlockService";
 import { IReviewService } from "@/application/reviews/services/interfaces/IReviewService";
 import { UnauthorizedError } from "@/application/core/errors/UnauthorizedError";
 import { ReviewTarget, ReviewTargetType } from "@/domain/reviews/valueObjects/reviewTarget.valueObject";
@@ -39,7 +40,10 @@ function reviewBody(req: Request): ReviewRequest {
 }
 
 export default class ReviewController {
-  constructor(private readonly reviewService: IReviewService) {}
+  constructor(
+    private readonly reviewService: IReviewService,
+    private readonly blockService: IBlockService,
+  ) {}
 
   /** List / create handlers of `/places/:placeId/reviews` or `/events/:eventId/reviews`. */
   target(type: ReviewTargetType): { list: Handler; create: Handler } {
@@ -57,6 +61,8 @@ export default class ReviewController {
           canSeeUnpublishedTarget: isPrivileged(req),
           audience: query.audience,
           withPhotos: query.withPhotos,
+          // A signed-in viewer does not see the reviews of the people they blocked (#17).
+          excludeUserIds: await this.blockService.blockedUserIds(req.user?.id),
         });
         const body: TargetReviewListResponse = {
           ...toPaginatedResponse(page, ReviewDtoMapper.toResponse),

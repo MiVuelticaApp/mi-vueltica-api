@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { z } from "zod";
+import { IBlockService } from "@/application/blocks/services/interfaces/IBlockService";
 import { IFavoriteService } from "@/application/favorites/services/interfaces/IFavoriteService";
 import { IPlaceService } from "@/application/places/services/interfaces/IPlaceService";
 import { PlaceListFilters } from "@/domain/places/repositories/IPlaceRepository";
@@ -32,6 +33,7 @@ export default class PlaceController {
     private readonly placeService: IPlaceService,
     private readonly favoriteService: IFavoriteService,
     private readonly communityService: ICommunityService,
+    private readonly blockService: IBlockService,
   ) {}
 
   async list(req: Request, res: Response): Promise<void> {
@@ -52,6 +54,8 @@ export default class PlaceController {
       families: query.families,
       wheelchair: query.wheelchair,
       ...toGeoFilters(query),
+      // A signed-in viewer does not see the plans of the people they blocked (#17).
+      excludeAuthorIds: await this.blockService.blockedUserIds(req.user?.id),
     };
 
     const result = await this.placeService.list(toPaginationParams(query), filters);
@@ -63,6 +67,7 @@ export default class PlaceController {
     const detail = await this.placeService.get(id, {
       statuses: canSeeUnpublished(req) ? undefined : PUBLIC_STATUSES,
       viewerId: req.user?.id,
+      excludeAuthorIds: await this.blockService.blockedUserIds(req.user?.id),
     });
     const verification = await this.communityService.verificationSummary({ type: "PLACE", id }, optionalPerson(req));
     const response = PlaceDtoMapper.toDetailResponse(detail, verification);

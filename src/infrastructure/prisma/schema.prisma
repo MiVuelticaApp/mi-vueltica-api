@@ -174,6 +174,8 @@ model User {
   uploads             Upload[]
   reputationEvents    ReputationEvent[]
   moderationVotes     ModerationVote[]
+  blocksMade          UserBlock[]        @relation("UserBlocker")
+  blocksReceived      UserBlock[]        @relation("UserBlocked")
   province            Province?          @relation(fields: [provinceId], references: [id], onDelete: SetNull)
 
   @@unique([ssoProvider, ssoSubject])
@@ -203,6 +205,21 @@ model ModerationVote {
   @@unique([placeId, userId])
   @@unique([eventId, userId])
   @@index([userId])
+}
+
+// #17 (App Store guideline 1.2): `blockerId` no longer sees the plans and reviews authored by `blockedId`.
+// One row per pair; deleted with either account.
+model UserBlock {
+  id        String   @id @default(uuid())
+  blockerId String
+  blockedId String
+  createdAt DateTime @default(now())
+
+  blocker User @relation("UserBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("UserBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
 }
 
 // #42: reputation ledger. `causeKey` is unique so the same cause never changes the points twice;

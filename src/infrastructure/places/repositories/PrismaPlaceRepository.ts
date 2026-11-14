@@ -171,7 +171,11 @@ export default class PrismaPlaceRepository implements IPlaceRepository {
         { address: { contains: filters.search } },
       ];
     }
-    const conditions = planConditionsWhere(filters);
+    const conditions: Prisma.PlaceWhereInput[] = planConditionsWhere(filters);
+    // `authorId NOT IN (...)` is NULL (so the row is dropped) when authorId is NULL: keep authorless plans explicitly.
+    if (filters.excludeAuthorIds?.length) {
+      conditions.push({ OR: [{ authorId: null }, { authorId: { notIn: filters.excludeAuthorIds } }] });
+    }
     if (conditions.length > 0) where.AND = conditions;
 
     if (filters.bbox) {

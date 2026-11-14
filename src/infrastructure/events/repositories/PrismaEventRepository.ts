@@ -193,6 +193,10 @@ export default class PrismaEventRepository implements IEventRepository {
       });
     }
     and.push(...planConditionsWhere(filters));
+    // `authorId NOT IN (...)` is NULL (so the row is dropped) when authorId is NULL: keep authorless events explicitly.
+    if (filters.excludeAuthorIds?.length) {
+      and.push({ OR: [{ authorId: null }, { authorId: { notIn: filters.excludeAuthorIds } }] });
+    }
 
     if (filters.bbox) {
       and.push(this.withinBoundingBox(filters.bbox));
