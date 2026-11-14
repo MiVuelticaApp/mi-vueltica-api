@@ -11,8 +11,8 @@ import mcpRouter from "@/presentation/mcp/routes/mcp.routes";
 
 const app = express();
 
-// Trust reverse proxy
-app.set("trust proxy", true);
+// Trust exactly the reverse proxies in front of the API (TRUST_PROXY, default 1), never every hop (#4).
+app.set("trust proxy", ENV.TRUST_PROXY);
 
 // Logging
 app.use(morgan("dev"));

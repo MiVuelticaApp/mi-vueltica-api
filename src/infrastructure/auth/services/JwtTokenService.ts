@@ -1,12 +1,14 @@
 import IJwtService, { JwtPayload as DomainJwtPayload } from "@/domain/auth/services/IJwtService";
 import jwt, { SignOptions, Secret } from "jsonwebtoken";
+import ENV from "@/presentation/http/core/config/env";
 
 export default class JwtTokenService implements IJwtService {
   private readonly secret: Secret;
   private readonly expiresIn: string;
 
   constructor(secret?: Secret, expiresIn?: string) {
-    this.secret = secret || (process.env.JWT_SECRET as Secret) || "your-super-secret-key";
+    // No hard-coded fallback (#4): ENV.JWT_SECRET is required in production.
+    this.secret = secret || ENV.JWT_SECRET;
     this.expiresIn = expiresIn || (process.env.JWT_EXPIRES_IN as string) || "7d";
   }
 
