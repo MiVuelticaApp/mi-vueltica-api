@@ -17,11 +17,15 @@ import { reputationCause } from "@/domain/reputation/entities/ReputationEvent";
 import { ReputationLedger } from "@/application/reputation/services/ReputationLedger";
 import { ReviewNotFoundError } from "../../errors/ReviewNotFoundError";
 import { ReviewAlreadyExistsError } from "../../errors/ReviewAlreadyExistsError";
+import { ReviewReportAlreadyExistsError } from "../../errors/ReviewReportAlreadyExistsError";
+import { IReviewReportUnitOfWork } from "@/domain/reviews/unitsOfWork/ReviewReportUnitOfWork";
+import { reviewReportsHide } from "@/domain/reviews/rules/reviewReportRules";
 import {
   IReviewService,
   ListTargetReviewsOptions,
   ReviewActor,
   ReviewQueueFilters,
+  ReviewReportInput,
   TargetReviewList,
 } from "../interfaces/IReviewService";
 
@@ -44,6 +48,7 @@ export class ReviewService implements IReviewService {
     private readonly eventRepository: IEventRepository,
     private readonly uploadService: IUploadService,
     private readonly voteUOW: IReviewVoteUnitOfWork,
+    private readonly reportUOW: IReviewReportUnitOfWork,
   ) {}
 
   async listForTarget(
@@ -115,7 +120,24 @@ export class ReviewService implements IReviewService {
   async changeStatus(id: string, status: ContentStatus, viewerId?: string): Promise<ReviewDetail> {
     const review = await this.getOrThrow(id);
     review.changeStatus(parseContentStatus(status));
-    return this.reviewRepository.save(review, undefined, viewerId);
+    const saved = await this.reviewRepository.save(review, undefined, viewerId);
+    // A moderator looked at it: this round of reports is decided (publishing it again does not re-hide it).
+    await this.reportUOW.runInTransaction((reports) => reports.resolveAll(id));
+    return saved;
+  }
+
+  async report(userId: string, id: string, input: ReviewReportInput): Promise<{ hidden: boolean }> {
+    return this.reportUOW.runInTransaction(async (reports) => {
+      const review = await reports.lockReview(id);
+      if (!review || review.status !== "PUBLISHED") throw new ReviewNotFoundError();
+      if (review.userId === userId) throw new ForbiddenError("No puedes reportar tu propia reseña");
+      if (!(await reports.add({ reviewId: id, userId, reason: input.reason, details: input.details }))) {
+        throw new ReviewReportAlreadyExistsError();
+      }
+      const hidden = reviewReportsHide(await reports.countUnresolved(id));
+      if (hidden) await reports.hideReview(id);
+      return { hidden };
+    });
   }
 
   async markUseful(userId: string, id: string): Promise<ReviewDetail> {
