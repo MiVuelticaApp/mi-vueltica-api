@@ -89,7 +89,7 @@ Env vars (see `.env.example`):
   `GOOGLE_ANDROID_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID` for Google login (see "Auth"). `GOOGLE_CLIENT_ID` is no longer read.
 - **Optional**: `S3_BUCKET` (`mi-vueltica`), `S3_REGION` (`us-east-1`), `S3_FORCE_PATH_STYLE` (true),
   `UPLOAD_ORPHAN_GRACE_HOURS` (24), `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (see "Account
-  deletion") and `TEST_LOGIN_ENABLED`, `TEST_LOGIN_EMAIL`, `TEST_LOGIN_PASSWORD` (see "Test login"), `PRIVACY_VERSION` (privacy notice version the test login records; default `2026-11-13`, see "Auth").
+  deletion") and `TEST_LOGIN_ENABLED`, `TEST_LOGIN_EMAIL`, `TEST_LOGIN_PASSWORD` (see "Test login"), `PRIVACY_VERSION` (privacy notice version the test login records; default `2026-11-13`, see "Auth"), `EXPO_ACCESS_TOKEN` and `NEARBY_PUSH_ENABLED` (see "Push").
 
 ## Seed data
 
@@ -754,6 +754,25 @@ not implemented yet; that job is meant to call `notify` and send the push only w
   also turns foreign key errors into warnings, so an unknown user or event would be silently ignored instead
   of failing.
 - Notifications are removed by `ON DELETE CASCADE` when the user or the event is deleted.
+
+### Push (#10)
+
+Sent through Expo's push service (`expo-server-sdk`; Expo delivers through FCM / APNs with the keys uploaded to
+EAS) by `ExpoPushSender` to every `Device` of the user, in batches. Optional `EXPO_ACCESS_TOKEN` when "enhanced
+push security" is on in the Expo project. Best effort: a push failure never fails the request or job. A token Expo
+reports as `DeviceNotRegistered` (in the ticket, or in the receipt read 15 minutes later by an `unref`ed timer) is
+deleted from `Device`. `PushNotifier` decides what to send:
+
+- **Estado de mis vuelticas**: when a suggestion is decided (moderator approve / reject, or the community vote),
+  after the transaction commits (`SubmissionService` `onDecided` callback). Published → `data.vuelticaId`
+  (`p-<uuid>` / `e-<uuid>`, the app opens the plan); rejected → `data.screen: "mine"` (Mis vuelticas).
+- **Planes nuevos cerca**: `startNearbyPlansJob` (every 6 h, first run 5 min after boot; `NEARBY_PUSH_ENABLED=false`
+  turns it off) picks up to 500 users with the switch on, a province and a device whose `lastNearbyPushAt` is older
+  than 7 days, counts PUBLISHED places and upcoming events (through their place) created in that province in the
+  last 7 days, marks the user and pushes only when the count is above 0 (`data.url: "/"`).
+- `GET` / `PUT /me/notification-settings` `{ reminders, newNearby, myStatus }` (all booleans, all required on PUT,
+  default true). `reminders` are local reminders in the app; the API only stores the switch.
+- The `Notification` log above (event matching) is still not sent as a push.
 
 ## Submissions
 

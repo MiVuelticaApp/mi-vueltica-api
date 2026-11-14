@@ -1,3 +1,7 @@
+import { PushNotifier } from "@/application/notifications/services/PushNotifier";
+import NotificationSettingsController from "@/presentation/http/notifications/controllers/NotificationSettings.controller";
+import { ExpoPushSender } from "@/infrastructure/notifications/ExpoPushSender";
+import { PrismaNotificationSettingsRepository } from "@/infrastructure/notifications/PrismaNotificationSettingsRepository";
 import ENV from "@/presentation/http/core/config/env";
 import OAuthService from "@/application/auth/services/implementations/IOAuthService";
 import TestLoginService from "@/application/auth/services/implementations/TestLoginService";
@@ -191,7 +195,8 @@ export const communityService: ICommunityService = new CommunityService(
   uploadService,
 );
 export const photoService: IPhotoService = new PhotoService(photoRepository, photoGalleryUOW, placeRepository, eventRepository, uploadService);
-export const submissionService = new SubmissionService(submissionRepository, placeRepository, cantonRepository, categoryRepository, submissionApprovalUOW, uploadService);
+export const pushNotifier = new PushNotifier(new ExpoPushSender(ENV.EXPO_ACCESS_TOKEN || undefined), new PrismaNotificationSettingsRepository());
+export const submissionService = new SubmissionService(submissionRepository, placeRepository, cantonRepository, categoryRepository, submissionApprovalUOW, uploadService, (d) => pushNotifier.submissionDecided(d));
 export const userInterestService = new UserInterestService(userRepository, userInterestRepository, categoryRepository);
 export const oAuthService = new OAuthService(userService, googleOAuthProvider, appleOAuthProvider, idGenerator);
 
@@ -250,6 +255,7 @@ export const moderationController = new ModerationController(moderationService, 
 export const mySubmissionsController = new MySubmissionsController(submissionService);
 export const myDevicesController = new MyDevicesController(deviceService);
 export const myNotificationsController = new MyNotificationsController(notificationService);
+export const notificationSettingsController = new NotificationSettingsController(pushNotifier);
 export const submissionsController = new SubmissionsController(submissionService);
 export const uploadController = new UploadController(uploadService);
 export const fileController = new FileController(uploadService);
