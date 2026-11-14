@@ -803,9 +803,8 @@ expected to use this same API as regular authenticated clients (discovering it t
   `eventoPasado`, `datosIncompletos`, `ubicacionIncorrecta`, `noEsPublico`, `inapropiado`, `spam`, `otro`. `otro` requires
   `note` (400); the note (1-1000) is optional otherwise and stored in `reviewNote`. Stored in `Submission.rejectionReason`
   (uppercase enum, mapped in `infrastructure/submissions/mappers/submissionEnums.ts`). Responses add `rejectionReason` and
-  `rejectionMessage` (the code's text from `REJECTION_REASON_LABELS`, or the note for `otro`). **Temporary compatibility**:
-  `RejectSubmissionSchema` turns any other text in `reason` (the free-text body used before #40) into `otro` + that note;
-  remove it once the app sends codes. Rejections from before #40 were backfilled to `OTHER`.
+  `rejectionMessage` (the code's text from `REJECTION_REASON_LABELS`, or the note for `otro`). `reason` must be one of
+  the codes (any other text is a 400; the free-text compatibility was removed in app issue #9, the app sends codes). Rejections from before #40 were backfilled to `OTHER`.
 - **Created plan** (#40): approving stores the new Place/Event in `Submission.createdPlaceId` / `createdEventId` (exactly one,
   FK `SET NULL`), exposed as `created: { type, id } | null` in every submission response (author and moderation), so the
   author can open it. Approvals from before #40 stay `null`.
