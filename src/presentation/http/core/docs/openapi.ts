@@ -9,6 +9,7 @@ import { DEVICE_SORT_FIELDS } from "@/presentation/http/devices/validators/listD
 import { NOTIFICATION_SORT_FIELDS } from "@/presentation/http/notifications/validators/listNotifications";
 import { PLATFORMS } from "@/domain/devices/valueObjects/platform.valueObject";
 import { UpdateUserSchema } from "@/presentation/http/users/validators/updateUser";
+import { AcceptPrivacySchema } from "@/presentation/http/users/validators/acceptPrivacy";
 import { UpdateInterestsSchema } from "@/presentation/http/users/validators/updateInterests";
 import { DeleteAccountSchema } from "@/presentation/http/users/validators/deleteAccount";
 import { CreateCategorySchema } from "@/presentation/http/categories/validators/createCategory";
@@ -765,6 +766,22 @@ const paths: Record<string, Record<string, unknown>> = {
         400: responseRef("BadRequest"),
         401: responseRef("Unauthorized"),
         429: errorResponse("Too many requests"),
+      },
+    },
+  },
+  "/me/privacy-consent": {
+    post: {
+      tags: ["Profile"],
+      summary: "Accept a privacy notice version",
+      description:
+        "Records that the person accepted the privacy notice `version` (Ley 8968 art. 5) with the time, and answers like `GET /me`. " +
+        "Revoking consent is deleting the account (`POST /me`).",
+      security: bearer,
+      requestBody: jsonBody(AcceptPrivacySchema),
+      responses: {
+        200: jsonResponse("Profile", "MyProfileResponse"),
+        400: responseRef("BadRequest"),
+        401: responseRef("Unauthorized"),
       },
     },
   },
@@ -2267,6 +2284,8 @@ const userProperties = {
   createdAt: { type: "string", format: "date-time", description: "\"Miembro desde\"" },
   points: { type: "integer", minimum: 0, description: "Reputation points (see `GET /me/reputation`)" },
   level: { type: "integer", enum: [...REPUTATION_LEVELS] },
+  privacyAccepted: { type: "boolean", description: "False until the person accepts the privacy notice (`POST /me/privacy-consent`, or `privacyVersion` at login): the app asks once" },
+  privacyVersion: { type: ["string", "null"], description: "Privacy notice version accepted; null when none" },
 };
 
 const openApiDocument = {

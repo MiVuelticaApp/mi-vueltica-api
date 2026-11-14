@@ -155,6 +155,9 @@ model User {
   // #42: default map region, and the cached total of ReputationEvent (only the reputation ledger writes it).
   provinceId       Int?
   reputationPoints Int         @default(0)
+  // #7: the privacy notice version the person accepted (Ley 8968 art. 5) and when; null until they accept.
+  privacyVersion    String?   @db.VarChar(32)
+  privacyAcceptedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

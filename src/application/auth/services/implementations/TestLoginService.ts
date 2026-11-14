@@ -14,6 +14,8 @@ export interface TestLoginConfig {
   enabled: boolean;
   email: string;
   password: string;
+  /** Privacy notice version recorded as accepted, so reviewers are not stopped by the consent screen. */
+  privacyVersion?: string;
 }
 
 // Fixed-credential login used only so App Store / Google Play reviewers can sign in without
@@ -57,11 +59,17 @@ export default class TestLoginService implements ITestLoginService {
         // value. The fixed subject keeps it from ever matching a real Google `sub`.
         ssoProvider: "GOOGLE",
         ssoSubject: "test-login",
+        privacyVersion: this.config.privacyVersion,
+        privacyAcceptedAt: this.config.privacyVersion ? new Date().toISOString() : undefined,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
       user = await this.usersService.create(newUser);
       justCreated = true;
+    }
+
+    if (!justCreated && this.config.privacyVersion && user.privacyVersion !== this.config.privacyVersion) {
+      user = await this.usersService.acceptPrivacy(user.id, this.config.privacyVersion);
     }
 
     // Only seed demo data the first time this account is created — never on subsequent

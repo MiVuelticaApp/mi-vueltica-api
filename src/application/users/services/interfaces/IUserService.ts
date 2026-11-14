@@ -15,5 +15,7 @@ export interface IUserService {
   find(value: any, field?: string): Promise<User | null>;
   findBySso(provider: SsoProvider, subject: string): Promise<User | null>;
   updateProfile(id: string, changes: UpdateProfileInput): Promise<User>;
+  /** Records acceptance of a privacy notice version and returns the user. */
+  acceptPrivacy(id: string, version: string): Promise<User>;
   activityCounts(userId: string): Promise<UserActivityCounts>;
 }

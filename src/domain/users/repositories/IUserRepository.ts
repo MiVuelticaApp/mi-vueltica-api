@@ -25,6 +25,8 @@ export interface IUserRepository {
   find(value: string, field?: string): Promise<User | null>;
   findBySso(provider: SsoProvider, subject: string): Promise<User | null>;
   update(user: User): Promise<void>;
+  /** Records the privacy notice version the person accepted (#7). */
+  recordPrivacyConsent(userId: string, version: string, at: Date): Promise<void>;
   delete(id: string): Promise<void>;
   activityCounts(userId: string): Promise<UserActivityCounts>;
 }

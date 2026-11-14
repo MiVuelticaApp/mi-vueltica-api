@@ -13,4 +13,7 @@ export interface UserResponse {
     createdAt: string;
     points: number;
     level: ReputationLevel;
+    /** False until they accept the privacy notice: the app asks once (#7). */
+    privacyAccepted: boolean;
+    privacyVersion: string | null;
 }
