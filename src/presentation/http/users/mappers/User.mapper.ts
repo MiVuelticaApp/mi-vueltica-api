@@ -21,6 +21,8 @@ export default class UserDtoMapper {
       createdAt: user.createdAt.toISOString(),
       points: user.reputationPoints,
       level: levelFor(user.reputationPoints),
+      privacyAccepted: user.privacyVersion !== null,
+      privacyVersion: user.privacyVersion,
     };
   }
 

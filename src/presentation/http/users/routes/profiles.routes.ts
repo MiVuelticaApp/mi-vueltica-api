@@ -2,6 +2,7 @@ import validateSchema from "@/presentation/http/core/middlewares/validateSchema"
 import { Router } from "express";
 import { UpdateUserSchema } from "../validators/updateUser";
 import { DeleteAccountSchema } from "../validators/deleteAccount";
+import { AcceptPrivacySchema } from "../validators/acceptPrivacy";
 import { UpdateInterestsSchema } from "../validators/updateInterests";
 import { myProfileController, myInterestsController, favoriteController, reviewController } from "@/dependencyInjection/container";
 import asyncHandler from "@/presentation/http/core/handlers/asyncHandler";
@@ -15,6 +16,7 @@ const profileRouter = Router();
 profileRouter.use(jwtAuth);
 profileRouter.put("/", validateSchema(UpdateUserSchema), asyncHandler(myProfileController.update.bind(myProfileController)));
 profileRouter.get("/", asyncHandler(myProfileController.me.bind(myProfileController)));
+profileRouter.post("/privacy-consent", validateSchema(AcceptPrivacySchema), asyncHandler(myProfileController.acceptPrivacy.bind(myProfileController)));
 profileRouter.get("/reputation", asyncHandler(myProfileController.reputation.bind(myProfileController)));
 profileRouter.get("/interests", asyncHandler(myInterestsController.list.bind(myInterestsController)));
 profileRouter.put("/interests", validateSchema(UpdateInterestsSchema), asyncHandler(myInterestsController.replace.bind(myInterestsController)));

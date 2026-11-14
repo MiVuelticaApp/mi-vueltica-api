@@ -22,14 +22,14 @@ export default class AuthController {
 
   async googleLogin(req: Request, res: Response): Promise<void> {
     try {
-      const { token } = req.body;
+      const { token, privacyVersion } = req.body;
       if (!token) {
         res.status(400).json({ message: "Token de Google es requerido" });
         return;
       }
       
       // Authenticate with Google and get/create user
-      const user = await this.oAuthService.google(token);
+      const user = await this.oAuthService.google(token, privacyVersion);
       
       // Generate JWT token
       const jwtToken = this.jwtService.generateToken({
@@ -56,9 +56,9 @@ export default class AuthController {
 
   async appleLogin(req: Request, res: Response): Promise<void> {
     try {
-      const { identityToken, firstName, lastName } = req.body;
+      const { identityToken, firstName, lastName, privacyVersion } = req.body;
 
-      const user = await this.oAuthService.apple(identityToken, firstName, lastName);
+      const user = await this.oAuthService.apple(identityToken, firstName, lastName, privacyVersion);
 
       const jwtToken = this.jwtService.generateToken({
         id: user.id,

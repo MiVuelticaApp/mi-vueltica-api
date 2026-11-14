@@ -25,6 +25,12 @@ export default class MyProfileController {
     res.json(UserDtoMapper.toResponse(updatedUser));
   }
 
+  async acceptPrivacy(req: Request, res: Response): Promise<void> {
+    const { id } = getAuthUser(req);
+    await this.userService.acceptPrivacy(id, req.body.version);
+    await this.me(req, res);
+  }
+
   async me(req: Request, res: Response): Promise<void> {
     const { id } = getAuthUser(req);
     const user = await this.userService.find(id);

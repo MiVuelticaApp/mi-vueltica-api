@@ -6,6 +6,7 @@ import { IUserService } from "@/application/users/services/interfaces/IUserServi
 import { InvalidCredentialsError } from "../../errors/InvalidCredentialsError";
 import { UserAlreadyExistsError } from "@/application/users/errors/UserAlreadyExistsError";
 import ApplicationError from "@/application/core/errors/ApplicationError";
+import { PrivacyConsentRequiredError } from "../../errors/PrivacyConsentRequiredError";
 
 export default class OAuthService implements IOAuthService {
   constructor(
@@ -15,10 +16,10 @@ export default class OAuthService implements IOAuthService {
     private readonly idGenerator: IIDGenerator
   ) {}
 
-  async google(accessToken: string): Promise<User> {
+  async google(accessToken: string, privacyVersion?: string): Promise<User> {
     try {
       const userInfo = await this.googleOAuthProvider.getUserInfo(accessToken);
-      return await this.loginWithSso("GOOGLE", userInfo, userInfo.name ?? "", "");
+      return await this.loginWithSso("GOOGLE", userInfo, userInfo.name ?? "", "", privacyVersion);
     } catch (error) {
       if (error instanceof ApplicationError) throw error;
       console.error(error);
@@ -26,11 +27,11 @@ export default class OAuthService implements IOAuthService {
     }
   }
 
-  async apple(identityToken: string, firstName?: string, lastName?: string): Promise<User> {
+  async apple(identityToken: string, firstName?: string, lastName?: string, privacyVersion?: string): Promise<User> {
     try {
       const userInfo = await this.appleOAuthProvider.getUserInfo(identityToken);
       // Apple only sends the name on the very first sign in, so it is only used when creating.
-      return await this.loginWithSso("APPLE", userInfo, firstName ?? "", lastName ?? "");
+      return await this.loginWithSso("APPLE", userInfo, firstName ?? "", lastName ?? "", privacyVersion);
     } catch (error) {
       if (error instanceof ApplicationError) throw error;
       console.error(error);
@@ -46,9 +47,16 @@ export default class OAuthService implements IOAuthService {
     userInfo: OAuthUserPayload,
     name: string,
     surnames: string,
+    privacyVersion?: string,
   ): Promise<User> {
     const existing = await this.usersService.findBySso(provider, userInfo.sub);
-    if (existing) return existing;
+    if (existing) {
+      // The person accepted a (newer) notice on this device before signing in: record it (#7).
+      if (privacyVersion && existing.privacyVersion !== privacyVersion) return this.usersService.acceptPrivacy(existing.id, privacyVersion);
+      return existing;
+    }
+    // A new account needs the consent on record (Ley 8968 art. 5).
+    if (!privacyVersion) throw new PrivacyConsentRequiredError();
 
     const emailTaken = await this.usersService.find(userInfo.email, "email");
     if (emailTaken) {
@@ -63,6 +71,8 @@ export default class OAuthService implements IOAuthService {
       surnames,
       ssoProvider: provider,
       ssoSubject: userInfo.sub,
+      privacyVersion,
+      privacyAcceptedAt: now,
       createdAt: now,
       updatedAt: now,
     });

@@ -135,6 +135,15 @@ export default class PrismaUsersRepository implements IUserRepository {
     }
   }
 
+  async recordPrivacyConsent(userId: string, version: string, at: Date): Promise<void> {
+    try {
+      await this.client.user.update({ where: { id: userId }, data: { privacyVersion: version, privacyAcceptedAt: at } });
+    } catch (error) {
+      console.error("Error recording privacy consent:", error);
+      throw new DatabaseInsertError("Could not record privacy consent", error);
+    }
+  }
+
   /**
    * Delete a user from the database.
    * @param id The ID of the user to delete.
