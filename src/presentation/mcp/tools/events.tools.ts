@@ -30,6 +30,7 @@ const eventOutput = {
   latitude: z.number().nullable(),
   longitude: z.number().nullable(),
   address: z.string().nullable(),
+  cantonId: z.number().int().nullable(),
   place: z
     .object({
       id: z.string(),
@@ -68,7 +69,7 @@ const listFiltersInput = {
     .describe("Fin del rango en ISO 8601 con zona horaria: solo eventos que empiezan en o antes de esta fecha. No puede ser anterior a `from`."),
   categoryId: z.number().int().positive().optional().describe("Id de la categoría; se obtiene con `list_categories`. Filtro opcional."),
   placeId: z.string().uuid().optional().describe("UUID del lugar donde ocurre el evento (ver `search_places`). Filtro opcional."),
-  cantonId: z.number().int().positive().optional().describe("Id del cantón del lugar del evento (INEC: provincia * 100 + cantón, ej. 101 = San José). Filtro opcional."),
+  cantonId: z.number().int().positive().optional().describe("Id del cantón del evento (INEC: provincia * 100 + cantón, ej. 101 = San José): el de su lugar, o el propio si no tiene lugar. Filtro opcional."),
   targetAudience: eventTargetAudienceField.optional().describe("Público objetivo: EVERYONE, CHILDREN, ADULTS o SENIORS. Filtro opcional."),
   status: z
     .enum(CONTENT_STATUSES)
@@ -157,7 +158,11 @@ function buildFilters(args: ListArgs, search?: string): { filters: EventListFilt
 const createEventInput = {
   placeId: CreateEventBaseSchema.shape.placeId.describe(
     "UUID del lugar donde ocurre el evento (opcional). Se obtiene con `search_places` o `list_places`, o es el `id` devuelto por `create_place`. Debe existir. " +
-      "Si el evento ocurre en un lugar registrado, usa `placeId` y no envíes `latitude`/`longitude`/`address`.",
+      "Si el evento ocurre en un lugar registrado, usa `placeId` y no envíes `latitude`/`longitude`/`address`/`cantonId`.",
+  ),
+  cantonId: CreateEventBaseSchema.shape.cantonId.describe(
+    "Id del cantón propio del evento (INEC: provincia * 100 + cantón, ej. 101 = San José), solo si NO tiene `placeId` " +
+      "(con lugar se usa el cantón del lugar). Opcional, pero sin él el evento no aparece al filtrar por cantón. Debe existir.",
   ),
   latitude: CreateEventBaseSchema.shape.latitude.describe(
     "Latitud propia del evento (grados decimales, Costa Rica ronda 8 a 11), solo si NO tiene `placeId` (ej. una feria en la calle). Va junto con `longitude`.",
@@ -239,8 +244,8 @@ export function registerEventTools(server: McpServer, eventService: IEventServic
         "Crea un evento nuevo en estado PENDING (queda pendiente de revisión; no se publica solo). " +
         "Requiere `categoryId` (usa `list_categories`), `title` y `startsAt`; `placeId` es opcional (usa " +
         "`search_places` para encontrarlo); un evento sin lugar puede llevar su propia ubicación (`latitude`, `longitude`, " +
-        "`address`), pero nunca ambas cosas. Las fechas son ISO 8601 con zona horaria y `endsAt` no puede ser " +
-        "anterior a `startsAt`. Falla si el lugar, la categoría o la fuente no existen. No es idempotente: " +
+        "`address`) y su `cantonId`, pero nunca junto con `placeId`. Las fechas son ISO 8601 con zona horaria y `endsAt` no puede ser " +
+        "anterior a `startsAt`. Falla si el lugar, el cantón, la categoría o la fuente no existen. No es idempotente: " +
         "llamarla dos veces crea dos eventos.",
       inputSchema: createEventInput,
       outputSchema: eventOutput,

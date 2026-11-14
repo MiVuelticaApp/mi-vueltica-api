@@ -22,6 +22,11 @@ export interface EventResponse {
   latitude: number | null;
   longitude: number | null;
   address: string | null;
+  /**
+   * The event's canton: the place's when `placeId` is set, otherwise the event's own; null when it has
+   * neither. Write it only for events without a place.
+   */
+  cantonId: number | null;
   /** Null when the event has no place or the caller may not see it (not PUBLISHED). */
   place: PlaceSummaryResponse | null;
   targetAudience: TargetAudience;

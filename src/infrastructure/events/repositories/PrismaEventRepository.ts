@@ -114,6 +114,7 @@ export default class PrismaEventRepository implements IEventRepository {
           latitude: data.latitude,
           longitude: data.longitude,
           address: data.address,
+          cantonId: data.cantonId,
           targetAudience: data.targetAudience,
           ...planConditionsToColumns(data),
           authorId: options.authorId ?? null,
@@ -142,6 +143,7 @@ export default class PrismaEventRepository implements IEventRepository {
           latitude: event.location?.latitude ?? null,
           longitude: event.location?.longitude ?? null,
           address: event.location?.address ?? null,
+          cantonId: event.cantonId,
           targetAudience: event.targetAudience,
           ...planConditionsToColumns(event),
           status: event.status,
@@ -170,7 +172,10 @@ export default class PrismaEventRepository implements IEventRepository {
 
     if (filters.categoryId !== undefined) where.categoryId = filters.categoryId;
     if (filters.placeId !== undefined) where.placeId = filters.placeId;
-    if (filters.cantonId !== undefined) where.place = { cantonId: filters.cantonId };
+    // The event's resolved canton: its place's, or its own when it has no place (same rule as `resolveEventCantonId`).
+    if (filters.cantonId !== undefined) {
+      and.push({ OR: [{ place: { cantonId: filters.cantonId } }, { placeId: null, cantonId: filters.cantonId }] });
+    }
     if (filters.targetAudience) where.targetAudience = filters.targetAudience;
     if (filters.statuses) where.status = { in: filters.statuses };
 
