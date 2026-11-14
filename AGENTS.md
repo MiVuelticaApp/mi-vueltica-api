@@ -167,9 +167,12 @@ The route is additionally rate-limited (10 attempts / 15 min per IP,
 `src/presentation/http/core/middlewares/rateLimit.ts`), and every successful login is logged
 (IP only, never the password).
 
-On first login a `USER`-role account is created ("Cuenta de Prueba") and `TestAccountSeeder` runs once.
-The seeder is currently a placeholder that writes nothing (it was meant to add demo data so
-reviewers land on a populated app); its errors are swallowed so they never block the token. From
+On first login a `USER`-role account is created ("Cuenta de Prueba") and `PrismaTestAccountSeeder` runs once (#8):
+it saves 3 published places and up to 2 upcoming published events, adds one approved suggestion (linked to an existing
+place, without making the account its author) and one PENDING suggestion, and a PENDING 5-star review, so reviewers see
+Guardados, "Mis vuelticas" and "Mis reseñas" with content. It only uses existing PUBLISHED plans and never publishes
+anything; it skips an account that already has favorites or suggestions, and its errors are swallowed so they never
+block the token. From
 then on it is a completely ordinary user — same `jwtAuth` and `requireRole` checks as any other
 account, no special role or bypass.
 
