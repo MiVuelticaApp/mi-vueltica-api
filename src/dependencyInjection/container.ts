@@ -1,3 +1,4 @@
+import { OpenAIContentModerator } from "@/infrastructure/submissions/OpenAIContentModerator";
 import { PushNotifier } from "@/application/notifications/services/PushNotifier";
 import NotificationSettingsController from "@/presentation/http/notifications/controllers/NotificationSettings.controller";
 import { ExpoPushSender } from "@/infrastructure/notifications/ExpoPushSender";
@@ -196,7 +197,7 @@ export const communityService: ICommunityService = new CommunityService(
 );
 export const photoService: IPhotoService = new PhotoService(photoRepository, photoGalleryUOW, placeRepository, eventRepository, uploadService);
 export const pushNotifier = new PushNotifier(new ExpoPushSender(ENV.EXPO_ACCESS_TOKEN || undefined), new PrismaNotificationSettingsRepository());
-export const submissionService = new SubmissionService(submissionRepository, placeRepository, cantonRepository, categoryRepository, submissionApprovalUOW, uploadService, (d) => pushNotifier.submissionDecided(d));
+export const submissionService = new SubmissionService(submissionRepository, placeRepository, cantonRepository, categoryRepository, submissionApprovalUOW, uploadService, (d) => pushNotifier.submissionDecided(d), new OpenAIContentModerator(ENV.AI_MODERATION_API_KEY));
 export const userInterestService = new UserInterestService(userRepository, userInterestRepository, categoryRepository);
 export const oAuthService = new OAuthService(userService, googleOAuthProvider, appleOAuthProvider, idGenerator);
 

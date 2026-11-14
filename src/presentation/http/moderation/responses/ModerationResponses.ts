@@ -18,8 +18,8 @@ export interface ModerationVoteResponse extends ModerationTallyResponse {
   decision: ModerationDecision;
 }
 
-/** A pending suggestion as community voters see it: no author id. */
-export type QueueSubmissionResponse = Omit<SubmissionResponse, "userId">;
+/** A pending suggestion as community voters see it: no author id, plus the automatic check (#5) so they can look twice. */
+export type QueueSubmissionResponse = Omit<SubmissionResponse, "userId"> & { aiScore: number | null; aiReason: string | null };
 
 export interface ModerationQueueResponse {
   nuevas: (ModerationTallyResponse & { submission: QueueSubmissionResponse })[];
