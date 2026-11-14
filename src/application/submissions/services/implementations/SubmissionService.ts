@@ -1,3 +1,4 @@
+import { IContentModerator, combineVerdicts, spamVerdict } from "@/domain/submissions/services/IContentModerator";
 import { SubmissionDecision } from "@/application/notifications/services/PushNotifier";
 import { Submission } from "@/domain/submissions/entities/Submission";
 import {
@@ -70,7 +71,28 @@ export class SubmissionService implements ISubmissionService {
     private readonly uploadService: IUploadService,
     /** "Estado de mis vuelticas" push (#10), called after the decision is committed. */
     private readonly onDecided?: (d: SubmissionDecision) => Promise<void>,
+    /** #5: automatic pre-moderation. Runs after the response is decided and fails open. */
+    private readonly contentModerator?: IContentModerator,
   ) {}
+
+  /**
+   * Scores the suggestion's text with the moderation API plus the local spam check and stores `aiScore` /
+   * `aiReason`, after the request (never awaited by it). On any error the fields stay as they were and the
+   * suggestion reaches the human queue as before. Logs only the id.
+   */
+  private aiReview(submission: Submission): void {
+    const data = submission.payload.data as { name?: string; title?: string; description?: string | null; address?: string | null };
+    const text = [data.name ?? data.title, data.description, data.address].filter(Boolean).join("\n");
+    void (async () => {
+      try {
+        const verdict = combineVerdicts(spamVerdict(text), this.contentModerator ? await this.contentModerator.check(text) : null);
+        if (!verdict) return;
+        await this.submissionRepository.setAiReview(submission.id, Math.round(verdict.score * 1000) / 1000, verdict.reasons.join(", ") || null);
+      } catch (error) {
+        console.warn(`[ai-moderation] submission ${submission.id} not scored: ${(error as Error).name}`);
+      }
+    })();
+  }
 
   private decided(submission: Submission, created: SubmissionApprovalResult["created"] | null): void {
     if (!this.onDecided) return;
@@ -80,14 +102,16 @@ export class SubmissionService implements ISubmissionService {
 
   async create(userId: string, input: SubmissionPayloadInput): Promise<Submission> {
     const { payload, uploadIds } = await this.prepare(userId, input);
-    return this.submissionRepository.create({ userId, payload, uploadIds });
+    const created = await this.submissionRepository.create({ userId, payload, uploadIds });
+    this.aiReview(created);
+    return created;
   }
 
   async updateMine(userId: string, id: string, input: SubmissionPayloadInput): Promise<Submission> {
     // Validation (400/422) and the upload checks first, outside the transaction.
     const { payload, uploadIds } = await this.prepare(userId, input);
     const target: ModerationTarget = { type: "SUBMISSION", id };
-    return this.approvalUOW.runInTransaction(async (ctx) => {
+    const edited = await this.approvalUOW.runInTransaction(async (ctx) => {
       const submissionRepository = ctx.getSubmissionRepository();
       const votes = ctx.getModerationVoteRepository();
       const reputation = ctx.getReputationRepository();
@@ -112,6 +136,9 @@ export class SubmissionService implements ISubmissionService {
       for (const vote of await votes.list(target)) await withdrawVote(votes, reputation, target, vote.userId);
       return submission;
     }, VOTE_TRANSACTION);
+    // The text changed: score it again.
+    this.aiReview(edited);
+    return edited;
   }
 
   /**

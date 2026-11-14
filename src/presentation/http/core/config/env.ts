@@ -45,6 +45,14 @@ const ENV = {
   EXPO_ACCESS_TOKEN: process.env.EXPO_ACCESS_TOKEN || "",
   // "false" turns off the weekly "Planes nuevos cerca" job (e.g. on a second instance).
   NEARBY_PUSH_ENABLED: process.env.NEARBY_PUSH_ENABLED !== "false",
+  // #5: AI pre-moderation of suggestions (OpenAI moderation endpoint). Optional: without a key only the local spam
+  // check runs. Suggestions at or above the threshold count as flagged (`GET /submissions?flagged=true`).
+  AI_MODERATION_API_KEY: process.env.AI_MODERATION_API_KEY || "",
+  AI_MODERATION_THRESHOLD: (() => {
+    const v = Number(process.env.AI_MODERATION_THRESHOLD ?? 0.5);
+    if (!Number.isFinite(v) || v < 0 || v > 1) throw new Error("AI_MODERATION_THRESHOLD must be between 0 and 1");
+    return v;
+  })(),
   TEST_LOGIN_ENABLED: process.env.TEST_LOGIN_ENABLED === "true",
   TEST_LOGIN_EMAIL: process.env.TEST_LOGIN_EMAIL || "",
   TEST_LOGIN_PASSWORD: process.env.TEST_LOGIN_PASSWORD || "",

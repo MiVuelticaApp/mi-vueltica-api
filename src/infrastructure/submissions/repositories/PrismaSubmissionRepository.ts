@@ -84,6 +84,7 @@ export default class PrismaSubmissionRepository implements ISubmissionRepository
         ...(filters.userId ? { userId: filters.userId } : filters.excludeUserId ? { userId: { not: filters.excludeUserId } } : {}),
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.type ? { type: filters.type } : {}),
+        ...(filters.minAiScore !== undefined ? { aiScore: { gte: filters.minAiScore } } : {}),
       };
       return await paginate(
         this.client as Parameters<typeof paginate>[0],
@@ -104,6 +105,14 @@ export default class PrismaSubmissionRepository implements ISubmissionRepository
     } catch (error) {
       console.error("Error listing submissions:", error);
       throw new DatabaseError("Could not list submissions", error);
+    }
+  }
+
+  async setAiReview(id: string, score: number | null, reason: string | null): Promise<void> {
+    try {
+      await this.client.submission.updateMany({ where: { id, status: "PENDING" }, data: { aiScore: score, aiReason: reason } });
+    } catch (error) {
+      throw new DatabaseError("Could not store the AI review", error);
     }
   }
 

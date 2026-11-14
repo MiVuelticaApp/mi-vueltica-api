@@ -4,7 +4,8 @@ import { SubmissionType } from "@/domain/submissions/valueObjects/submissionType
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
 import { PaginatedResult, PaginationParams } from "@/domain/core/pagination/Pagination";
 
-export const SUBMISSION_SORT_FIELDS = ["createdAt"] as const;
+// `aiScore` (#5): `sort=-aiScore` puts the suggestions the AI flagged first (unchecked ones, NULL, last).
+export const SUBMISSION_SORT_FIELDS = ["createdAt", "aiScore"] as const;
 export type SubmissionSortField = (typeof SUBMISSION_SORT_FIELDS)[number];
 
 export interface SubmissionListFilters {
@@ -14,6 +15,8 @@ export interface SubmissionListFilters {
   excludeUserId?: string;
   status?: ContentStatus;
   type?: SubmissionType;
+  /** Only suggestions whose `aiScore` is at least this (#5: `flagged=true` in the queue). */
+  minAiScore?: number;
 }
 
 export interface NewSubmission {
@@ -50,6 +53,8 @@ export interface ISubmissionRepository {
    * is still PENDING. Call it inside a unit of work after `findForUpdate`. Returns false otherwise.
    */
   updatePendingOwned(submission: Submission, uploadIds: string[]): Promise<boolean>;
+  /** Stores the automatic moderation result (#5) while the submission is still PENDING. */
+  setAiReview(id: string, score: number | null, reason: string | null): Promise<void>;
   /** Deletes the submission only if it belongs to `userId` and is still PENDING. */
   deletePendingOwned(id: string, userId: string): Promise<boolean>;
 }

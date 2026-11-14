@@ -91,7 +91,7 @@ Env vars (see `.env.example`):
   `GOOGLE_ANDROID_CLIENT_ID`, `GOOGLE_WEB_CLIENT_ID` for Google login (see "Auth"). `GOOGLE_CLIENT_ID` is no longer read.
 - **Optional**: `S3_BUCKET` (`mi-vueltica`), `S3_REGION` (`us-east-1`), `S3_FORCE_PATH_STYLE` (true),
   `UPLOAD_ORPHAN_GRACE_HOURS` (24), `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` (see "Account
-  deletion") and `TEST_LOGIN_ENABLED`, `TEST_LOGIN_EMAIL`, `TEST_LOGIN_PASSWORD` (see "Test login"), `PRIVACY_VERSION` (privacy notice version the test login records; default `2026-11-13`, see "Auth"), `EXPO_ACCESS_TOKEN` and `NEARBY_PUSH_ENABLED` (see "Push").
+  deletion") and `TEST_LOGIN_ENABLED`, `TEST_LOGIN_EMAIL`, `TEST_LOGIN_PASSWORD` (see "Test login"), `PRIVACY_VERSION` (privacy notice version the test login records; default `2026-11-13`, see "Auth"), `EXPO_ACCESS_TOKEN` and `NEARBY_PUSH_ENABLED` (see "Push"), `AI_MODERATION_API_KEY` and `AI_MODERATION_THRESHOLD` (see "Submissions").
 
 ## Seed data
 
@@ -837,8 +837,16 @@ expected to use this same API as regular authenticated clients (discovering it t
 - **Rate limit**: `POST /me/submissions` allows `SUBMISSION_CREATE_RATE_LIMIT` (20 / 15 min,
   `src/presentation/http/submissions/submissionLimits.ts`) **per user** via `rateLimit({ keyGenerator: byUserId })`
   (in-memory, per process). Raise it if a crawler account needs more.
-- `aiScore` / `aiReason` are never writable through the API (reserved for an AI moderation job) and only shown in the
-  moderation responses.
+- `aiScore` / `aiReason` are never writable through the API and only shown in the moderation responses. They are
+  filled by the **AI pre-moderation (#5)**: after `POST /me/submissions` and `PUT /me/submissions/:id` (never awaited
+  by the request) `SubmissionService.aiReview` sends the name / title, description and address to OpenAI's moderation
+  endpoint (`OpenAIContentModerator`, `omni-moderation-latest`, free, 8 s timeout) and adds a local spam check
+  (`spamVerdict`: links, phone numbers, promo words, shouting, repeated characters; the moderation API does not look
+  for ads). `aiScore` = the highest score (0-1), `aiReason` = the flagged categories. Written only while PENDING.
+  **Fails open**: without `AI_MODERATION_API_KEY` (one warning) only the spam check runs; on a timeout or error the
+  fields stay as they were and the suggestion reaches the human queue. Logs only the id, never the text. v1 only flags:
+  nothing is auto-rejected. In the queue, `sort=-aiScore` lists the flagged first (unchecked last) and `flagged=true`
+  keeps those at or above `AI_MODERATION_THRESHOLD` (default 0.5).
 - Province/canton (#40, point 1): the API keeps requiring `cantonId` for PLACE suggestions; the app picks the canton
   with a selector filtered by province (`GET /provinces?include=cantons`).
 - Caveat: reading a submission re-validates its stored `data` with the current Place/Event rules, so tightening
