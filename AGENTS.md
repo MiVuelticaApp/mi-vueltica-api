@@ -554,7 +554,8 @@ strings (`StillHappening`, `PricePaid`, `ReportReason` in mi-vueltica-app), stor
 
 - **Who**: signed-in users (`optionalJwtAuth`, `PersonKey.forUser` → `user:<id>`) or guests with the `X-Device-Id` header
   (8-128 chars `[A-Za-z0-9._:-]`, `device:<id>`); neither → 400 (`presentation/http/community/utils/person.ts`). The
-  `personKey` is stored, never shown. Guests cannot attach a `photo` (401: uploads need an account); a user's photo must be
+  `personKey` is stored, never shown. CORS lists `X-Device-Id` in `allowedHeaders` (`presentation/http/app.ts`); a new custom
+  request header must be added there too or browsers reject the preflight. Guests cannot attach a `photo` (401: uploads need an account); a user's photo must be
   their own upload (422). Rate limits per user or IP: verifications 30 / 15 min, reports 10 / 15 min (`communityLimits.ts`).
   A guest can mint device ids, so these limits are the only brake on fake guest reports.
 - **Verify** `POST /places/:placeId/verifications` (and `/events/:eventId/verifications`) `{ stillHappening: si|no|nose,
