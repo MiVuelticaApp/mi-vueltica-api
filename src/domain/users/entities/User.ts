@@ -31,6 +31,8 @@ export class User {
       role: props.role ?? "USER",
       province: props.province ?? null,
       reputationPoints: props.reputationPoints ?? 0,
+      privacyVersion: props.privacyVersion ?? null,
+      privacyAcceptedAt: props.privacyAcceptedAt ? new Date(props.privacyAcceptedAt) : null,
       deletedAt: props.deletedAt ? new Date(props.deletedAt) : null,
       createdAt: new Date(props.createdAt),
       updatedAt: new Date(props.updatedAt),
@@ -50,6 +52,9 @@ export class User {
   get provinceId() { return this.props.province?.id ?? null; }
   /** Read-only here: points only change through the reputation ledger. */
   get reputationPoints() { return this.props.reputationPoints; }
+  /** Privacy notice version accepted (null until they accept), and when. */
+  get privacyVersion() { return this.props.privacyVersion; }
+  get privacyAcceptedAt() { return this.props.privacyAcceptedAt; }
   get deletedAt() { return this.props.deletedAt; }
   get createdAt() { return this.props.createdAt; }
   get updatedAt() { return this.props.updatedAt; }
@@ -81,6 +86,8 @@ export interface UserProps {
   role: UserRole;
   province: UserProvince | null;
   reputationPoints: number;
+  privacyVersion: string | null;
+  privacyAcceptedAt: Date | null;
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -97,6 +104,8 @@ export interface UserConstructorProps {
   role?: UserRole;
   province?: UserProvince | null;
   reputationPoints?: number;
+  privacyVersion?: string | null;
+  privacyAcceptedAt?: string | null;
   deletedAt?: string | null;
   createdAt: string;
   updatedAt: string;

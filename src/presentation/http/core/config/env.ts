@@ -29,6 +29,8 @@ const ENV = {
   MAIL_FROM: required("MAIL_FROM"),
   // Test login for App Store / Google Play review. Deliberately NOT required(): a deployment
   // without these must still boot. The route is only mounted when TEST_LOGIN_ENABLED === "true".
+  // Privacy notice version the review test login records as accepted (#7); keep it equal to the app's `PRIVACY_VERSION`.
+  PRIVACY_VERSION: process.env.PRIVACY_VERSION || "2026-11-13",
   TEST_LOGIN_ENABLED: process.env.TEST_LOGIN_ENABLED === "true",
   TEST_LOGIN_EMAIL: process.env.TEST_LOGIN_EMAIL || "",
   TEST_LOGIN_PASSWORD: process.env.TEST_LOGIN_PASSWORD || "",

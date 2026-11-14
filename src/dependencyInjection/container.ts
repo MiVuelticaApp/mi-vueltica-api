@@ -203,6 +203,7 @@ export const testLoginService: ITestLoginService = new TestLoginService(userServ
   enabled: ENV.TEST_LOGIN_ENABLED,
   email: ENV.TEST_LOGIN_EMAIL,
   password: ENV.TEST_LOGIN_PASSWORD,
+  privacyVersion: ENV.PRIVACY_VERSION,
 }, testAccountSeeder);
 
 export const accountDeletionService: IAccountDeletionService = new AccountDeletionService(userDeletionUOW);
