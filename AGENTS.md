@@ -183,7 +183,7 @@ iOS client; unknown keys → 400. The response is **204** with no body. Service 
 1. Load the user; throw `UserNotFoundError` (404) if missing.
 2. Capture `email` and `name` **before** deleting (the confirmation email needs a recipient).
 3. Hard delete the `User` row. Everything that belongs to the user is removed by the database:
-   `UserInterest`, `Submission` (as author), `Favorite`, `ReviewUsefulVote`, `Device`, `Notification`, `ReputationEvent` and `ModerationVote` cascade;
+   `UserInterest`, `Submission` (as author), `Favorite`, `ReviewUsefulVote`, `Device`, `Notification`, `ReputationEvent`, `ModerationVote` and `UserBlock` (as blocker or blocked) cascade;
    `Submission.reviewedById` is set to null for submissions the user moderated. **Reviews are deleted** with the
    account (`Review.userId` is `ON DELETE CASCADE`; their photos and "útil" votes cascade, their uploads go to the orphan
    cleanup), as the app's `anonymizeOnDelete` rule says: published plans stay as "Anónimo", reviews and pending plans go.
@@ -497,6 +497,28 @@ is hand-written: Prisma's generated one fails on a table with rows (error 1553 o
 - **isFavorite**: `PlaceController.get` and `EventController.get` call `IFavoriteService.isFavorite(userId, { type, id })` when
   `req.user` is set and add `isFavorite` to the detail response; anonymous callers do not get the field.
 - Push reminders for saved events ("Te avisamos 1 día antes") are not implemented (#44).
+
+## Blocks
+
+Block users (#17; App Store guideline 1.2, "Bloquear a esta persona"). One `UserBlock` table (own `id`, `blockerId`, `blockedId`, unique
+pair, both foreign keys `ON DELETE CASCADE`, so deleting either account removes its blocks; see "Account deletion"). Migration
+`20261115120000_add_user_blocks` only adds the table (it has not been run against a database yet: confirm it matches `schema.prisma`).
+
+- **Block** (`jwtAuth`, 204, idempotent): `POST /places/:placeId/author/block`, `/events/:eventId/author/block` and `/reviews/:reviewId/author/block`
+  (`blocks/routes/targetBlock.routes.ts`, mounted before the parent routers). The blocked person is the target's author: `Place.authorId` /
+  `Event.authorId` (the submitter) or `Review.userId`. The target must exist and be `PUBLISHED` (else its own 404, so blocking never reveals who
+  wrote a hidden or pending plan); no author (curated content) → 404 `BlockTargetWithoutAuthorError` (JSON body, which is how the app tells it
+  from a missing route); your own content → 422 `CannotBlockYourselfError`. `BlockService.blockAuthor`; the insert is one `INSERT ... ON DUPLICATE KEY UPDATE`
+  (like favorites).
+- **List / unblock** (`/me/blocks`, mounted before `/me`): `GET` paginated `{ id, name, createdAt }` (`id` is the block's, `name` the blocked person's
+  first name; default `-createdAt`); `DELETE /:id` → 204 and idempotent (a missing or someone else's block is ignored, never 404).
+- **What a block hides, for the blocker only** (signed-in callers; anonymous requests are unchanged): places and events in lists and as 404 on the
+  detail (`excludeAuthorIds` on `PlaceListFilters` / `EventListFilters` / `PlaceVisibilityOptions` / `EventVisibilityOptions`), the person's reviews in
+  `GET /places|events/:id/reviews` (`excludeUserIds`; the rating summary still counts them), and their plans in `GET /me/favorites` (the favorite row
+  stays). The controllers read the blocked ids once per request with `IBlockService.blockedUserIds(viewerId)` (no query without a viewer).
+  **Not filtered**: the moderation queues, `GET /me/*` (your own content), photo galleries, the MCP tools, and plans without an author.
+- **SQL NULL trap**: `authorId NOT IN (...)` is NULL (the row is dropped) when `authorId` is NULL, so every filter is written as
+  `authorId IS NULL OR authorId NOT IN (...)` (for favorites: `place IS NULL OR place.<that>`). Do not "simplify" it into `notIn` alone.
 
 ## Reviews
 

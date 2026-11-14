@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { z } from "zod";
+import { IBlockService } from "@/application/blocks/services/interfaces/IBlockService";
 import { IFavoriteService } from "@/application/favorites/services/interfaces/IFavoriteService";
 import { FavoriteTarget, FavoriteType } from "@/domain/favorites/entities/FavoriteItem";
 import { getAuthUser } from "@/presentation/http/auth/utils/getAuthUser";
@@ -16,12 +17,17 @@ type Handler = (req: Request, res: Response) => Promise<void>;
 export const FAVORITE_TARGET_PARAMS: Record<FavoriteType, string> = { PLACE: "placeId", EVENT: "eventId" };
 
 export default class FavoriteController {
-  constructor(private readonly favoriteService: IFavoriteService) {}
+  constructor(
+    private readonly favoriteService: IFavoriteService,
+    private readonly blockService: IBlockService,
+  ) {}
 
   async list(req: Request, res: Response): Promise<void> {
     const { id } = getAuthUser(req);
     const query = getValidated<ListQuery>(req, "query");
-    const result = await this.favoriteService.list(id, toPaginationParams(query), { type: query.type });
+    // Saved plans of the people the user blocked disappear from the list (#17); the favorite itself stays.
+    const excludeAuthorIds = await this.blockService.blockedUserIds(id);
+    const result = await this.favoriteService.list(id, toPaginationParams(query), { type: query.type, excludeAuthorIds });
     res.json(toPaginatedResponse(result, FavoriteDtoMapper.toResponse));
   }
 

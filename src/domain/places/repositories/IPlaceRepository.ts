@@ -20,6 +20,8 @@ export interface PlaceListFilters extends PlanConditionsFilters, GeoFilters {
   statuses?: ContentStatus[];
   /** Substring match on name, description or address. */
   search?: string;
+  /** Hides the plans authored by these users (the viewer's blocked people, #17). Plans without an author stay. */
+  excludeAuthorIds?: string[];
 }
 
 export interface IPlaceRepository {

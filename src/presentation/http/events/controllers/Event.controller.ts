@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { z } from "zod";
+import { IBlockService } from "@/application/blocks/services/interfaces/IBlockService";
 import { IEventService } from "@/application/events/services/interfaces/IEventService";
 import { EventListFilters } from "@/domain/events/repositories/IEventRepository";
 import { ContentStatus } from "@/domain/places/valueObjects/contentStatus.valueObject";
@@ -32,6 +33,7 @@ export default class EventController {
     private readonly eventService: IEventService,
     private readonly favoriteService: IFavoriteService,
     private readonly communityService: ICommunityService,
+    private readonly blockService: IBlockService,
   ) {}
 
   async list(req: Request, res: Response): Promise<void> {
@@ -54,6 +56,8 @@ export default class EventController {
       families: query.families,
       wheelchair: query.wheelchair,
       ...toGeoFilters(query),
+      // A signed-in viewer does not see the events of the people they blocked (#17).
+      excludeAuthorIds: await this.blockService.blockedUserIds(req.user?.id),
     };
 
     const result = await this.eventService.list(toPaginationParams(query), filters);
@@ -65,6 +69,7 @@ export default class EventController {
     const detail = await this.eventService.get(id, {
       statuses: canSeeUnpublished(req) ? undefined : PUBLIC_STATUSES,
       viewerId: req.user?.id,
+      excludeAuthorIds: await this.blockService.blockedUserIds(req.user?.id),
     });
     const verification = await this.communityService.verificationSummary({ type: "EVENT", id }, optionalPerson(req));
     const response = EventDtoMapper.toDetailResponse(detail, verification);

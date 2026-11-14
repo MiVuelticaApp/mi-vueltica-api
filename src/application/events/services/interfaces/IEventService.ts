@@ -14,6 +14,8 @@ export interface EventVisibilityOptions {
   statuses?: ContentStatus[];
   /** The caller's user id: the author of a plan always sees it, whatever its status (e.g. hidden, with the reason). */
   viewerId?: string;
+  /** Events authored by these users (the viewer's blocked people, #17) are not found, whatever their status. */
+  excludeAuthorIds?: string[];
 }
 
 export interface IEventService {

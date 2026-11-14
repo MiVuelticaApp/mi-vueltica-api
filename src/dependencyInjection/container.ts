@@ -50,6 +50,10 @@ import PrismaReviewRepository from "@/infrastructure/reviews/repositories/Prisma
 import { ReviewService } from "@/application/reviews/services/implementations/ReviewService";
 import { IReviewService } from "@/application/reviews/services/interfaces/IReviewService";
 import ReviewController from "@/presentation/http/reviews/controllers/Review.controller";
+import PrismaBlockRepository from "@/infrastructure/blocks/repositories/PrismaBlockRepository";
+import { BlockService } from "@/application/blocks/services/implementations/BlockService";
+import { IBlockService } from "@/application/blocks/services/interfaces/IBlockService";
+import BlockController from "@/presentation/http/blocks/controllers/Block.controller";
 import PrismaSubmissionRepository from "@/infrastructure/submissions/repositories/PrismaSubmissionRepository";
 import { PrismaSubmissionApprovalUnitOfWork } from "@/infrastructure/submissions/unitsOfWork/PrismaSubmissionApprovalUnitOfWork";
 import { SubmissionService } from "@/application/submissions/services/implementations/SubmissionService";
@@ -107,6 +111,7 @@ export const placeRepository = new PrismaPlaceRepository();
 export const eventRepository = new PrismaEventRepository();
 export const favoriteRepository = new PrismaFavoriteRepository();
 export const reviewRepository = new PrismaReviewRepository();
+export const blockRepository = new PrismaBlockRepository();
 export const submissionRepository = new PrismaSubmissionRepository();
 export const deviceRepository = new PrismaDeviceRepository();
 export const notificationRepository = new PrismaNotificationRepository();
@@ -224,10 +229,12 @@ export const categoryController = new CategoryController(categoryService);
 export const provinceController = new ProvinceController(provinceService);
 export const cantonController = new CantonController(cantonService);
 export const sourceController = new SourceController(sourceService);
-export const placeController = new PlaceController(placeService, favoriteService, communityService);
-export const eventController = new EventController(eventService, favoriteService, communityService);
-export const favoriteController = new FavoriteController(favoriteService);
-export const reviewController = new ReviewController(reviewService);
+export const blockService: IBlockService = new BlockService(blockRepository, placeRepository, eventRepository, reviewRepository);
+export const blockController = new BlockController(blockService);
+export const placeController = new PlaceController(placeService, favoriteService, communityService, blockService);
+export const eventController = new EventController(eventService, favoriteService, communityService, blockService);
+export const favoriteController = new FavoriteController(favoriteService, blockService);
+export const reviewController = new ReviewController(reviewService, blockService);
 export const communityController = new CommunityController(communityService);
 export const moderationService: IModerationService = new ModerationService(
   userRepository,
