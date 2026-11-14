@@ -6,7 +6,7 @@ import ENV from "@/presentation/http/core/config/env";
 import OAuthService from "@/application/auth/services/implementations/IOAuthService";
 import TestLoginService from "@/application/auth/services/implementations/TestLoginService";
 import { ITestLoginService } from "@/application/auth/services/interfaces/ITestLoginService";
-import { TestAccountSeeder } from "@/application/auth/services/implementations/TestAccountSeeder";
+import { PrismaTestAccountSeeder } from "@/infrastructure/auth/PrismaTestAccountSeeder";
 import { ITestAccountSeeder } from "@/application/auth/services/interfaces/ITestAccountSeeder";
 import { UserService } from "@/application/users/services/implementations/UserService";
 import { AdminUserService } from "@/application/users/services/implementations/AdminUserService";
@@ -201,9 +201,7 @@ export const userInterestService = new UserInterestService(userRepository, userI
 export const oAuthService = new OAuthService(userService, googleOAuthProvider, appleOAuthProvider, idGenerator);
 
 
-export const testAccountSeeder: ITestAccountSeeder = new TestAccountSeeder(
-  userService,
-);
+export const testAccountSeeder: ITestAccountSeeder = new PrismaTestAccountSeeder();
 export const testLoginService: ITestLoginService = new TestLoginService(userService, idGenerator, {
   enabled: ENV.TEST_LOGIN_ENABLED,
   email: ENV.TEST_LOGIN_EMAIL,
