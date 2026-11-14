@@ -43,7 +43,13 @@ export class PrismaNotificationSettingsRepository implements INotificationSettin
     const [places, events] = await Promise.all([
       this.client.place.count({ where: { status: "PUBLISHED", createdAt: { gte: since }, canton: { provinceId } } }),
       this.client.event.count({
-        where: { status: "PUBLISHED", createdAt: { gte: since }, startsAt: { gte: new Date() }, place: { canton: { provinceId } } },
+        where: {
+          status: "PUBLISHED",
+          createdAt: { gte: since },
+          startsAt: { gte: new Date() },
+          // Through the place, or the event's own canton when it has no place (same rule as `GET /events?cantonId=`).
+          OR: [{ place: { canton: { provinceId } } }, { placeId: null, canton: { provinceId } }],
+        },
       }),
     ]);
     return places + events;

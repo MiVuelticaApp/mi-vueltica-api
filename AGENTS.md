@@ -455,7 +455,8 @@ require `jwtAuth` + `requireRole("MODERATOR", "ADMIN")`; `DELETE /:id` requires 
   query ignored; all statuses or the optional `status` filter for MODERATOR/ADMIN). `GET /:id` of a non-PUBLISHED event is 404
   `EventNotFoundError` unless privileged.
 - **List filters** (all optional): `from`, `to` (ISO 8601 **with offset**, `from <= to` else 400), `categoryId`, `placeId`, `cantonId`
-  (through `place`; events without a place never match), `targetAudience`, `status` (privileged only), `q` (substring on title/description, max 100).
+  (the **resolved canton**: Prisma `OR` of `place.cantonId` and, for events without a place, their own `Event.cantonId`; events with neither
+  never match), `targetAudience`, `status` (privileged only), `q` (substring on title/description, max 100).
   **`from` defaults to now for everyone** (applied after validation), so the list shows upcoming/ongoing events unless an earlier `from` is sent.
   Range semantics are overlap: `startsAt <= to` AND (`endsAt >= from` OR (`endsAt IS NULL` AND `startsAt >= from`)).
   **Geo** (#37): same params and rules as places (`bbox` or `radius`, shared `presentation/http/core/validators/geo.ts`), matched against the
@@ -464,20 +465,28 @@ require `jwtAuth` + `requireRole("MODERATOR", "ADMIN")`; `DELETE /:id` requires 
   `PrismaPlaceRepository`), returning ids for `id IN (...)`. Events without any location never match a geo filter.
 - **Body**: `placeId?` (uuid|null), `categoryId`, `sourceId?` (uuid|null), `title` (1-191), `description?` (<=5000), `startsAt`, `endsAt?`
   (ISO 8601 with offset; responses always use `toISOString()` UTC), `targetAudience?` (default `EVERYONE`), and the own location `latitude?`,
-  `longitude?`, `address?` (see below). Status is not in POST/PUT: new events are `PENDING`, PUT keeps the current status. There is no `verifiedAt` on events.
+  `longitude?`, `address?` and own `cantonId?` (see below). Status is not in POST/PUT: new events are `PENDING`, PUT keeps the current status. There is no `verifiedAt` on events.
 - **Own location** (#37): an event either has a `placeId` (its location is the place's point) **or** its own `latitude` + `longitude` (+ optional
   `address`, <=191, trimmed) for events without a fixed place, **or neither** (allowed, just not on the map). Rules (`eventLocationError` in
   `domain/events/valueObjects/eventLocation.valueObject.ts`, used by both Zod and the domain → 400): own fields together with `placeId` → 400; `latitude`
   without `longitude` (or vice versa) → 400; `address` without coordinates → 400. Blank/null fields count as absent. Stored in nullable `Event.latitude`,
   `longitude` (`Decimal(9,6)`), `address`; a PUT that sets `placeId` clears them. Reads are lenient: a row with a `placeId` ignores its own columns, so a
   hand-edited row cannot break the lists. If the place is deleted, `placeId` becomes null (SET NULL) and the event has no location.
+- **Own canton** (app #9, migration `20261119120000_add_event_canton`): nullable `Event.cantonId` (FK to `Canton`, SET NULL, indexed), same rule as
+  the own location: only for events **without** a place (`cantonId` with `placeId` → 400 `EVENT_CANTON_WITH_PLACE_ERROR`, in `eventLocationError`);
+  independent of the coordinates (canton without a point, or a point without canton, are both allowed). Unknown canton → 422 `InvalidCantonError`
+  (`EventService.ensureReferencesExist` and `ensureSubmissionReferencesExist`). A PUT that sets `placeId` clears it; reads ignore it when `placeId`
+  is set. Used by the `cantonId` list filter and by the push "planes nuevos cerca" count (`PrismaNotificationSettingsRepository.countNewInProvince`:
+  `place.canton.provinceId` OR own `canton.provinceId`). `CantonService.delete` still only checks places (`CantonInUseError`); deleting a canton nulls
+  the events' own `cantonId`.
 - **Responses** (list, detail, POST/PUT/PATCH and favorites) always carry the resolved `latitude`, `longitude`, `address` (place's point when linked,
-  else own, else null) and `place: PlaceSummary | null` (read model `EventListItem` = event + place + location, built by `toEventListItem`). The
-  coordinates come from the place **whatever its status**; only the `place` summary is hidden (`withVisiblePlace`) from non-privileged callers when the
-  place is not PUBLISHED. Clients must not send the response coordinates back in a PUT when `placeId` is set (400).
+  else own, else null), the resolved `cantonId` (place's canton when linked, else own, else null; `resolveEventCantonId`) and
+  `place: PlaceSummary | null` (read model `EventListItem` = event + place + location + cantonId, built by `toEventListItem`). The
+  coordinates and canton come from the place **whatever its status**; only the `place` summary is hidden (`withVisiblePlace`) from non-privileged callers when the
+  place is not PUBLISHED. Clients must not send the response coordinates or `cantonId` back in a PUT when `placeId` is set (400).
 - **Rules**: `endsAt >= startsAt` is enforced in Zod (400) and by the `EventSchedule` value object (`DataException`, so the service/MCP path is protected too).
-  Unknown `placeId` (any status) / `categoryId` / `sourceId` give 422 `InvalidPlaceError` / `InvalidCategoryError` / `InvalidSourceError`
-  (the last two are reused from `application/places/errors`).
+  Unknown `placeId` (any status) / `cantonId` / `categoryId` / `sourceId` give 422 `InvalidPlaceError` / `InvalidCantonError` /
+  `InvalidCategoryError` / `InvalidSourceError` (the last three are reused from `application/places/errors`).
 - **Detail** (`EventDetail` read model, extends `EventListItem`): `place: PlaceSummary | null` (`id, name, cantonId, latitude, longitude, address, status`).
   For non-privileged callers the place is `null` when it is not PUBLISHED (`placeId` and the resolved location are still returned); done in
   `EventService.get` / `EventService.list` through the same `statuses` option. Authenticated callers also get `isFavorite` (see Favorites).
@@ -773,7 +782,8 @@ deleted from `Device`. `PushNotifier` decides what to send:
   (`p-<uuid>` / `e-<uuid>`, the app opens the plan); rejected → `data.screen: "mine"` (Mis vuelticas).
 - **Planes nuevos cerca**: `startNearbyPlansJob` (every 6 h, first run 5 min after boot; `NEARBY_PUSH_ENABLED=false`
   turns it off) picks up to 500 users with the switch on, a province and a device whose `lastNearbyPushAt` is older
-  than 7 days, counts PUBLISHED places and upcoming events (through their place) created in that province in the
+  than 7 days, counts PUBLISHED places and upcoming events (through their place, or their own `cantonId` when they have no
+  place) created in that province in the
   last 7 days, marks the user and pushes only when the count is above 0 (`data.url: "/"`).
 - `GET` / `PUT /me/notification-settings` `{ reminders, newNearby, myStatus }` (all booleans, all required on PUT,
   default true). `reminders` are local reminders in the app; the API only stores the switch.
@@ -813,7 +823,7 @@ expected to use this same API as regular authenticated clients (discovering it t
   as `oneOf`). `data` is the `POST /places` or `POST /events` body **without `sourceId`**; unknown keys (`sourceId`,
   `aiScore`, `aiReason`, `status`, ...) are stripped. The event variant reuses `CreateEventBaseSchema` +
   `endsAtNotBeforeStartsAt` + `eventLocationRule` (Zod 4 forbids `.omit()` on refined objects), so it also takes the event's own
-  `latitude` / `longitude` / `address` (#37); they are stored flat in the JSON and become the event's location on approval. The domain re-validates the payload with
+  `latitude` / `longitude` / `address` (#37) and own `cantonId` (app #9); they are stored flat in the JSON and become the event's location on approval. The domain re-validates the payload with
   `normalizePlaceData` / `normalizeEventData` (`domain/submissions/entities/SubmissionPayload.ts`); event dates are
   stored in the JSON column as ISO strings. Unknown canton/category/place → 422 (on create and again on approve).
 - **Approve** runs in one transaction (`ISubmissionApprovalUnitOfWork` / `PrismaSubmissionApprovalUnitOfWork`, same

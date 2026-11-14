@@ -284,6 +284,7 @@ model Canton {
 
   province Province @relation(fields: [provinceId], references: [id])
   places   Place[]
+  events   Event[]
 
   @@unique([provinceId, name])
 }
@@ -376,6 +377,9 @@ model Event {
   latitude  Decimal? @db.Decimal(9, 6)
   longitude Decimal? @db.Decimal(9, 6)
   address   String?
+  // Own canton (app #9), same rule: only without a place (with one, the place's canton is used), so
+  // `GET /events?cantonId=` also finds events that have their own location.
+  cantonId  Int?
 
   targetAudience TargetAudience @default(EVERYONE)
   status         ContentStatus  @default(PENDING)
@@ -400,6 +404,7 @@ model Event {
   updatedAt DateTime @updatedAt
 
   place           Place?           @relation(fields: [placeId], references: [id], onDelete: SetNull)
+  canton          Canton?          @relation(fields: [cantonId], references: [id], onDelete: SetNull)
   category        Category         @relation(fields: [categoryId], references: [id])
   source          Source?          @relation(fields: [sourceId], references: [id])
   author          User?            @relation("EventAuthor", fields: [authorId], references: [id], onDelete: SetNull)
@@ -414,6 +419,7 @@ model Event {
 
   @@index([startsAt, status])
   @@index([latitude, longitude])
+  @@index([cantonId])
 }
 
 /// Ordered gallery photo of exactly one Place or one Event (enforced by the application: MySQL 8

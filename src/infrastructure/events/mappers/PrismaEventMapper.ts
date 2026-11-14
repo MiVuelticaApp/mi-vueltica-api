@@ -23,6 +23,7 @@ export class PrismaEventMapper {
       latitude: row.latitude ? row.latitude.toNumber() : null,
       longitude: row.longitude ? row.longitude.toNumber() : null,
       address: row.address,
+      cantonId: row.cantonId,
       targetAudience: row.targetAudience,
       ...planConditionsFromColumns(row),
       status: row.status,
