@@ -948,15 +948,35 @@ when the response ends, so there is no in-memory session state. `GET /mcp` and `
   and wrap handlers in `try/catch` → `toolError(error)` (`mcp/utils/toolResult.ts`): `DomainError` /
   `ApplicationError` messages go to the model with `isError: true`; anything else is logged and returned as a
   generic message. Input validation errors are produced by the SDK from the zod `inputSchema`.
+- **Caller context**: `McpController.handle` reads the user with `getAuthUser(req)` (after `jwtAuth` + `requireRole`, so the role is set) and
+  calls `McpServerFactory({ userId, role })`; tools that need to log who acted receive that `McpCaller` (ids only, no PII).
+- **Strict input**: every tool registers `inputSchema: strictInput(shape)` (`mcp/utils/strictInput.ts` = `z.object(shape).strict()`; SDK 1.32 accepts a
+  full Zod object and enforces it). An unknown argument (e.g. `status` sent to `create_event`) fails with `Unrecognized key` (`-32602`) instead of being
+  dropped, and the listed JSON schema has `additionalProperties: false`. New tools must use `strictInput`; the server `instructions` say so too.
+- **Output schemas** are checked by clients (ajv, `additionalProperties: false`): when a response DTO gets a field (as `hiddenReason` once did), add it to
+  `placeOutput` / `eventOutput` or every call of the tool fails on the client.
 - **Tools**: `list_categories` (`search?`, `page` = 1, `pageSize` = 100 max 100; sorted by name, read-only).
   `list_places` (`cantonId?`, `provinceId?`, `categoryId?`, `targetAudience?`, `status?`, `page`, `pageSize` = 20; by name, read-only) and
-  `search_places` (required `query`, optional radius `lat`+`lng`+`radiusKm` all together else `isError`, `categoryId?`, `cantonId?`, `status?`, paging; read-only).
-  `list_events` (`from?` defaults to now, `to?`, `categoryId?`, `placeId?`, `cantonId?`, `targetAudience?`, `status?`, optional radius `lat`+`lng`+`radiusKm`
-  all together else `isError`, paging; by `startsAt` asc, `from > to` is an `isError`) and `search_events` (same plus required `query` on title/description;
-  read-only); their items carry the resolved `latitude`/`longitude`/`address` and `place`. Every list/search item also has the card stats (`averageRating`, `reviewCount`, `coverPhotoUrl`). `create_place` and `create_event`
-  (same fields as the POST bodies, including the event's own `latitude`/`longitude`/`address`; created as `PENDING`; datetimes ISO 8601 with offset;
-  `endsAt < startsAt` or `placeId` plus own location surface as `isError` via the domain value objects).
-  The MCP caller is privileged, so list/search include every status unless `status` is given. Input uses raw Zod shapes (no object-level refinements), so
-  cross-field rules live in the handler / domain.
+  `search_places` (required `query`, `categoryId?`, `cantonId?`, `status?`, paging; read-only).
+  `list_events` (`from?` defaults to now, `to?`, `categoryId?`, `placeId?`, `cantonId?`, `targetAudience?`, `status?`, paging; by `startsAt` asc, `from > to`
+  is an `isError`) and `search_events` (same plus required `query` on title/description; read-only); their items carry the resolved
+  `latitude`/`longitude`/`address` and `place`. Every list/search item also has the card stats (`averageRating`, `reviewCount`, `coverPhotoUrl`).
+  **Filter parity with REST** on those four: `maxPrice` (`gratis|hasta2500|hasta5000`), `students`, `seniors`, `families`, `wheelchair` (booleans;
+  `false` or omitted = no filter, as REST `"false"`; shared in `mcp/utils/planConditions.ts`: `planFiltersInput` / `toPlanFilters`) and geo: radius
+  `lat`+`lng`+`radiusKm` **or** bbox `minLat`+`minLng`+`maxLat`+`maxLng` (`mcp/utils/geo.ts`, which runs the REST `refineGeoQuery` / `toGeoFilters`, so a
+  partial group, min > max or radius mixed with bbox is an `isError`). The MCP caller is privileged, so list/search include every status unless `status` is given.
+  Input uses raw Zod shapes (no object-level refinements), so cross-field rules live in the handler / domain.
+  `create_place` and `create_event` (same fields as the POST bodies, including the event's own `latitude`/`longitude`/`address` and own `cantonId`; created as
+  `PENDING`: they are published with `set_*_status`; datetimes ISO 8601 with offset; `endsAt < startsAt`, `placeId` plus own location or own canton surface as
+  `isError` via the domain value objects). `sourceId` comes from `list_sources`.
+  `update_place` / `update_event` (`id` + the same fields as `create_*`): **full replace** like `PUT` (omitted optional fields are cleared or go back to their
+  defaults; the description tells the model to fetch the current values first, and not to resend an event's resolved `latitude`/`longitude`/`address`/`cantonId`
+  when it has a `placeId`; sending a `placeId` clears the own location and canton). Status is kept. `destructiveHint`, `idempotentHint`.
+  `set_place_status` / `set_event_status` (`{ id, status }`, any `CONTENT_STATUSES`, like `PATCH /:id/status`): the way to publish what `create_*` made. Each
+  change is logged with `console.info("[mcp] set_event_status", { userId, role, eventId, status })` (`set_place_status` logs `placeId`), ids only.
+  `list_sources` (`type?`, `search?`, paging; by name, read-only; `SourceDtoMapper`) and `mark_source_crawled` (`{ id, at? }`, ISO 8601 with offset, default now;
+  `SourceService.markCrawled`). `add_place_photo` / `add_event_photo` (`{ placeId | eventId, url }`, `IPhotoService.add`: https external <= 2048 or our own file
+  URL, appended at the end, returns the `PhotoResponse`; not idempotent). Reorder and delete of photos stay REST-only.
+  Source create/update/delete and the service-token auth are not exposed through MCP.
 - **Try it**: `npx @modelcontextprotocol/inspector` → Streamable HTTP, `http://localhost:<PORT>/mcp`, with the
   `Authorization` header; or `claude mcp add --transport http mi-vueltica http://localhost:<PORT>/mcp --header "Authorization: Bearer <jwt>"`.

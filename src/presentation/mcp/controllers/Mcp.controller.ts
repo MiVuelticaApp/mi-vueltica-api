@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { getAuthUser } from "@/presentation/http/auth/utils/getAuthUser";
 import { McpServerFactory } from "../server/createMcpServer";
 
 /**
@@ -9,7 +10,9 @@ export default class McpController {
   constructor(private readonly createServer: McpServerFactory) {}
 
   async handle(req: Request, res: Response): Promise<void> {
-    const server = this.createServer();
+    // Runs after `jwtAuth` + `requireRole`, so the user and role are set.
+    const user = getAuthUser(req);
+    const server = this.createServer({ userId: user.id, role: user.role ?? "UNKNOWN" });
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
     res.on("close", () => {

@@ -276,4 +276,4 @@ export const systemController = new SystemController(ENV.MIN_FRONTEND_VERSION);
 
 // ==================== MCP ====================
 
-export const mcpController = new McpController(createMcpServerFactory({ categoryService, placeService, eventService }));
+export const mcpController = new McpController(createMcpServerFactory({ categoryService, placeService, eventService, sourceService, photoService }));
