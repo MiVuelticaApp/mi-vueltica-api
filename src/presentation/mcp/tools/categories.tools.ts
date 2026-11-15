@@ -1,3 +1,4 @@
+import { strictInput } from "../utils/strictInput";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ICategoryService } from "@/application/categories/services/interfaces/ICategoryService";
@@ -39,7 +40,7 @@ export function registerCategoryTools(server: McpServer, categoryService: ICateg
         "Lista las categorías de Mi Vueltica ordenadas por nombre. Usa el `id` de una categoría como " +
         "`categoryId` al buscar o crear eventos y lugares. Si `total` es mayor que lo devuelto, pide la " +
         "siguiente página.",
-      inputSchema: listCategoriesInput,
+      inputSchema: strictInput(listCategoriesInput),
       outputSchema: listCategoriesOutput,
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
