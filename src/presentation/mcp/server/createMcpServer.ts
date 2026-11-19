@@ -36,7 +36,7 @@ export function createMcpServerFactory(deps: McpServerDependencies): McpServerFa
       { name: "mi-vueltica", version: "1.0.0" },
       {
         instructions:
-          "API de Mi Vueltica (lugares y eventos en Costa Rica). Todos los textos están en español. " +
+          "API de Mi VuelTica (lugares y eventos en Costa Rica). Todos los textos están en español. " +
           "Las herramientas rechazan argumentos desconocidos (error de validación) en vez de ignorarlos. " +
           "`create_place` / `create_event` crean contenido PENDING; se publica con `set_place_status` / `set_event_status`. " +
           "`update_place` / `update_event` reemplazan todos los campos: consulta primero los valores actuales.",

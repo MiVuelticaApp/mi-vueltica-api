@@ -37,7 +37,7 @@ export function registerCategoryTools(server: McpServer, categoryService: ICateg
     {
       title: "Listar categorías",
       description:
-        "Lista las categorías de Mi Vueltica ordenadas por nombre. Usa el `id` de una categoría como " +
+        "Lista las categorías de Mi VuelTica ordenadas por nombre. Usa el `id` de una categoría como " +
         "`categoryId` al buscar o crear eventos y lugares. Si `total` es mayor que lo devuelto, pide la " +
         "siguiente página.",
       inputSchema: strictInput(listCategoriesInput),

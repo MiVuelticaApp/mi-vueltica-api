@@ -2315,7 +2315,7 @@ const userProperties = {
 const openApiDocument = {
   openapi: "3.1.0",
   info: {
-    title: "Mi Vueltica API",
+    title: "Mi VuelTica API",
     version: "1.0.0",
   },
   servers: [{ url: "/api/v1" }],

@@ -19,7 +19,7 @@ export type RejectionReason = (typeof REJECTION_REASONS)[number];
 
 /** Text shown to the author for each code (es-CR). `otro` shows the moderator's note instead. */
 export const REJECTION_REASON_LABELS: Record<Exclude<RejectionReason, "otro">, string> = {
-  duplicado: "Ya existe en Mi Vueltica",
+  duplicado: "Ya existe en Mi VuelTica",
   masDe5000: "Cuesta más de ₡5.000",
   eventoPasado: "El evento ya pasó",
   datosIncompletos: "Faltan datos o no se pudieron verificar",

@@ -1,6 +1,6 @@
-# MiVueltica · API
+# Mi VuelTica · API
 
-REST API and MCP server behind MiVueltica: places, events, reviews, community suggestions, moderation, reputation and push notifications.
+REST API and MCP server behind Mi VuelTica: places, events, reviews, community suggestions, moderation, reputation and push notifications.
 
 | Repository | What it is |
 |---|---|

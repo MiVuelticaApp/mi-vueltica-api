@@ -207,7 +207,7 @@ export function registerEventTools(server: McpServer, eventService: IEventServic
     {
       title: "Listar eventos",
       description:
-        "Lista los eventos de Mi Vueltica ordenados por fecha de inicio (los más próximos primero). Por defecto solo " +
+        "Lista los eventos de Mi VuelTica ordenados por fecha de inicio (los más próximos primero). Por defecto solo " +
         "devuelve eventos próximos o en curso (`from` = ahora); envía un `from` anterior para ver eventos pasados. " +
         "Incluye eventos en cualquier estado salvo que filtres por `status`. También filtra por precio y accesibilidad " +
         "(`maxPrice`, `students`, `seniors`, `families`, `wheelchair`). " + GEO_FILTER_HELP + " Si `total` es mayor que lo devuelto, " +

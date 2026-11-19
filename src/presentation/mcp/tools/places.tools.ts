@@ -187,7 +187,7 @@ export function registerPlaceTools(server: McpServer, placeService: IPlaceServic
     {
       title: "Listar lugares",
       description:
-        "Lista los lugares de Mi Vueltica ordenados por nombre, con filtros opcionales por cantón, provincia, " +
+        "Lista los lugares de Mi VuelTica ordenados por nombre, con filtros opcionales por cantón, provincia, " +
         "categoría, público objetivo, estado, precio y accesibilidad (`maxPrice`, `students`, `seniors`, `families`, " +
         "`wheelchair`) y ubicación. " + GEO_FILTER_HELP + " A diferencia de la API pública, incluye lugares en cualquier estado " +
         "(PENDING, PUBLISHED, REJECTED, ARCHIVED) salvo que filtres por `status`. Si `total` es mayor que lo " +
